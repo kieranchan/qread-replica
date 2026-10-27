@@ -5,8 +5,13 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
+
 import '../common/common.dart';
+import '../data/cloud/auto_backup.dart';
 import '../data/user.dart';
+import '../models/book.dart';
 import '../models/logindevice.dart';
 import '../models/userinfo.dart';
 import '../qread/http.dart';
@@ -170,6 +175,96 @@ abstract class UserApi {
 
   static Future<void> removeAutoDevice(int kind, String appid) async {
     _ok(await _call(kind == 2 ? 'removeAuto2Device' : 'removeAutoDevice', params: {'appid': appid}, withAppid: false));
+  }
+
+  // ---------------------------------------------------------------- device backups (书架备份 / 书源备份)
+
+  /// `openAuto` (0xf223ac): `{tockenid, appid, st, t}`; `data` = the upload url of this device's bookshelf backup, kept in
+  /// [AutoBackup.booksUrl]. [st] is `"0"` when the user switches the backup on, `"1"` when the app re-opens it at start-up.
+  /// A failure switches `autoSyncEnabled` off (persisted) and throws with `errorMsg`, as the original does.
+  static Future<String> openAuto({String st = '0'}) async {
+    final r = await _call('openAuto', withAppid: true, params: {'st': st});
+    if (_code(r) == codeOk && r['data'] is String) {
+      AutoBackup.booksUrl = r['data'] as String;
+      return AutoBackup.booksUrl;
+    }
+    await UserSession.setSwitch(PrefKeys.autoSyncEnabled, false);
+    throw ApiException(_code(r), '${r['errorMsg'] ?? '开启书架备份失败'}');
+  }
+
+  /// `newopenAuto2` (0xf226c4): as [openAuto] for the source backup; `data` = `{source, rss}` upload urls
+  /// ([AutoBackup.sourceUrl] / [AutoBackup.rssUrl]). A failure switches `auto2SyncEnabled` off.
+  static Future<({String source, String rss})> newopenAuto2({String st = '0'}) async {
+    final r = await _call('newopenAuto2', withAppid: true, params: {'st': st});
+    final d = r['data'];
+    if (_code(r) == codeOk && d is Map) {
+      AutoBackup.sourceUrl = '${d['source'] ?? ''}';
+      AutoBackup.rssUrl = '${d['rss'] ?? ''}';
+      return (source: AutoBackup.sourceUrl, rss: AutoBackup.rssUrl);
+    }
+    await UserSession.setSwitch(PrefKeys.auto2SyncEnabled, false);
+    throw ApiException(_code(r), '${r['errorMsg'] ?? '开启书源备份失败'}');
+  }
+
+  /// `getBookSelf` (0xfa8894): `{tockenid, appid = the backup device, t}` → `data` = the download url of that device's bookshelf
+  /// backup, which is fetched and parsed as a book list. A failure shows `获取书架书籍失败:<e>` and yields an empty list.
+  static Future<List<Book>> getBookSelf(String appid) async {
+    try {
+      final r = await _call('getBookSelf', params: {'appid': appid});
+      if (_code(r) != codeOk) return <Book>[];
+      final text = await downloadBackup('${r['data'] ?? ''}');
+      final v = jsonDecode(text);
+      return [for (final e in v as List) if (e is Map) Book.fromJson(Map<String, dynamic>.from(e))];
+    } catch (e) {
+      Toast.show('获取书架书籍失败:$e', iserror: true);
+      return <Book>[];
+    }
+  }
+
+  /// `getSources` (0x105127c) / `getRss` (0x1050ff4): `{tockenid, appid, t}` → the download url of the device's source / RSS
+  /// backup. Throws `获取备份失败` (after logging `获取备份失败:<e>`) on any failure.
+  static Future<String> getSources(String appid) => _backupUrl('getSources', appid);
+  static Future<String> getRss(String appid) => _backupUrl('getRss', appid);
+
+  static Future<String> _backupUrl(String name, String appid) async {
+    try {
+      final r = await _call(name, params: {'appid': appid});
+      if (_code(r) != codeOk) throw ApiException(_code(r), '${r['errorMsg'] ?? '获取备份失败'}');
+      return '${r['data'] ?? ''}';
+    } catch (e) {
+      debugPrint('获取备份失败:$e');
+      throw ApiException(-1, '获取备份失败');
+    }
+  }
+
+  /// `putCos` of the HTTP worker (0xe13cdc): PUTs a backup to an upload url. 413 → `当前请求内容过多，超出服务器限制`,
+  /// 403 → `当前请求被拦截，请联系管理员关闭防火墙`, other failures `网络错误:  <e>`.
+  static Future<void> putBackup(String url, String body) async {
+    Response<dynamic> r;
+    try {
+      r = await QHttp.dio.put<dynamic>(url, data: body, options: Options(contentType: Headers.jsonContentType));
+    } on DioException catch (e) {
+      throw ApiException(-1, '网络错误:  ${e.message ?? e.type.name}');
+    }
+    final s = r.statusCode ?? 0;
+    if (s == 413) throw const ApiException(413, '当前请求内容过多，超出服务器限制');
+    if (s == 403) throw const ApiException(403, '当前请求被拦截，请联系管理员关闭防火墙');
+    if (s < 200 || s >= 300) throw ApiException(s, '网络错误:  $s');
+  }
+
+  /// The `get` worker method (0xe68198): the text behind a backup download url. A missing backup fails with `网络错误:  404`
+  /// (the device dialog turns a message containing `404` into `此设备…备份为空`).
+  static Future<String> downloadBackup(String url) async {
+    Response<dynamic> r;
+    try {
+      r = await QHttp.dio.get<dynamic>(url, options: Options(responseType: ResponseType.bytes));
+    } on DioException catch (e) {
+      throw ApiException(-1, '网络错误:  ${e.message ?? e.type.name}');
+    }
+    final s = r.statusCode ?? 0;
+    if (s < 200 || s >= 300) throw ApiException(s, '网络错误:  $s');
+    final data = r.data;
+    return utf8.decode(data is List<int> ? data : utf8.encode('${data ?? ''}'), allowMalformed: true);
   }
 
   // ---------------------------------------------------------------- diagnostics

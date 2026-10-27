@@ -322,6 +322,57 @@ test('free accounts are limited to 2 backup devices when cloud is open to everyo
   await open.close();
 });
 
+test('bookshelf backup: openAuto hands out an upload url, the app PUTs its list, getBookSelf gives it back to other devices', async () => {
+  const u = await newUser('backer', { appid: 'phone-a' }); // not a member: bookshelf backup is free
+  const other = await post('/login', { username: 'backer', password: 'secret-pw', platform: 'ios', model: 'iPad', appid: 'pad-b' });
+  // st=1 (start-up re-open) needs a registered device
+  const early = await post('/openAuto', { tockenid: u.token, appid: 'phone-a', st: '1' });
+  assert.notEqual(early.json.code, 0);
+  assert.match(early.json.errorMsg, /重新开启备份/);
+  const open = await post('/openAuto', { tockenid: u.token, appid: 'phone-a', st: '0' });
+  assert.equal(open.json.code, 0, JSON.stringify(open.json));
+  const url = open.json.data;
+  assert.match(url, /^http:\/\/127\.0\.0\.1:\d+\/autobackup\/[0-9a-f]{32}$/);
+  assert.equal((await post('/openAuto', { tockenid: u.token, appid: 'phone-a', st: '1' })).json.data, url); // stable
+  // nothing uploaded yet: the download answers 404 (the app shows 此设备…备份为空)
+  const dl = (await post('/getBookSelf', { tockenid: other.json.data.id, appid: 'phone-a' })).json;
+  assert.equal(dl.code, 0);
+  assert.equal(dl.data, url);
+  assert.equal((await fetch(dl.data)).status, 404);
+  const books = JSON.stringify([{ name: '书一', bookUrl: 'https://x/1' }]);
+  const put = await fetch(url, { method: 'PUT', body: books });
+  assert.equal(put.status, 200);
+  assert.equal(await (await fetch(dl.data)).text(), books);
+  assert.equal((await fetch(url.replace(/[0-9a-f]{32}$/, '0'.repeat(32)), { method: 'PUT', body: '[]' })).status, 404);
+  // device list shows the backup device with its login model
+  const devs = (await post('/getAutoDevice', { tockenid: other.json.data.id })).json.data;
+  assert.deepEqual(devs, [{ appid: 'phone-a', platform: 'ios', model: 'iPhone' }]);
+  // unknown device / removed device
+  assert.notEqual((await post('/getBookSelf', { tockenid: u.token, appid: 'nope' })).json.code, 0);
+  assert.equal((await post('/removeAutoDevice', { tockenid: other.json.data.id, appid: 'phone-a' })).json.code, 0);
+  assert.equal((await fetch(url)).status, 404);
+  assert.notEqual((await post('/openAuto', { tockenid: u.token, appid: 'phone-a', st: '1' })).json.code, 0);
+});
+
+test('source backup: member only, {source, rss} urls, getSources / getRss', async () => {
+  const free = await newUser('srcfree', { appid: 'f-1' });
+  assert.equal((await post('/newopenAuto2', { tockenid: free.token, appid: 'f-1', st: '0' })).json.code, -3);
+  const m = await newUser('srcvip', { days: 30, appid: 'm-1' });
+  const r = (await post('/newopenAuto2', { tockenid: m.token, appid: 'm-1', st: '0' })).json;
+  assert.equal(r.code, 0, JSON.stringify(r));
+  assert.notEqual(r.data.source, r.data.rss);
+  await fetch(r.data.source, { method: 'PUT', body: '[{"bookSourceUrl":"https://s"}]' });
+  await fetch(r.data.rss, { method: 'PUT', body: '[{"sourceUrl":"https://r"}]' });
+  const s = (await post('/getSources', { tockenid: m.token, appid: 'm-1' })).json.data;
+  const rs = (await post('/getRss', { tockenid: m.token, appid: 'm-1' })).json.data;
+  assert.equal(await (await fetch(s)).text(), '[{"bookSourceUrl":"https://s"}]');
+  assert.equal(await (await fetch(rs)).text(), '[{"sourceUrl":"https://r"}]');
+  assert.equal((await post('/getAuto2Device', { tockenid: m.token })).json.data.length, 1);
+  assert.equal((await post('/getAutoDevice', { tockenid: m.token })).json.data.length, 0);
+  assert.equal((await post('/cleanuser', { tockenid: m.token })).json.code, 0);
+  assert.equal((await fetch(s)).status, 404);
+});
+
 test('diagnostics: the app can report self-check results (stored for `admin list-diag`)', async () => {
   const u = await newUser('diaguser');
   const rep = await post('/diag', { tockenid: u.token, appid: 'dev-1', app: 'newread 1.0.0', platform: 'ios', model: 'iPhone', results: [{ name: 'login', ok: true, detail: 'ok' }, { name: 'cloud', ok: false, detail: 'code -3' }] });

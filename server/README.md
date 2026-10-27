@@ -9,7 +9,7 @@ contacted or reproduced.
 src/server.mjs   HTTP entry (routes below)            src/admin.mjs   admin CLI (SQLite directly, no HTTP admin)
 src/userapi.mjs  account / membership / cloud calls   src/service.mjs  domain logic (users, tokens, vip, codes, blobs)
 src/themes.mjs   theme plaza                          src/pages.mjs    会员中心 page    src/backup.mjs  nightly backup
-test/api.test.mjs  15 end-to-end tests (in-memory DB)   tools/smoke.mjs  smoke test against a deployed server
+test/api.test.mjs  20 end-to-end tests (in-memory DB)   tools/smoke.mjs  smoke test against a deployed server
 deploy/          systemd units, Caddy site block, bootstrap + deploy scripts
 ```
 
@@ -35,16 +35,19 @@ avatar/theme URLs), `QREAD_REGISTER` (`invite` | `closed`), `QREAD_MAIL` (`off`;
   `paynew` call with `paymentType=code` and the code in `vipType`; or from the admin CLI. There is no payment processing.
 * **Cloud sync** (members only, enforced server side): five list kinds (bookshelf, RSS, book sources, notes, groups) with the
   etag / update-url / list triple, generic items (`getItemJson`, `getItemMd5`, `setItemJsonFile`), reading progress (`addreads`,
-  `autopos`, `openAuto`), backup devices (free accounts: 2). Blobs are stored as the client sends them; the etag is the MD5 of the
-  content. Lists are uploaded through `setItemJsonFile` with `item` = `books|rss|sources|notes|groups`.
+  `autopos`). Blobs are stored as the client sends them; the etag is the MD5 of the content. Lists are uploaded through
+  `setItemJsonFile` with `item` = `books|rss|sources|notes|groups`.
+* **Device backups** (书架备份 for every account, free accounts keep 2 devices; 书源备份 for members): `openAuto` / `newopenAuto2`
+  (`st` 0 = register, 1 = re-open, fails when the device was removed) answer upload urls `<base>/autobackup/<key>`; the app
+  `PUT`s its JSON there; `getAutoDevice` / `getAuto2Device` list the devices, `getBookSelf` / `getSources` / `getRss` (`appid` = the
+  backup device) answer the same url for `GET` (404 until the first upload); `removeAuto*Device` deletes the device and its data.
 * **Theme plaza**: `GET /public/themes?page&limit&category_id`, `/public/themes/:id`, `/public/categories`, files under `/public/files/`
   (`{code: 200, data}` replies). Add content with `admin add-theme`.
 * **Web page**: `GET /` (and `/vip`) is the 会员中心 page: opened by the app with `?tockenid=` it shows the status and the activation-code box; opened in a
   browser it first asks for username/password. `POST /diag` receives the app's self-check results (`admin list-diag`).
 * **Other**: `/images/*` (avatars, uploads), `/static/down.json`, `/static/qq.json` (`admin set-static`), `/healthz`, `/api/allocate` (stub: the
   compatibility-engine allocator is not provided), `check_update` (always "no update").
-* **Not implemented / unknown**: the app's backup-upload path (`getBookSelf`, `getRss`, `getSources` only read), `autopos`/`openAuto` payload
-  semantics beyond what `docs/API.md` records, the `yuan` HTML proxy, the Edge TTS page, the bound 轻阅读 `/api/5` backend. Unknown
+* **Not implemented / unknown**: `autopos` payload semantics beyond what `docs/API.md` records, the `yuan` HTML proxy, the Edge TTS page, the bound 轻阅读 `/api/5` backend. Unknown
   endpoints answer 404 and are logged (`{"unsupported": name}`) so missing calls show up in the journal.
 
 ## Admin CLI

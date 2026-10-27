@@ -35,6 +35,17 @@ CREATE TABLE IF NOT EXISTS auto_devices (
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (user_id, kind, appid)
 );
+-- automatic backups of one device (书架备份 / 书源备份): openAuto / newopenAuto2 hand out <base>/autobackup/<key>, the app PUTs the JSON
+-- list there (the original's putCos) and getBookSelf / getSources / getRss give the same url back for the download
+CREATE TABLE IF NOT EXISTS auto_backups (
+  key TEXT PRIMARY KEY,            -- random capability in the url
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  appid TEXT NOT NULL,
+  part TEXT NOT NULL,              -- books | sources | rss
+  data BLOB,                       -- NULL until the first upload
+  updated_at INTEGER NOT NULL,
+  UNIQUE (user_id, part, appid)
+);
 CREATE TABLE IF NOT EXISTS codes (
   id INTEGER PRIMARY KEY,
   code_hash TEXT NOT NULL UNIQUE,

@@ -1,5 +1,6 @@
 // Account / membership / cloud-sync endpoints with the wire contract recovered from the app (docs/API.md).
 // Every handler gets a context { p: merged params, files, ip, now } and returns the JSON object to send.
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ApiError, CODE, RateLimiter, md5, sha256, fmtDate, isEmail } from './util.mjs';
@@ -120,6 +121,7 @@ export function createUserApi(svc, cfg, limiter = new RateLimiter()) {
     svc.db.prepare('DELETE FROM blobs WHERE user_id = ?').run(user.id);
     svc.db.prepare('DELETE FROM reads WHERE user_id = ?').run(user.id);
     svc.db.prepare('DELETE FROM auto_devices WHERE user_id = ?').run(user.id);
+    svc.db.prepare('DELETE FROM auto_backups WHERE user_id = ?').run(user.id);
     return ok();
   };
   h.updateNickname = (c) => {
@@ -206,13 +208,17 @@ export function createUserApi(svc, cfg, limiter = new RateLimiter()) {
     svc.removeLoginDevice(user.id, String(c.p.appid ?? ''));
     return ok();
   };
+  // Backup devices (the original's 书架备份 = kind 1, 书源备份 = kind 2; docs/API.md "Backup devices").
+  const PARTS = { 1: ['books'], 2: ['sources', 'rss'] };
   const autoDevices = (kind) => (c) => {
     const { user } = auth(c);
     return ok(svc.db.prepare('SELECT appid, platform, model FROM auto_devices WHERE user_id = ? AND kind = ? ORDER BY updated_at DESC').all(user.id, kind));
   };
   const removeAuto = (kind) => (c) => {
     const { user } = auth(c);
-    svc.db.prepare('DELETE FROM auto_devices WHERE user_id = ? AND kind = ? AND appid = ?').run(user.id, kind, String(c.p.appid ?? ''));
+    const appid = String(c.p.appid ?? '');
+    svc.db.prepare('DELETE FROM auto_devices WHERE user_id = ? AND kind = ? AND appid = ?').run(user.id, kind, appid);
+    for (const part of PARTS[kind]) svc.db.prepare('DELETE FROM auto_backups WHERE user_id = ? AND part = ? AND appid = ?').run(user.id, part, appid);
     return ok();
   };
   h.getAutoDevice = autoDevices(1);
@@ -220,19 +226,64 @@ export function createUserApi(svc, cfg, limiter = new RateLimiter()) {
   h.removeAutoDevice = removeAuto(1);
   h.removeAuto2Device = removeAuto(2);
 
+  const isRegistered = (user, kind, appid) => !!svc.db.prepare('SELECT 1 AS x FROM auto_devices WHERE user_id = ? AND kind = ? AND appid = ?').get(user.id, kind, appid);
+
+  // st "0": the user switched the backup on (registers the device; free accounts keep at most cfg.freeBackupDevices);
+  // st "1": the app re-opens the backup at start-up (the device must still be registered: removing it from another device
+  // makes the app switch its backup off, as the original does when openAuto fails).
   function registerAutoDevice(user, kind, c) {
     const appid = String(c.p.appid ?? '');
-    if (!appid) return;
-    const have = svc.db.prepare('SELECT 1 AS x FROM auto_devices WHERE user_id = ? AND kind = ? AND appid = ?').get(user.id, kind, appid);
+    if (!appid || appid.length > 128) throw new ApiError(CODE.ERR, '缺少设备标识');
+    const have = isRegistered(user, kind, appid);
+    if (!have && String(c.p.st ?? '0') === '1') throw new ApiError(CODE.ERR, kind === 1 ? '此设备已从书架备份中移除，请重新开启备份' : '此设备已从书源备份中移除，请重新开启备份');
     if (!have && !svc.isVip(user, c.now)) {
       const n = svc.db.prepare('SELECT COUNT(*) AS n FROM auto_devices WHERE user_id = ? AND kind = ?').get(user.id, kind).n;
-      if (n >= cfg.freeBackupDevices) throw new ApiError(CODE.ERR, `非会员最多只能备份 ${cfg.freeBackupDevices} 个设备，请先删除旧设备`);
+      if (n >= cfg.freeBackupDevices) throw new ApiError(CODE.ERR, `非会员最多只能备份 ${cfg.freeBackupDevices} 个设备，请先在书架备份中删除旧设备`);
     }
-    const tok = svc.db.prepare('SELECT platform, model FROM tokens WHERE user_id = ? AND appid = ?').get(user.id, appid) ?? { platform: '', model: '' };
+    const tok = svc.db.prepare('SELECT platform, model FROM tokens WHERE user_id = ? AND appid = ? ORDER BY last_seen DESC').get(user.id, appid) ?? { platform: '', model: '' };
     svc.db
-      .prepare('INSERT INTO auto_devices(user_id, kind, appid, platform, model, updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(user_id, kind, appid) DO UPDATE SET updated_at=excluded.updated_at')
+      .prepare('INSERT INTO auto_devices(user_id, kind, appid, platform, model, updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(user_id, kind, appid) DO UPDATE SET updated_at=excluded.updated_at, platform=excluded.platform, model=excluded.model')
       .run(user.id, kind, appid, tok.platform, tok.model, c.now);
+    return appid;
   }
+
+  // the url of one backup part of a device (created on first use, stable afterwards)
+  function backupUrl(user, part, appid, now) {
+    let row = svc.db.prepare('SELECT key FROM auto_backups WHERE user_id = ? AND part = ? AND appid = ?').get(user.id, part, appid);
+    if (!row) {
+      row = { key: crypto.randomBytes(16).toString('hex') };
+      svc.db.prepare('INSERT INTO auto_backups(key, user_id, appid, part, data, updated_at) VALUES (?,?,?,?,NULL,?)').run(row.key, user.id, appid, part, now);
+    }
+    return `${cfg.baseUrl}/autobackup/${row.key}`;
+  }
+
+  // openAuto (original 0xf223ac): {tockenid, appid, st, t} -> data = the upload url of this device's bookshelf backup (the app keeps
+  // it in a static and PUTs the JSON book list there). Bookshelf backup is not a member feature (free accounts: 2 devices).
+  h.openAuto = (c) => {
+    const { user } = auth(c);
+    const appid = registerAutoDevice(user, 1, c);
+    return ok(backupUrl(user, 'books', appid, c.now));
+  };
+  // newopenAuto2 (0xf226c4): same for the source backup (member feature) -> data = {source, rss} upload urls.
+  h.newopenAuto2 = (c) => {
+    const { user } = auth(c);
+    needVip(user, c.now);
+    const appid = registerAutoDevice(user, 2, c);
+    return ok({ source: backupUrl(user, 'sources', appid, c.now), rss: backupUrl(user, 'rss', appid, c.now) });
+  };
+
+  // getBookSelf (0xfa8894) / getSources (0x105127c) / getRss (0x1050ff4): {tockenid, appid = the backup device, t} -> data = the
+  // download url of that device's backup; the app GETs it (404 = nothing uploaded yet: 此设备书源备份为空).
+  const backupOf = (kind, part) => (c) => {
+    const { user } = auth(c);
+    if (kind === 2) needVip(user, c.now);
+    const appid = String(c.p.appid ?? '');
+    if (!isRegistered(user, kind, appid)) throw new ApiError(CODE.ERR, '备份设备不存在');
+    return ok(backupUrl(user, part, appid, c.now));
+  };
+  h.getBookSelf = backupOf(1, 'books');
+  h.getSources = backupOf(2, 'sources');
+  h.getRss = backupOf(2, 'rss');
 
   // ---------------- membership ----------------
   h.canOpenCloud = (c) => {
@@ -329,31 +380,26 @@ export function createUserApi(svc, cfg, limiter = new RateLimiter()) {
       .run(user.id, `pos:${book}`, String(c.p.appid ?? ''), data, c.now);
     return ok();
   };
-  const progressFor = (user, appid, now) =>
-    svc.db
-      .prepare('SELECT book, appid, data, updated_at FROM reads WHERE user_id = ? AND book LIKE ? AND appid != ? AND updated_at > ?')
-      .all(user.id, 'pos:%', appid, now - 7 * 86_400_000)
-      .map((r) => ({ book: r.book.slice(4), appid: r.appid, ...JSON.parse(r.data), t: r.updated_at }));
-  h.openAuto = (c) => {
-    const { user } = cloud(c);
-    registerAutoDevice(user, 1, c);
-    return ok(progressFor(user, String(c.p.appid ?? ''), c.now));
-  };
-  h.newopenAuto2 = (c) => {
-    const { user } = cloud(c);
-    registerAutoDevice(user, 2, c);
-    return ok({ source: [], rss: [] });
-  };
-
-  // restore-from-backup lists (read only: the app's backup upload path is not recovered yet, see docs/API.md)
-  const backupList = (kind) => (c) => {
-    const { user } = cloud(c);
-    const b = svc.getBlob(user.id, `backup:${kind}`);
-    return b ? ok(b.data) : noData();
-  };
-  h.getBookSelf = backupList('books');
-  h.getRss = backupList('rss');
-  h.getSources = backupList('sources');
-
   return h;
+}
+
+// The upload / download side of the backup urls handed out above (`PUT|GET <base>/autobackup/<key>`, see server.mjs). The key is
+// the capability, like the pre-signed object-storage urls of the original.
+export function createAutoBackups(svc) {
+  const KEY_RE = /^[0-9a-f]{32}$/;
+  return {
+    put(key, buf, now) {
+      if (!KEY_RE.test(key)) return false;
+      const r = svc.db.prepare('UPDATE auto_backups SET data = ?, updated_at = ? WHERE key = ?').run(buf, now, key);
+      if (r.changes === 0) return false;
+      const b = svc.db.prepare('SELECT user_id, appid, part FROM auto_backups WHERE key = ?').get(key);
+      svc.db.prepare('UPDATE auto_devices SET updated_at = ? WHERE user_id = ? AND appid = ? AND kind = ?').run(now, b.user_id, b.appid, b.part === 'books' ? 1 : 2);
+      return true;
+    },
+    get(key) {
+      if (!KEY_RE.test(key)) return null;
+      const row = svc.db.prepare('SELECT data FROM auto_backups WHERE key = ?').get(key);
+      return row?.data == null ? null : Buffer.from(row.data);
+    },
+  };
 }
