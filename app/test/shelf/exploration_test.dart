@@ -1,5 +1,4 @@
 // Exploration tab: the active template's components load their books through the engine.
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:newread/data/exploration.dart';
 import 'package:newread/data/source.dart';

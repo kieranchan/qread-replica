@@ -52,7 +52,7 @@ class _BottomBarState extends State<BottomBar> with SingleTickerProviderStateMix
     final dark = Theme.of(context).brightness == Brightness.dark;
     return SizeTransition(
       sizeFactor: _animation,
-      axisAlignment: -1,
+      alignment: Alignment.topCenter,
       child: SafeArea(
         top: false,
         child: Container(
