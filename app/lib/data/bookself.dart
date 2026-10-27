@@ -78,6 +78,12 @@ abstract class Groupdata {
     await _hidegroups.load(force: force);
   }
 
+  /// Forgets the loaded state (tests, logout).
+  static void reset() {
+    _groups..items = <String>[]..loaded = false;
+    _hidegroups..items = <String>[]..loaded = false;
+  }
+
   /// 0x6e1568: is [name] a known group.
   static bool contains(String name) => _groups.items.contains(name);
 

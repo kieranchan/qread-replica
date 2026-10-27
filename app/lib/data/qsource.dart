@@ -29,6 +29,12 @@ abstract class QSources {
 
   static List<Source> get sources => _sources;
 
+  /// Forgets the loaded state (tests, logout).
+  static void reset() {
+    _sources = <Source>[];
+    _loaded = false;
+  }
+
   /// Loads the cached list (idempotent).
   static Future<List<Source>> load({bool force = false}) async {
     if (_loaded && !force) return _sources;

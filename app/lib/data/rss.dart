@@ -165,10 +165,10 @@ abstract class RssSources {
       });
 
   /// Imports Legado RSS-source JSON (list or single object).
-  static Future<SourceImportResult> importJson(String text) {
+  static Future<SourceImportResult> importJson(String text) async {
     final v = jsonDecode(text);
     final items = v is List ? v : (v is Map ? [v] : const []);
-    return addAll([for (final m in items) if (m is Map) Map<String, dynamic>.from(m)]);
+    return await addAll([for (final m in items) if (m is Map) Map<String, dynamic>.from(m)]);
   }
 
   static Future<String> exportJson({Iterable<String>? urls}) async {

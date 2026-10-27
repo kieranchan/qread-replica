@@ -33,6 +33,12 @@ class ListStore<T> {
 
   ListStore(this.key, {required this.fromJson, required this.toJson, this.defaults, this.label = ''});
 
+  /// Forgets the in-memory list so the next [load] reads from disk again (tests, logout).
+  void reset() {
+    items = <T>[];
+    loaded = false;
+  }
+
   /// Reads the stored list. Safe to call again with [force] to reload from disk.
   Future<List<T>> load({bool force = false}) async {
     if (loaded && !force) return items;

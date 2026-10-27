@@ -237,10 +237,10 @@ abstract class Sources {
 
   /// Imports Legado book-source JSON: a list of sources or a single object. Entries without url or name are skipped.
   /// Throws [FormatException] when the text is not JSON.
-  static Future<SourceImportResult> importJson(String text) {
+  static Future<SourceImportResult> importJson(String text) async {
     final v = jsonDecode(text);
     final items = v is List ? v : (v is Map ? [v] : const []);
-    return addAll([for (final m in items) if (m is Map) Map<String, dynamic>.from(m)]);
+    return await addAll([for (final m in items) if (m is Map) Map<String, dynamic>.from(m)]);
   }
 
   /// Legado-compatible JSON of the given sources (all when [urls] is null): the full raw maps.
