@@ -1,0 +1,53 @@
+name: ios-unsigned
+
+# Builds the replica for iOS on a macOS runner and uploads an UNSIGNED .ipa (install with Sideloadly, which signs it with
+# your Apple ID). Nothing here needs secrets. Repo layout expected: app/ (Flutter), server/ (Node, used by the contract tests),
+# docs/. Large local-only folders (tools/, analysis/) are excluded by .gitignore.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['app/**', 'server/**', '.github/workflows/ios-unsigned.yml']
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.9
+          channel: stable
+          cache: true
+
+      # the Dart<->server contract tests spawn ../server (Node >= 24, no dependencies)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - run: (cd ../server && npm test)
+
+      - name: Build (no code signing)
+        run: flutter build ios --release --no-codesign
+
+      - name: Pack the unsigned IPA
+        run: |
+          rm -rf Payload newread-unsigned.ipa
+          mkdir Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/Runner.app
+          zip -qry newread-unsigned.ipa Payload
+          ls -la newread-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: newread-unsigned-ipa
+          path: app/newread-unsigned.ipa
+          retention-days: 14

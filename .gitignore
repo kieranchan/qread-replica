@@ -1,0 +1,21 @@
+# Local-only toolchains and decompiled material: never part of the replica repository.
+/tools/
+/analysis/
+/env.ps1
+*.ipa
+*.zip
+
+# server runtime data
+/server/data/
+/server/node_modules/
+
+# Flutter / Dart (the app has its own .gitignore too)
+/app/build/
+/app/.dart_tool/
+/app/.flutter-plugins*
+
+# deployment target (VM address) stays local
+/server/deploy/target.env
+
+# files still being produced by the analysis sub-agent are added once reviewed
+/docs/SETTINGS.md

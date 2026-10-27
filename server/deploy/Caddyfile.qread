@@ -1,0 +1,19 @@
+# Site block for the qread replica server, imported from /etc/caddy/Caddyfile via `import /etc/caddy/conf.d/*.caddy`.
+# Behind Cloudflare (orange cloud, zone SSL "full") exactly like td2.forfine.me: `tls internal`, origin reachable only from Cloudflare ranges (NSG).
+# No basic_auth here: the app authenticates with its own session token. Node listens on 127.0.0.1:8920 only.
+qread.forfine.me {
+	tls internal
+	encode zstd gzip
+
+	header {
+		X-Robots-Tag "noindex, nofollow, noarchive"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	request_body {
+		max_size 40MB
+	}
+
+	reverse_proxy 127.0.0.1:8920
+}

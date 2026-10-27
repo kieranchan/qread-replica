@@ -1,0 +1,13 @@
+[Unit]
+Description=qread nightly SQLite backup
+
+[Service]
+Type=oneshot
+User=qread
+Group=qread
+EnvironmentFile=/etc/qread/qread.env
+ExecStart=/opt/node/bin/node --disable-warning=ExperimentalWarning /srv/qread/current/src/backup.mjs 14
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/qread

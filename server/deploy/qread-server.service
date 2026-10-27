@@ -1,0 +1,23 @@
+[Unit]
+Description=qread replica server (accounts, membership, cloud sync, themes)
+After=network.target
+
+[Service]
+User=qread
+Group=qread
+EnvironmentFile=/etc/qread/qread.env
+WorkingDirectory=/srv/qread/current
+ExecStart=/opt/node/bin/node --disable-warning=ExperimentalWarning /srv/qread/current/src/server.mjs
+Restart=always
+RestartSec=3
+MemoryMax=220M
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/qread
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
