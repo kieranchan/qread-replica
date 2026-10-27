@@ -1,0 +1,24 @@
+{
+  "bookSourceName": "GBK站",
+  "bookSourceUrl": "__BASE__",
+  "searchUrl": "/gbk/search?wd={{key}},{'charset':'gbk'}",
+  "ruleSearch": {
+    "bookList": "class.book",
+    "name": "class.name@text",
+    "author": "class.author@text##作者：",
+    "bookUrl": "class.name@href"
+  },
+  "ruleBookInfo": {
+    "name": "id.name@text",
+    "author": "class.author@text##作者：",
+    "tocUrl": "id.read@href"
+  },
+  "ruleToc": {
+    "chapterList": "id.chapters@tag.li",
+    "chapterName": "tag.a@text",
+    "chapterUrl": "tag.a@href"
+  },
+  "ruleContent": {
+    "content": "id.content@html"
+  }
+}

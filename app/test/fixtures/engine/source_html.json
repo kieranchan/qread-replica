@@ -1,0 +1,50 @@
+{
+  "bookSourceName": "HTML站",
+  "bookSourceUrl": "__BASE__",
+  "bookSourceType": 0,
+  "enabled": true,
+  "enabledExplore": true,
+  "header": "{'X-Test':'header-ok'}",
+  "searchUrl": "/html/search?q={{key}}&page={{page}}",
+  "exploreUrl": "热门::/html/search?q=hot&page={{page}}\n完结::/html/search?q=end&page={{page}}",
+  "ruleSearch": {
+    "bookList": "class.book",
+    "name": "class.name@text",
+    "author": "class.author@text##作者：",
+    "bookUrl": "class.name@href@put:{bid:class.name@href##/book/}",
+    "coverUrl": "class.cover@src",
+    "intro": "class.desc@text",
+    "kind": "class.kind@text"
+  },
+  "ruleExplore": {
+    "bookList": "class.book",
+    "name": "class.name@text",
+    "author": "class.author@text##作者：",
+    "bookUrl": "class.name@href",
+    "coverUrl": "class.cover@src"
+  },
+  "ruleBookInfo": {
+    "name": "id.name@text",
+    "author": "class.author@text##作者：",
+    "kind": "class.kind@text",
+    "wordCount": "class.status@text##字数：",
+    "lastChapter": "id.last@text##最新：",
+    "coverUrl": "id.cover@src",
+    "intro": "id.intro@html",
+    "tocUrl": "/book/@get:{bid}/toc"
+  },
+  "ruleToc": {
+    "chapterList": "id.chapters@tag.li",
+    "chapterName": "tag.a@text||class.vol@text",
+    "chapterUrl": "tag.a@href",
+    "isVolume": "class.vol@text",
+    "updateTime": "tag.span@text",
+    "nextTocUrl": "id.next@href"
+  },
+  "ruleContent": {
+    "content": "id.content@html",
+    "title": "class.ct@text",
+    "nextContentUrl": "id.np@href",
+    "replaceRegex": "##斗之力##斗之气"
+  }
+}
