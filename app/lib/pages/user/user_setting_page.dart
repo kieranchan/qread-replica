@@ -120,7 +120,7 @@ class _UserSettingPageState extends State<UserSettingPage> {
         appBar: AppBar(title: const Text('账号设置')),
         body: ListView(children: [
           ListTile(title: const Text('个人资料'), subtitle: Text('${UserSession.nickname} · ${UserSession.email}'), trailing: const Icon(Icons.chevron_right), onTap: () => Get.to(() => const UserEditPage())),
-          ListTile(title: const Text('会员中心'), subtitle: Text(UserSession.isvip ? '会员 · 到期 ${UserSession.vipExpire}' : '非会员'), trailing: const Icon(Icons.chevron_right), onTap: openMemberCenter),
+          ListTile(title: const Text('会员中心'), subtitle: Text(UserSession.vipLabel), trailing: const Icon(Icons.chevron_right), onTap: openMemberCenter),
           ListTile(title: const Text('登录设备'), trailing: const Icon(Icons.chevron_right), onTap: _devices),
           ListTile(title: const Text('修改密码'), trailing: const Icon(Icons.chevron_right), onTap: _password),
           ListTile(title: const Text('删除云端数据'), trailing: const Icon(Icons.chevron_right), onTap: _cleanCloud),

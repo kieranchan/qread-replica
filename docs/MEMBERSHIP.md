@@ -14,7 +14,7 @@ Membership is decided **entirely on the server**. The client holds three things 
 | Session token | static field id `0x1f20` (offset `0x3e40`), prefs key `tockenid` | sent as `tockenid` with every account/cloud request |
 | Device id | static field id `0x1e60`, written at app init (`appinit`, `0x10d37c0`) | sent as `appid` |
 | VIP flag | static `bool`, field id `0x1f30` (offset `0x3e60`), prefs key `isvip` | **487 reads** in the decompiled code = the feature gates; written only by `applyUserinfo` (`0xf64ebc`), logout (`0x10487c4`) and the prefs restore (`0x11284a8`) |
-| `Userinfo` model | `models/userinfo.dart`, size `0x40` = 7 slots | slot order from `applyUserinfo`: username, id, token, slot3, nickname, slot5, isvip. JSON keys: `username, id, vip, isvip, avatar_url, nickname, email` (see `API.md`: the key `vip` lands in the token slot) |
+| `Userinfo` model | `models/userinfo.dart`, size `0x40` = 7 slots | slot order (verified, `API.md`): username, `vip` (display text, static `0x1f90`), **`id` = the session token**, email, nickname, avatar_url, isvip |
 | Rule | every gate | `if (!isVip) toast("…为会员功能")` — no client-side expiry check, no signature. After each login/refresh `applyUserinfo` also switches the three cloud-sync flags (`0x1f9c/0x1fa0/0x1fa4`) off when `!isvip` |
 
 Persisted session keys (a contiguous run in the object pool, `pp+0x73e0 … 0x74b8`): `isLoggedIn`, `username`,
@@ -26,8 +26,8 @@ Persisted session keys (a contiguous run in the object pool, `pp+0x73e0 … 0x74
 1. **Register**: `register_page.dart` — email, 6-digit verification code (`请输入6位数字验证码`), password. Success text
    `注册成功，请登录您的账户`. **Forgot password**: `forgetPassword(email)` then code.
 2. **Login**: `login_page.dart` — `用户名/邮箱` + password; request fields `username, password, platform, model, appid`;
-   response `{code, data:{username,id,vip,isvip,avatar_url,nickname,email}}`; there is no `tockenid` key, the key `vip` is
-   parsed as a String and stored in the token slot (`API.md`, inference). Failures return `errorMsg`.
+   response `{code, data:{username,id,vip,isvip,avatar_url,nickname,email}}` where **`id` is the session token** and `vip` the
+   membership text (`永久` / a date); there is no `tockenid` key (`API.md`). Failures return `errorMsg`.
 3. **Refresh**: `getUserInfo(tockenid, appid, t)` runs when the 会员中心 page is closed and from the user edit page.
 4. **Purchase**: the 「我的」 page and the user settings page open `NWebviewPage` titled **会员中心** at
    `<base>vip?tockenid=<token>`. This page is rendered by **WebF** (Dart-hosted web engine, `_onJSMethodCall`), so it is
@@ -72,7 +72,7 @@ server. The replica therefore needs its own definition of all of them; sections 
 ## 4. Our design (own server)
 
 * **Model**: user(email, password hash, nickname, avatar) + `vip_until` (UTC ms). `isvip = vip_until > now` is
-  computed on every response; the client never decides expiry. `vip` string = date shown in the UI.
+  computed on every response; the client never decides expiry. `vip` string = text shown in the UI (a date, or `永久` for a lifetime grant, empty for non-members).
 * **How members are made**: (a) activation codes issued by the owner (`days`, optional expiry, single use, stored
   hashed), redeemed on the 会员中心 page — this replaces `paynew`/StoreKit; (b) owner/admin grant API. No payment
   processing is built or planned.
@@ -92,5 +92,5 @@ server. The replica therefore needs its own definition of all of them; sections 
    theme plaza; static files. Semantics that are only inferred are marked in `API.md`; the app's backup-upload path is not implemented.
 4. **Done.** 15 end-to-end tests (`server/test`), live smoke test `server/tools/smoke.mjs`; deployed to the Korean VM as `https://qread.forfine.me`
    (`server/README.md`, runbook in the infra repo `docs/33`).
-5. **Open.** Verify the token-in-`vip` inference and the update-url semantics with the replica app once the `UserApi` port exists; add the
+5. **Open.** Verify the update-url semantics with the replica app once the `UserApi` port exists; add the
    backup-upload endpoints when the backup feature is ported; optional SMTP for `getEmailCode`/`forgetPassword`.

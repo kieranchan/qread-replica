@@ -42,19 +42,24 @@ export function createUserApi(svc, cfg, limiter = new RateLimiter()) {
     return a;
   };
 
-  // `vip` carries the session token (the app stores that field as its token, see docs/API.md); extra keys are ignored by the app
+  // Userinfo contract of the app (docs/API.md): `id` is the session token (the app stores that slot as `tockenid`), `vip` is a
+  // display string for the membership ("永久", a date, or "" for non-members). Extra keys (`userId`, `vipUntil`) are ignored by the app.
+  const FIFTY_YEARS = 50 * 365 * 86_400_000;
+  function vipText(user, now) {
+    if (!svc.isVip(user, now)) return '';
+    return user.vip_until - now > FIFTY_YEARS ? '永久' : fmtDate(user.vip_until);
+  }
   function userInfo(user, token, now) {
     return {
       username: user.username,
-      id: String(user.id),
-      vip: token,
+      id: token,
+      vip: vipText(user, now),
       isvip: svc.isVip(user, now),
       avatar_url: urlOf(user.avatar),
       nickname: user.nickname || user.username,
       email: user.email,
-      tockenid: token,
+      userId: String(user.id),
       vipUntil: user.vip_until,
-      vipExpire: fmtDate(user.vip_until),
     };
   }
 

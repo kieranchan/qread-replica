@@ -13,7 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 Widget app(Widget home) => GetMaterialApp(home: home);
 
 Future<void> signIn({required bool vip}) => UserSession.apply(Userinfo(
-    username: 'alice', id: '1', tockenid: 't', email: 'a@x.io', nickname: '艾丽丝', avatarUrl: '', isvip: vip, vipExpire: vip ? '2030-01-01' : ''));
+    username: 'alice', vip: vip ? '2030-01-01' : '', tockenid: 't', email: 'a@x.io', nickname: '艾丽丝', avatarUrl: '', isvip: vip));
 
 void main() {
   setUp(() async {

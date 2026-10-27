@@ -34,8 +34,8 @@ async function newUser(name, { days = 0, appid = 'dev-' + name } = {}) {
   assert.equal(reg.json.code, 0, JSON.stringify(reg.json));
   const login = await post('/login', { username: name, password: 'secret-pw', platform: 'ios', model: 'iPhone', appid });
   assert.equal(login.json.code, 0, JSON.stringify(login.json));
-  if (days) app.svc.addDays(login.json.data.id * 1, days, 'admin', 'test');
-  return { token: login.json.data.vip, id: Number(login.json.data.id), info: login.json.data, appid };
+  if (days) app.svc.addDays(Number(login.json.data.userId), days, 'admin', 'test');
+  return { token: login.json.data.id, id: Number(login.json.data.userId), info: login.json.data, appid };
 }
 
 before(async () => {
@@ -79,7 +79,10 @@ test('login returns the Userinfo contract; token is accepted, bad token is NEED_
   const u = await newUser('bob');
   const d = u.info;
   for (const k of ['username', 'id', 'vip', 'isvip', 'avatar_url', 'nickname', 'email']) assert.ok(k in d, k);
-  assert.equal(typeof d.vip, 'string');
+  // the original contract: `id` = session token, `vip` = membership display text (empty for non-members)
+  assert.equal(typeof d.id, 'string');
+  assert.ok(d.id.length >= 20);
+  assert.equal(d.vip, '');
   assert.equal(d.isvip, false);
   const info = await post('/getUserInfo', { tockenid: u.token, appid: u.appid, t: Date.now() });
   assert.equal(info.json.code, 0);
@@ -135,6 +138,17 @@ test('cloud features need membership; activation code grants it once', async () 
   assert.equal(np.json.errorMsg, '暂不支持');
 });
 
+test('`vip` is the membership display text: date for members, 永久 for a lifetime grant, empty after expiry', async () => {
+  const u = await newUser('vera', { days: 30 });
+  const d = (await post('/getUserInfo', { tockenid: u.token })).json.data;
+  assert.match(d.vip, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(d.isvip, true);
+  app.svc.addDays(u.id, 36500, 'admin', 'test');
+  assert.equal((await post('/getUserInfo', { tockenid: u.token })).json.data.vip, '永久');
+  app.db.prepare('UPDATE users SET vip_until = ? WHERE id = ?').run(Date.now() - 1000, u.id);
+  assert.equal((await post('/getUserInfo', { tockenid: u.token })).json.data.vip, '');
+});
+
 test('expired membership closes the cloud again', async () => {
   const u = await newUser('erin', { days: 1 });
   assert.equal((await post('/getEtag', { tockenid: u.token })).json.code, -5); // member, nothing stored yet
@@ -174,7 +188,7 @@ test('cloud sync: items, md5, lists and etag/update-url flow', async () => {
 test('devices: list, remove, token dies with the device', async () => {
   const u = await newUser('hank');
   const second = await post('/login', { username: 'hank', password: 'secret-pw', platform: 'ios', model: 'iPad', appid: 'ipad-1' });
-  const tok2 = second.json.data.vip;
+  const tok2 = second.json.data.id;
   const list = await post('/getloginDevice', { tockenid: u.token });
   assert.equal(list.json.data.length, 2);
   assert.deepEqual(list.json.data.map((d) => d.appid).sort(), ['dev-hank', 'ipad-1']);
@@ -184,7 +198,7 @@ test('devices: list, remove, token dies with the device', async () => {
   // same appid logging in again replaces its token
   const again = await post('/login', { username: 'hank', password: 'secret-pw', appid: 'dev-hank' });
   assert.equal((await post('/getUserInfo', { tockenid: u.token })).json.code, -2);
-  assert.equal((await post('/getUserInfo', { tockenid: again.json.data.vip })).json.code, 0);
+  assert.equal((await post('/getUserInfo', { tockenid: again.json.data.id })).json.code, 0);
 });
 
 test('logout, nickname, password change', async () => {
@@ -197,8 +211,8 @@ test('logout, nickname, password change', async () => {
   assert.equal((await post('/getUserInfo', { tockenid: u.token })).json.code, -2);
   const l = await post('/login', { username: 'ivy', password: 'new-secret', appid: 'a' });
   assert.equal(l.json.code, 0);
-  assert.equal((await post('/logout', { tockenid: l.json.data.vip })).json.code, 0);
-  assert.equal((await post('/getUserInfo', { tockenid: l.json.data.vip })).json.code, -2);
+  assert.equal((await post('/logout', { tockenid: l.json.data.id })).json.code, 0);
+  assert.equal((await post('/getUserInfo', { tockenid: l.json.data.id })).json.code, -2);
 });
 
 test('avatar upload and image dedupe', async () => {
@@ -287,7 +301,7 @@ test('free accounts are limited to 2 backup devices when cloud is open to everyo
   const P = async (p, body) => (await fetch(b + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
   open.svc.createUser({ username: 'kate', email: 'k@example.com', password: 'secret-pw' });
   const logins = [];
-  for (const id of ['d1', 'd2', 'd3']) logins.push((await P('/login', { username: 'kate', password: 'secret-pw', appid: id })).data.vip);
+  for (const id of ['d1', 'd2', 'd3']) logins.push((await P('/login', { username: 'kate', password: 'secret-pw', appid: id })).data.id);
   assert.equal((await P('/openAuto', { tockenid: logins[0], appid: 'd1', st: 0 })).code, 0);
   assert.equal((await P('/openAuto', { tockenid: logins[1], appid: 'd2', st: 0 })).code, 0);
   const third = await P('/openAuto', { tockenid: logins[2], appid: 'd3', st: 0 });

@@ -27,8 +27,9 @@ avatar/theme URLs), `QREAD_REGISTER` (`invite` | `closed`), `QREAD_MAIL` (`off`;
 * **Accounts**: `register` needs an admin-issued 6-digit invite code in the `code` field (the app's email-code box); `getEmailCode`
   sends nothing; `forgetPassword` is refused (admin resets with the CLI). Passwords scrypt-hashed, session tokens random 192 bit
   stored as SHA-256, one token per `appid` (re-login replaces it), 365-day expiry, login and code attempts rate limited.
-* **Token in the app**: `login`/`getUserInfo` return the Userinfo keys `username, id, vip, isvip, avatar_url, nickname, email`; `vip`
-  carries the session token (that is the slot the app uses as `tockenid`, see `docs/API.md`), plus extra keys `tockenid`, `vipUntil`, `vipExpire`.
+* **Userinfo contract**: `login`/`getUserInfo` return `username, id, vip, isvip, avatar_url, nickname, email` where `id` is the session
+  token (the app stores that slot as `tockenid`, verified in the decompiled code, `docs/API.md`) and `vip` is the membership text (`""` for
+  non-members, a date, or `永久` for grants over 50 years); extra keys `userId`, `vipUntil` are ignored by the app.
 * **Membership**: `vip_until` per user, `isvip = vip_until > now` evaluated on every call. Members come from activation codes
   (`QR-XXXX-XXXX-XXXX`, single use, stored hashed, optional expiry) redeemed on the 会员中心 page (`POST /redeem`) or through the app's
   `paynew` call with `paymentType=code` and the code in `vipType`; or from the admin CLI. There is no payment processing.

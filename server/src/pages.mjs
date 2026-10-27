@@ -73,7 +73,7 @@ export const VIP_JS = `(function () {
     box.appendChild(row('账号', d.username));
     box.appendChild(row('邮箱', d.email));
     box.appendChild(row('状态', d.isvip ? '会员' : '非会员'));
-    box.appendChild(row('到期时间', d.isvip ? d.vipExpire : '—'));
+    box.appendChild(row('到期时间', d.isvip ? d.vip : '—'));
   }
   function refresh() {
     post('/getUserInfo', { tockenid: token }, function (r) {

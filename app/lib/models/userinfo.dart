@@ -1,29 +1,31 @@
 // models/userinfo.dart — the account record returned by `login` and `getUserInfo`.
 //
-// Slot order follows the original (applyUserinfo, docs/API.md): username, id, token, email, nickname, avatar, isvip.
-// The server sends the session token under the JSON key `vip` (a String); `tockenid` is accepted as an alias.
+// Slot order of the original (verified in the decompiled login/getUserInfo constructors and applyUserinfo, docs/API.md):
+//   username, vip, id, email, nickname, avatar_url, isvip
+// where the JSON key `id` is the SESSION TOKEN (the app stores that slot as `tockenid`) and `vip` is a display string for the
+// membership ("永久", a date, or empty). There is no separate numeric user id in the original model.
 
 class Userinfo {
   final String username;
-  final String id;
+
+  /// JSON `vip`: membership text shown in the UI (`永久` hides the 立即开通 button).
+  final String vip;
+
+  /// JSON `id`: the session token sent as `tockenid` with every request.
   final String tockenid;
   final String email;
   final String nickname;
   final String avatarUrl;
   final bool isvip;
 
-  /// Extra, not part of the original model: expiry date shown on the 会员中心 / me page (`vipExpire`, yyyy-MM-dd).
-  final String vipExpire;
-
   const Userinfo({
     required this.username,
-    required this.id,
+    required this.vip,
     required this.tockenid,
     required this.email,
     required this.nickname,
     required this.avatarUrl,
     required this.isvip,
-    this.vipExpire = '',
   });
 
   factory Userinfo.fromJson(Map<String, dynamic> json) {
@@ -32,24 +34,22 @@ class Userinfo {
     final nick = s(json['nickname']);
     return Userinfo(
       username: username,
-      id: s(json['id']),
-      tockenid: s(json['vip'] ?? json['tockenid']),
+      vip: s(json['vip']),
+      tockenid: s(json['id']),
       email: s(json['email']),
       nickname: nick.isEmpty ? username : nick,
       avatarUrl: s(json['avatar_url']),
       isvip: json['isvip'] == true,
-      vipExpire: s(json['vipExpire']),
     );
   }
 
   Map<String, dynamic> toJson() => {
         'username': username,
-        'id': id,
-        'vip': tockenid,
+        'vip': vip,
+        'id': tockenid,
         'email': email,
         'nickname': nickname,
         'avatar_url': avatarUrl,
         'isvip': isvip,
-        'vipExpire': vipExpire,
       };
 }

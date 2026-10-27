@@ -1,0 +1,155 @@
+webbook.proto -- the gRPC channel of 轻悦时光 2.2.1026
+=======================================================
+Labels: [code] read from decompiled functions, [infer] deduced. Addresses = `q.py show <addr>` addresses.
+Reproduce: tools/scripts/recover_proto.py (messages, tags, types, oneofs) and tools/scripts/recover_grpc_cmds.py (JSON commands).
+
+1. What was recovered
+---------------------
+* proto package `common` [code: PackageName object `off_8: "common"` at pp+0x36150]; service `common.WebBookService`
+  with exactly ONE method, path string `/common.WebBookService/BookStream` [code: pp+0x24768, used in
+  WebBookServiceClient._$bookStream 0x1ef194].
+* BookStream is BIDIRECTIONAL STREAMING: `ClientMethod<ClientMessage, ServerMessage>`; the generated stub 0x1cb52c passes its
+  argument straight to the grpc Client's streaming-call helper (0x1cb5ac) with a `Stream<ClientMessage>` (the connect code 0xe09f2c
+  creates `StreamController<ClientMessage>` and hands `_ControllerStream` to it). [code]
+  Wire codec: request serializer = closure 0x1ef1f4 (writeToBuffer), response = `ServerMessage.fromBuffer` 0x1d8c00.
+* 24 messages (all in `webbook.proto`): every message is built by an anonymous `_i` initialiser (BuilderInfo) in
+  blutter_discarded/sub_00a40000.dart (builder fns listed as comments in the .proto). Field types come from 7 tiny wrappers
+  of `GeneratedMessage.add` (see recover_proto.py docstring): String=0x40, int32=0x800, bool=0x10, int64=0x1000, bytes=0x20,
+  message=0x200000; cross-checked against google.protobuf.Duration (seconds int64=1, nanos int32=2) and Any (type_url string=1,
+  value bytes=2) built by the same wrappers in the same file. [code]
+* proto syntax: proto3 assumed [infer] (no required/default/extension markers; no `protoName` override => the field names in
+  the .proto equal the Dart/JSON names: `userToken`, `requestId`, `isdubug` [sic]).
+* Gap: PayActionRequest has no tag 5. ServerMessage oneof tags are 10,30,40,50 (no 20); verified by the compiled map
+  `{10,30,40,50,0}` -> ServerMessage_MessageType {sessionInfo, actionResult, pong, jsonResult, notSet} (pp+0x23f58). [code]
+  ClientMessage oneof tags are 10,20,...,300 (30 members, one oneof named `message` [infer: enum is ServerMessage_MessageType]).
+* Nothing is repeated, no enums, no maps, no nested messages other than oneof members: the whole API is
+  "one stream, requestId-correlated envelope, string/int args". All heavy data travels inside `JsonMessage.json` strings.
+
+2. What the stream is for  [code unless marked]
+-----------------------------------------------
+BookStream is NOT the membership/cloud channel (that is plain HTTP, docs/API.md). It is the link to a server-side
+Legado-compatible book-source engine ("兼容层", the strings `兼容层初始化失败`/`兼容层错误`/`兼容层启动失败`):
+the app ships the user's book source JSON (InitSession.bookSourceJson) and the server executes the rules (search, explore,
+book info, TOC, content, login UI, actions, RSS) and sends results back. Because the server-side engine cannot do
+everything alone (cookies, WebView, local cache, HTTP through the phone's IP), it also CALLS BACK into the app over the same
+stream (section 4).
+
+Client class: `Qread` in util/source/Qread.dart (+ util/source/qreadmsg.dart for the Dart-facing request functions; these
+are different files from qread/qread.dart, which is the bound-backend websocket client `QreadWebsocket`).
+The grcp/qread_listeners.dart (`QreadListeners`, 11 slots, size 0x60) and grcp/qread_models.dart (`SessionInfo`, size 0x8
+with no fields; `ActionResponse` {bool success @0x7, String result @0xf}; enum `ConnectionStatus`) have NO surviving
+method bodies in the snapshot (classes exist, all code was inlined/stripped). What can be said:
+  - ConnectionStatus values (Smi index in the enum constants pp+0x159f0..): 0 disconnected [infer: initial],
+    1 = status set when connect is called with isReconnect=true [code], 2 = set after "gRPC 连接成功" [code],
+    3 = set when connect starts with isReconnect=false [code], 4 = set in the catch block (connect failed) [code].
+    Names are not in the snapshot (the _Enum name field was stripped); suggested: disconnected, reconnecting, connected,
+    connecting, error [infer]. Status is pushed through a notifier at Qread.field_f via 0x1f26e4 (QreadListeners instance
+    [infer]).
+  - local SessionInfo (qread_models) is constructed (0xdcdb0) from the server's SessionInfo and handed to the listener 0x1cb260;
+    local ActionResponse {success,result} is constructed from ServerMessage.actionResult (0xdcee0).
+
+3. Transport and session life cycle (Qread, 0xe09f2c connect)  [code]
+---------------------------------------------------------------------
+* Server address: `Qread.allocate` 0xe8347c does an HTTP GET to `http://scheduler2.qread.xyz/api/allocate` with query
+  `t` (ms), `platform` (`ios`/`unknown`/... by Platform flags), `appid`, `user` (and `@yuedu`-tagged value), decodes JSON
+  `{code, data:{ip:String, port:int}, msg}`; failure text `获取服务器失败: <msg>`. connect() (0xe0a4a0 wrapper -> 0xe09f2c)
+  reads `ip` (String) and `port` (int) from that map.
+* Channel: `ClientChannel(host=ip, port=port, options)` with `ChannelCredentials.insecure()` (field_7 = false: PLAINTEXT
+  HTTP/2, no TLS), `connectionTimeout` 60 s (60000000 us), `idleTimeout` 3000 s (0xb2d05e00 us) [infer: field mapping],
+  `userAgent "dart-grpc/2.0.0"`, default `backoffStrategy`, default `ClientKeepAliveOptions`, `CodecRegistry` (gzip).
+  Per-call options: `CallOptions(compression: GzipCodec("gzip"), timeout: 60 s)` for stub creation; the actual stream is
+  opened with `CallOptions(compression: gzip)` only. => the replica server MUST accept gzip-compressed messages
+  (grpc-encoding: gzip) and may answer uncompressed.
+* No auth metadata is sent. Identity travels INSIDE messages: every request has `userToken`; the session is opened by
+  `InitSession{bookSourceJson, userId, userToken, isdubug}`:
+    userId = hex(md5(utf8(isLoggedIn ? username : appid)))  (0xe0a698)   [code]
+    userToken = the token string at Qread.field_7f (the account `tockenid`, or empty/appid for non-members [infer])
+    requestId = Uuid v4 (new for every ClientMessage)
+  Two session messages exist: `initSession`(10) and `initSession2`(180); 0xe0a698 prints "gRPC 发送 InitSession2" and picks one of
+  the two oneof members depending on `Qread.source.field_1f == 3` [code branch; meaning infer: source type 3 = Legado-JSON
+  source]. After InitSession the server answers `sessionInfo` (ServerMessage tag 10) which sets Qread.field_77 = true
+  ("session ready"), see 0xdcd20.
+* Heartbeat: timer every 20 s (Duration 20000000 us, 0xd9094 "gRPC 启动心跳定时器（间隔: 20秒）") calls the sender with a
+  `Ping` (empty) -> server answers `pong{timestamp}` (log "gRPC 收到 Pong"); failure log "gRPC 心跳失败". The timer also
+  disconnects when the app is in the background and not in TTS-listening mode ("gRPC 应用进入后台且非听书状态，断开连接")
+  and reconnects on resume (`handleAppResumed` 0x1f271c is registered in `Common.appResumedCallbacks`: "gRPC 应用回到前台，恢复连接").
+* Reconnect: on stream close ("gRPC 服务端流已关闭") or error ("gRPC 错误: [<code>] <msg>") the code schedules
+  reconnect attempts (3 s delay, "gRPC 计划第 N 次重连..."), counter at Qread.field_b7; below 5 attempts -> another try, >= 5 -> give up
+  (0xd8da4) [code].
+
+4. Message flow
+---------------
+ClientMessage = { requestId, oneof message }, ServerMessage = { requestId, oneof message }.
+
+Client -> server (oneof `message`; each carries `userToken`, args are mostly the JSON of the current book / chapter):
+  tag name                         type                   meaning [infer from field names; sender code not traced]
+  10  initSession                  InitSession            open session + upload the book source JSON
+  20  jsonMessage                  JsonMessage{json}      generic JSON command/reply
+  30  actionResponse               ActionRequest{id,result,success}  reply to a server->client callback (section 4b); `id` echoes the callback id
+  40  ping                         Ping
+  50  searchBook                   SearchRequest{key,page,userToken}
+  60  exploreBook                  ExploreRequest{url,page,userToken}   (discover/explore rule url)
+  70  getBookInfo                  BookRequest{url,userToken,book}
+  80  getChapterList               ChapterRequest{book,userToken}
+  90  getBookContent               ContentRequest{book,url,nexturl,baseUrl,userToken,index,tag,title}
+ 100  getFound                     FoundRequest{userToken,book,chapter,index,tag,title}  (explore list)
+ 110  getLoginui                   FoundRequest   (login UI definition of a source)
+ 120  login                        FoundRequest
+ 130  action                       RunActionRequest{userToken,action,book,chapter,index,tag,title}
+ 140  payAction                    PayActionRequest{...}  (chapter purchase)
+ 150  getOpenUrl                   OpenUrlRequest
+ 160  FindAction                   FoundActionRequest{userToken,action,key,value}
+ 170  imageDecode                  ImageDecodeRequest{userToken,img(bytes),book,url}  (requestId prefixed "image_": reply path in 0xdcd20)
+ 180  initSession2                 InitSession
+ 190  getRssType 200 rssaction 210 rssshouldOverrideUrlLoading 220 getRsssortUrls 230 getArticles(ArticlesRequest) 240 getRssContent(RssContentRequest)
+ 250  getRssLoginui 260 rsslogin   (RSS sources)
+ 270  debug                        FoundRequest
+ 280  callbackjs                   CallBackJsRequest{id,result,book,chapter,userToken,index,tag,rt,title}   (reply to a server JS callback)
+ 290  myaction 300 myrssaction     RunActionRequest
+
+Server -> client (dispatcher 0xdcd20 switches on whichMessage()):
+  10 sessionInfo{sessionId,type,message}  -> sets "session ready", forwards local SessionInfo to listener.
+  30 actionResult{success,result}         -> completes the pending request `requestId` (map at Qread.field_cf); if requestId starts with
+                                             "image_" the completer map at field_d7 is used instead (imageDecode result).
+  40 pong{timestamp}                      -> log only.
+  50 jsonResult{json}                     -> 0xdd06c: JSON map, `msg` = command (section 4b). Other results (search/info/toc/content)
+                                             are also delivered as JSON strings [infer], correlated by requestId (map at field_cf).
+  anything else: "gRPC 未知消息类型: <which>".
+
+4b. Server -> client JSON commands (jsonResult.json = {"msg": <cmd>, ...keys}) [code: tools/scripts/recover_grpc_cmds.py]
+  The keys listed are the Map lookups executed for that branch (`id` = callback id that the client must echo back, normally in
+  ClientMessage.actionResponse / callbackjs).
+  updateType(title,url) | setCookie(id,url,title) getCookie(id,url) removeCookie(id,url) | getCache(id,title) setCache(id,title,body)
+  removeCache(id,title) clearCache(id) getOtherCache(id,url,title) | startBrowserdp(url,title,header)
+  startBrowser(url,title,id,header,body,html) showBrowser(url,html,title,header)
+  webview(url,id,title,html,header,body,urlregex,overrideUrlRegex) webJs(url,id,title,html,header,body,urlregex)
+  getVerificationCode(url,id) getVerificationCodeusePhone(url,id,header) getWebViewUA(id) | toast(str) longToast(str) log(str)
+  get(url,header,id,title) head(url,header,id,title) post(url,body,header,id,title)  -> the app performs the HTTP request itself
+  (Dio worker, same `{url, body, header, move, timeout}` option map as the account API; reply map has success, currentUrl,
+  cookie, isCookieJar, response; log "回传成功") | openurl(url,title) searchBook(title,url) addBook(url) reLoginView upLoginData(title)
+  copyText(title) refreshBookInfo/refreshBookToc/refreshContent/refreshExplore(title) setHtml(title,url) gettxt(title,url,id)
+  getThemeMode(id) open(url,title,html,header) showPhoto(url,id)
+  Several commands open the in-app WebView page (`WebviewPage`) or manipulate the cookie jar / local cache; the data the server
+  expects back is JSON strings (success flag, cookie string, html, UA, "window.result = ..." for JS evaluation).
+
+5. What a replica needs
+-----------------------
+* To keep the book-source features working with the original client the replica server must implement BookStream exactly as above
+  (h2c, gzip, requestId correlation, Ping/Pong 20 s, sessionInfo after InitSession, jsonResult/actionResult replies).
+  The result payload formats of search/info/toc/content (JSON inside JsonMessage.json / ActionResponse.result) were NOT
+  recovered here -- they are the Legado Book/BookChapter/SearchBook JSON shapes [infer]; check docs/MODELS.md and the callers of the
+  jsonResult handler (0xdd06c 'searchBook'/'addBook' branches are only client UI commands).
+* The scheduler (`/api/allocate`) is plain HTTP GET returning {code:0?, data:{ip,port}} [infer code==0 is success: same convention as UserApi].
+* Open: exact usage of Qread.field_* beyond those named; which source types go through initSession vs initSession2; no
+  authentication check is visible on the client other than userToken in messages.
+
+6. Factory constructors (the 64-byte `Xxx(...)` named-arg factories of webbook.pb.dart; unowned in the owner table, sizes 0x40) [code]
+  ClientMessage 0xd8c74, InitSession 0xd9054, Ping 0xd92b0, CallBackJsRequest 0xd88dc, ActionRequest 0xe0430, FoundRequest 0xee2dc,
+  RunActionRequest 0x1b9920, BookRequest 0x1c2340, ImageDecodeRequest 0x22c3c0, OpenUrlRequest 0x253d4c, ChapterRequest 0x254594,
+  ContentRequest 0x2a7568, SearchRequest 0x5466a0, FoundActionRequest 0x5b97dc, RssContentRequest 0x5c07c0,
+  ShouldOverrideUrlLoadingRequest 0x5c3ed4, ExploreRequest 0x5c8540, ArticlesRequest 0x599a94, PayActionRequest 0x959e14,
+  JsonMessage 0xa4b434. Callers of these (`q.py callers <addr>`) are the Dart-side request functions (util/source/qreadmsg.dart and
+  the book/source pages) -- start there to see which UI feature sends which command.
+  Setter naming: the oneof setters are the small functions in sub_001c0000.dart 0x1ca9fc..0x1cb4f4 (ClientMessage/ServerMessage accessors).
+  The ping sender is 0xe0ab78 (ClientMessage + Uuid + Ping), the InitSession sender 0xe0a698, the connect function 0xe09f2c, the
+  ServerMessage dispatcher 0xdcd20, the JSON command handler 0xdd06c.

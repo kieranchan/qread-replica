@@ -12,14 +12,14 @@ Implemented against the owner's server (`../server`, live at `https://qread.forf
 | `lib/api/userapi.dart` | every account / membership / cloud-sync call of the recovered contract (`docs/API.md`): login, register, getEmailCode, forgetPassword, getUserInfo, logout, cleanuser, updateNickname, updateAvatar, changePassword, devices, canOpenCloud, paynew/redeem, the five synced lists (etag / update-url / list), getItemJson / getItemMd5 / setItemJsonFile |
 | `lib/qread/http.dart` | POST helper (Dio, JSON body, multipart for files) |
 | `lib/data/user.dart` | `UserSession`: the statics (token, VIP flag, sync switches), prefs persistence under the original keys, `apply` / `restore` / `clear` / `refresh`, the "non-members get the cloud switches forced off" rule |
-| `lib/models/{userinfo,logindevice}.dart` | `Userinfo` (token is read from the `vip` JSON key), `LoginDevice`, `Autodevice` |
+| `lib/models/{userinfo,logindevice}.dart` | `Userinfo` (original slot order: JSON `id` is the session token, `vip` the membership text), `LoginDevice`, `Autodevice` |
 | `lib/storage/storage.dart`, `lib/common/common.dart`, `lib/init/appinit.dart` | prefs wrapper, API base / device id, start-up |
 | `lib/pages/` | `login_page`, `register_page` (the 6-digit code is an admin invite code), `forgot_password_page`, `me_page` (会员中心 entry, 立即开通), `user/user_setting_page`, `user/user_edit_page`, `user/cloud_setting_page` (member-only switches), `web/nwebview.dart` (opens `<base>vip?tockenid=`), `main_page` shell |
 | `lib/util/vip.dart` | `Vip.require()` — the one-line member gate (`此功能为会员功能`) |
 
 Deviations from the original, on purpose: the 会员中心 page is a standard WebView (the original uses WebF) because the
-owner's page is plain HTML; `appid` falls back to a stored random id when the device plugin has none; `Userinfo` has an extra
-`vipExpire`. Everything else in the original (book shelf, reader, sources, themes, TTS, AI, ...) is Phase 2.
+owner's page is plain HTML; `appid` falls back to a stored random id when the device plugin has none; `UserSession` also persists the vip text
+(`vipText`) for offline display. Everything else in the original (book shelf, reader, sources, themes, TTS, AI, ...) is Phase 2.
 
 ## Tests (`flutter test`, 18)
 * `test/session_test.dart` — Userinfo parsing, apply/restore/clear, the membership rule on the cloud switches.

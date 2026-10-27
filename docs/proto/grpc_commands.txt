@@ -1,0 +1,39 @@
+# command (map["msg"]) -> keys read from the same map, code order of the if-chain in 0xdd06c
+updateType	title, url
+setCookie	id, url, title
+getCookie	id, url
+removeCookie	id, url
+getCache	id, title
+setCache	id, title, body
+removeCache	id, title
+clearCache	id
+getOtherCache	id, url, title
+startBrowserdp	url, title, header
+startBrowser	url, title, id, header, body, html
+showBrowser	url, html, title, header
+webview	url, id, title, html, header, body, urlregex, overrideUrlRegex
+webJs	url, id, title, html, header, body, urlregex
+getVerificationCode	url, id
+getWebViewUA	id
+toast	str
+longToast	str
+log	str
+get	url, header, id, title
+head	url, header, id, title
+post	url, body, header, id, title
+getVerificationCodeusePhone	url, id, header
+openurl	url, title
+searchBook	title, url
+addBook	url
+reLoginView	
+upLoginData	title
+copyText	title
+refreshBookInfo	title
+refreshBookToc	title
+refreshContent	title
+refreshExplore	title
+setHtml	title, url
+gettxt	title, url, id
+getThemeMode	id
+open	url, title, html, header
+showPhoto	url, id

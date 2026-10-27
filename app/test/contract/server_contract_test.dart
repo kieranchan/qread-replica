@@ -117,7 +117,7 @@ void main() {
     final code = admin(['make-codes', 'vip', '30']);
     await UserApi.redeem(code);
     expect(UserSession.isvip, isTrue);
-    expect(UserSession.vipExpire, matches(RegExp(r'^\d{4}-\d{2}-\d{2}$')));
+    expect(UserSession.vipText, matches(RegExp(r'^\d{4}-\d{2}-\d{2}$')));
     expect(await UserApi.canOpenCloud(), isTrue);
     await expectLater(UserApi.redeem(code), throwsA(isA<ApiException>()), reason: 'codes are single use');
     // the same page the app opens

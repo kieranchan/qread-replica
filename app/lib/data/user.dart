@@ -39,20 +39,22 @@ abstract class PrefKeys {
   static const email = 'email';
   static const nickname = 'nickname';
   static const avatarUrl = 'avatar_url';
-  // not in the original (it keeps the user id in a static only): the replica persists it too
-  static const userId = 'userId';
-  static const vipExpire = 'vipExpire';
+  // not in the original (its vip text is a static refreshed by getUserInfo): the replica persists it for offline display
+  static const vipText = 'vipText';
 }
 
 abstract class UserSession {
   static bool isLoggedIn = false;
   static String username = '';
-  static String id = '';
   static String tockenid = '';
   static String email = '';
   static String nickname = '';
   static String avatarUrl = '';
-  static String vipExpire = '';
+  /// JSON `vip`: membership text (`永久`, a date or empty); static 0x1f90 in the original.
+  static String vipText = '';
+
+  /// Text for the account lines: `会员 · 永久` / `会员 · 到期 2030-01-01` / `非会员`.
+  static String get vipLabel => !isvip ? '非会员' : (vipText.contains('永久') ? '会员 · 永久' : '会员 · 到期 $vipText');
 
   /// The VIP flag.
   static bool isvip = false;
@@ -78,13 +80,12 @@ abstract class UserSession {
   static Future<void> apply(Userinfo u) async {
     isLoggedIn = true;
     username = u.username;
-    id = u.id;
     tockenid = u.tockenid;
     email = u.email;
     nickname = u.nickname.isEmpty ? u.username : u.nickname;
     avatarUrl = u.avatarUrl;
     isvip = u.isvip;
-    vipExpire = u.vipExpire;
+    vipText = u.vip;
     await _save();
     await enforceMembership();
     _notify();
@@ -144,26 +145,24 @@ abstract class UserSession {
   static Future<void> _save() async {
     await Storage.setBool(PrefKeys.isLoggedIn, isLoggedIn);
     await Storage.setString(PrefKeys.username, username);
-    await Storage.setString(PrefKeys.userId, id);
     await Storage.setString(PrefKeys.tockenid, tockenid);
     await Storage.setBool(PrefKeys.isvip, isvip);
     await Storage.setString(PrefKeys.email, email);
     await Storage.setString(PrefKeys.nickname, nickname);
     await Storage.setString(PrefKeys.avatarUrl, avatarUrl);
-    await Storage.setString(PrefKeys.vipExpire, vipExpire);
+    await Storage.setString(PrefKeys.vipText, vipText);
   }
 
   /// Restore from prefs at start-up (0x11284a8), then re-apply the membership rule.
   static Future<void> restore() async {
     isLoggedIn = Storage.getBool(PrefKeys.isLoggedIn);
     username = Storage.getString(PrefKeys.username);
-    id = Storage.getString(PrefKeys.userId);
     tockenid = Storage.getString(PrefKeys.tockenid);
     isvip = Storage.getBool(PrefKeys.isvip);
     email = Storage.getString(PrefKeys.email);
     nickname = Storage.getString(PrefKeys.nickname);
     avatarUrl = Storage.getString(PrefKeys.avatarUrl);
-    vipExpire = Storage.getString(PrefKeys.vipExpire);
+    vipText = Storage.getString(PrefKeys.vipText);
     autoSyncEnabled = Storage.getBool(PrefKeys.autoSyncEnabled);
     auto2SyncEnabled = Storage.getBool(PrefKeys.auto2SyncEnabled);
     autoSyncProgressEnabled = Storage.getBool(PrefKeys.autoSyncProgressEnabled);
@@ -181,18 +180,17 @@ abstract class UserSession {
   static Future<void> clear() async {
     isLoggedIn = false;
     username = '';
-    id = '';
     tockenid = '';
     email = '';
     nickname = '';
     avatarUrl = '';
-    vipExpire = '';
+    vipText = '';
     isvip = false;
     autoSyncEnabled = auto2SyncEnabled = autoSyncProgressEnabled = false;
     cloudbookself = cloudsource = cloudtheme = cloudmark = cloudtts = false;
     for (final k in [
-      PrefKeys.isLoggedIn, PrefKeys.username, PrefKeys.userId, PrefKeys.tockenid, PrefKeys.isvip, PrefKeys.email,
-      PrefKeys.nickname, PrefKeys.avatarUrl, PrefKeys.vipExpire, PrefKeys.autoSyncEnabled, PrefKeys.auto2SyncEnabled,
+      PrefKeys.isLoggedIn, PrefKeys.username, PrefKeys.tockenid, PrefKeys.isvip, PrefKeys.email,
+      PrefKeys.nickname, PrefKeys.avatarUrl, PrefKeys.vipText, PrefKeys.autoSyncEnabled, PrefKeys.auto2SyncEnabled,
       PrefKeys.autoSyncProgressEnabled, PrefKeys.cloudbookself, PrefKeys.cloudsource, PrefKeys.cloudtheme,
       PrefKeys.cloudmark, PrefKeys.cloudtts, PrefKeys.etag, PrefKeys.grouptag, PrefKeys.bjetag, PrefKeys.rsstag,
       PrefKeys.sourcetag, PrefKeys.groundmd5, PrefKeys.svgmd5, PrefKeys.markmd5, PrefKeys.ttsmd5,

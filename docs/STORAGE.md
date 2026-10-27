@@ -1,5 +1,7 @@
 # Local storage of the original app
 
+> See `SETTINGS.md` (second analysis pass, 268 keys) for the corrected storage layers and the full key inventory; where the two differ, `SETTINGS.md` wins.
+
 Evidence: pool strings and the functions that load them (`q.py str`, `q.py digest`). Items marked **[open]** still need a
 pass over the owning functions; the verified part is enough to design the replica's storage layer.
 

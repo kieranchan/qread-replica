@@ -5,7 +5,7 @@ import 'package:newread/storage/storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Userinfo info({bool vip = false, String token = 'tok-1', String nick = ''}) =>
-    Userinfo(username: 'alice', id: '7', tockenid: token, email: 'a@example.com', nickname: nick, avatarUrl: '', isvip: vip, vipExpire: vip ? '2030-01-01' : '');
+    Userinfo(username: 'alice', vip: vip ? '2030-01-01' : '', tockenid: token, email: 'a@example.com', nickname: nick, avatarUrl: '', isvip: vip);
 
 void main() {
   setUp(() async {
@@ -14,15 +14,24 @@ void main() {
     await UserSession.clear();
   });
 
-  test('Userinfo reads the token from the `vip` key (docs/API.md) and falls back to nickname = username', () {
-    final u = Userinfo.fromJson({'username': 'bob', 'id': 3, 'vip': 'T0K', 'isvip': true, 'avatar_url': 'x', 'nickname': '', 'email': 'b@x.io', 'vipExpire': '2031-02-03'});
+  test('Userinfo follows the original slots: JSON `id` is the session token, `vip` the membership text; nickname falls back to username', () {
+    final u = Userinfo.fromJson({'username': 'bob', 'vip': '2031-02-03', 'id': 'T0K', 'isvip': true, 'avatar_url': 'x', 'nickname': '', 'email': 'b@x.io'});
     expect(u.tockenid, 'T0K');
-    expect(u.id, '3');
+    expect(u.vip, '2031-02-03');
     expect(u.isvip, isTrue);
     expect(u.nickname, 'bob');
-    expect(u.vipExpire, '2031-02-03');
-    expect(Userinfo.fromJson({'username': 'c', 'tockenid': 'ALIAS'}).tockenid, 'ALIAS');
     expect(Userinfo.fromJson({'username': 'c'}).isvip, isFalse);
+    expect(Userinfo.fromJson({'username': 'c', 'id': 12}).tockenid, '12'); // non-string ids are stringified like the original's toString()
+    expect(Userinfo.fromJson(u.toJson()).tockenid, 'T0K');
+  });
+
+  test('vipLabel: non-member, dated member, lifetime member (永久 hides 立即开通 in the original)', () async {
+    await UserSession.apply(info());
+    expect(UserSession.vipLabel, '非会员');
+    await UserSession.apply(info(vip: true));
+    expect(UserSession.vipLabel, '会员 · 到期 2030-01-01');
+    await UserSession.apply(Userinfo(username: 'a', vip: '永久', tockenid: 't', email: '', nickname: '', avatarUrl: '', isvip: true));
+    expect(UserSession.vipLabel, '会员 · 永久');
   });
 
   test('apply copies the record, persists it under the original prefs keys, restore brings it back', () async {

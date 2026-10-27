@@ -30,11 +30,14 @@ only server-side dependency is the contract below.
 | `getEmailCode` | `email` | – | `0x10901a0` |
 | `forgetPassword` | `email` | – | `0x107bdac` |
 
-`Userinfo` (size `0x40`, 7 slots; applied by `0xf64ebc`): slot0 `username`, slot1 `id`, **slot2 → the session token static
-(`tockenid`)**, slot3, slot4 = nickname (falls back to `username` when empty), slot5, slot6 = `isvip` (→ static `0x1f30`).
-The parser reads the JSON keys in the order `username, id, vip, isvip, avatar_url, nickname, email`, i.e. the key **`vip`
-(a String) is what becomes the token** **[infer]**; `login` has no separate `tockenid` key. The own server therefore
-returns `vip` = token and may add extra keys (`tockenid`, `vipUntil`) that the client ignores.
+`Userinfo` (size `0x40`, 7 slots; applied by `0xf64ebc`) — **slot order verified** in the constructors of `login` (`0x107c250`) and
+`getUserInfo` (`0xf65400`), whose spill slots feed the stores: slot0 `username`, slot1 **`vip`** (a String → static `0x1f90`, display
+text: `me_page` hides 立即开通 when it contains `永久`), slot2 **`id` → the session token** (static `0x1f20` = `tockenid`, sent with every
+request and persisted by `0xf652ec`), slot3 `email` (`0x1f24`), slot4 `nickname` (falls back to `username` when empty, `0x1f28`),
+slot5 `avatar_url` (`0x1f2c`), slot6 `isvip` (→ static `0x1f30`). JSON keys parsed: `username, id, vip, isvip, avatar_url, nickname, email`.
+So **the token is `data.id`**, not a separate key and not `vip`. (An earlier version of this file inferred `vip` = token from the parse
+order; the analysis sub-agent corrected it and the spill-slot trace above confirms it.) The own server returns `id` = token and `vip` =
+`""` / a date / `永久`, plus extra keys the app ignores (`userId`, `vipUntil`).
 
 ### Account (with `tockenid`)
 | Endpoint | Extra request keys | Reply | Where |
@@ -128,6 +131,6 @@ failures carry `message`, success is `code < 400`.
 | `http://tts.qread.xyz/edge.html` | Edge TTS helper page |
 | `wss://openspeech.bytedance.com/api/v1/tts/ws_binary` | ByteDance TTS (user's own key) |
 | `https://api.xiaomimimo.com/v1` and OpenAI-compatible `/chat/completions` | AI chat / purification (user's own key) |
-| gRPC `/common.WebBookService/BookStream` | `grcp/generated/webbook.pb*.dart` (book streaming; `.proto` to be rebuilt) |
+| gRPC `/common.WebBookService/BookStream` | bidirectional stream to a server-side Legado engine (not the membership channel); recovered `.proto` and notes in `docs/proto/` |
 | Baidu Pan, Weiyun, CloudDrive2, WebDAV | network-drive features (member-gated in the UI) |
 | `https://www.qread.xyz/ai.html`, `docs.html`, `jquery.min.js` | static web pages |

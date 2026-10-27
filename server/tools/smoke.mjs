@@ -27,8 +27,8 @@ try {
   check('register with invite', (await post('/register', { username: name, email: `${name}@example.invalid`, password: pw, code: invite })).code === 0);
   check('register again with the same invite is refused', (await post('/register', { username: name + 'x', email: `${name}x@example.invalid`, password: pw, code: invite })).code !== 0);
   const login = await post('/login', { username: name, password: pw, platform: 'smoke', model: 'node', appid: 'smoke-1' });
-  check('login', login.code === 0 && typeof login.data?.vip === 'string' && login.data.isvip === false, JSON.stringify(login));
-  const t = { tockenid: login.data.vip, appid: 'smoke-1' };
+  check('login', login.code === 0 && typeof login.data?.id === 'string' && login.data.vip === '' && login.data.isvip === false, JSON.stringify(login));
+  const t = { tockenid: login.data.id, appid: 'smoke-1' };
   check('cloud closed for non-members', (await post('/getEtag', t)).code === -3);
   const vipCode = admin('make-codes', 'vip', '7');
   const red = await post('/redeem', { ...t, code: vipCode });

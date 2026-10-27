@@ -36,7 +36,7 @@ class MePage extends StatelessWidget {
                 child: logged && UserSession.avatarUrl.isNotEmpty ? null : const Icon(Icons.person),
               ),
               title: Text(logged ? UserSession.nickname : '登录同步阅读数据'),
-              subtitle: logged ? Text(UserSession.isvip ? '会员 · 到期 ${UserSession.vipExpire}' : '非会员') : const Text('登录后可使用云端同步'),
+              subtitle: logged ? Text(UserSession.vipLabel) : const Text('登录后可使用云端同步'),
               trailing: logged ? null : const Icon(Icons.chevron_right),
               onTap: logged ? () => Get.to(() => const UserSettingPage()) : () => Get.to(() => const LoginPage()),
             ),

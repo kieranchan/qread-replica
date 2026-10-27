@@ -17,5 +17,3 @@
 # deployment target (VM address) stays local
 /server/deploy/target.env
 
-# files still being produced by the analysis sub-agent are added once reviewed
-/docs/SETTINGS.md
