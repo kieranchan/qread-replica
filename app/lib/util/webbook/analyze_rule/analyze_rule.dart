@@ -10,6 +10,7 @@ import '../../format.dart';
 import '../../html/entities.dart';
 import '../../html/jsoup.dart';
 import '../../html/xpath.dart';
+import '../../json.dart';
 import '../../legado/java_regex.dart';
 import '../../legado/js_bindable.dart';
 import '../../legado/js_bindable_compat.dart';
@@ -189,9 +190,9 @@ class AnalyzeRule extends JsExtensions {
     final c = mContent ?? content;
     if (c != null && ruleList.isNotEmpty) {
       result = c;
-      if (c is Map) {
-        result = c[ruleList[0].rule]?.toString();
-      } else {
+      {
+        // Note: Legado treats a Rhino `NativeObject` content as "look the rule up as a key"; decoded JSON maps (the elements of a
+        // JSONPath list) are Java maps there and go through JSONPath, which is what Dart maps are here.
         for (final sourceRule in ruleList) {
           await _putRule(sourceRule.putMap);
           await sourceRule.makeUpRule(result);
@@ -254,9 +255,7 @@ class AnalyzeRule extends JsExtensions {
     final c = mContent ?? content;
     if (c != null && ruleList.isNotEmpty) {
       result = c;
-      if (result is Map) {
-        result = result[ruleList[0].rule]?.toString();
-      } else {
+      {
         for (final sourceRule in ruleList) {
           await _putRule(sourceRule.putMap);
           await sourceRule.makeUpRule(result);
@@ -526,7 +525,7 @@ class SourceRule {
     } else if (_a.isJSON || ruleStr.startsWith(r'$.') || ruleStr.startsWith(r'$[')) {
       mode = Mode.json;
       rule = ruleStr;
-    } else if (ruleStr.startsWith('/')) {
+    } else if (ruleStr.startsWith('/') || ruleStr.startsWith('./')) {
       mode = Mode.xpath;
       rule = ruleStr;
     } else {
@@ -565,13 +564,10 @@ class SourceRule {
     var v = ruleStr;
     for (final m in _putPattern.allMatches(ruleStr)) {
       v = v.replaceFirst(m.group(0)!, '');
-      try {
-        final d = jsonDecode(m.group(1)!);
-        if (d is Map) {
-          d.forEach((k, val) => putMap['$k'] = '$val');
-        }
-      } catch (_) {
-        // malformed @put: ignored like Legado does
+      // Gson is lenient: `{t:class.title@text}` (unquoted keys and values) is the usual way to write it
+      final d = jsonutil.tryDecodeLenient(m.group(1)!);
+      if (d is Map) {
+        d.forEach((k, val) => putMap['$k'] = '$val');
       }
     }
     return v;

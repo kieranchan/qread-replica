@@ -36,6 +36,7 @@ class RuleAnalyzer {
 
   bool _consumeTo(String seq) {
     start = pos;
+    if (pos > queue.length) return false; // Kotlin's indexOf tolerates this, Dart's throws
     final offset = queue.indexOf(seq, pos);
     if (offset != -1) {
       pos = offset;
@@ -46,7 +47,7 @@ class RuleAnalyzer {
 
   bool _consumeToAny(List<String> seqs) {
     var p = pos;
-    while (p != queue.length) {
+    while (p < queue.length) {
       for (final s in seqs) {
         if (queue.startsWith(s, p)) {
           step = s.length;
@@ -61,7 +62,7 @@ class RuleAnalyzer {
 
   int _findToAny(List<String> chars) {
     var p = pos;
-    while (p != queue.length) {
+    while (p < queue.length) {
       for (final c in chars) {
         if (queue[p] == c) return p;
       }
@@ -195,6 +196,11 @@ class RuleAnalyzer {
 
   List<String> _splitRuleNext() {
     while (true) {
+      if (pos >= queue.length) {
+        // a bracket group swallowed the rest: no separator is left (Legado would index past the end here)
+        rule.add(queue.substring(startX));
+        return rule;
+      }
       final end = pos;
       pos = start;
       var again = false;

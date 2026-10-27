@@ -75,7 +75,8 @@ abstract class Format {
     if (m == null) return str;
     final n = stringToInt(m.group(2));
     if (n < 0) return str;
-    return '${m.group(1)}$n${m.group(3)}';
+    // only the number inside the match is normalised; the rest of the title is kept
+    return str.replaceRange(m.start, m.end, '${m.group(1)}$n${m.group(3)}');
   }
 
   /// Legado `StringUtils.wordCountFormat`: `1234` -> `1234字`, `23456` -> `2.3万字`, non-numeric text is kept.
