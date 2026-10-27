@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_svg/flutter_svg.dart' show SvgPicture;
 import 'package:get/get.dart';
 import 'package:newread/data/background_music_manager.dart';
 import 'package:newread/data/bookself.dart';
@@ -154,9 +155,17 @@ void main() {
       expect(Toast.log, contains(WebDavManagerPage.vipText));
     });
 
-    testWidgets('SVG bubbles: edit / import are member-only', (t) async {
+    testWidgets('SVG bubbles: edit / import are member-only, non-members see the four built-in bubbles rendered', (t) async {
       await t.pumpWidget(app(const ChooseSvgPage()));
-      expect(find.text('暂无气泡'), findsOneWidget);
+      await t.pump();
+      expect(find.text('暂无气泡'), findsNothing);
+      for (final id in ['0', '1', '2', '3']) {
+        expect(find.byKey(Key('svg_item_$id')), findsOneWidget);
+      }
+      expect(find.byType(SvgPicture), findsNWidgets(4));
+      await t.tap(find.byKey(const Key('svg_item_2')));
+      await t.pump();
+      expect(Storage.getString(ChooseSvgPage.selectedKey), '2');
       await t.tap(find.byKey(const Key('svg_add')));
       await t.pump();
       await t.tap(find.byKey(const Key('svg_import')));
