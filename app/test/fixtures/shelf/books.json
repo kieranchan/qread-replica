@@ -1,0 +1,6 @@
+[
+  {"bookUrl": "http://src-a.test/book/1", "name": "斗破苍穹", "author": "天蚕土豆", "origin": "http://src-a.test", "kind": "玄幻,连载", "wordCount": "532万字", "intro": "三十年河东，三十年河西。", "latestChapterTitle": "第一千六百二十三章 结束", "totalChapterNum": 1623, "durChapterIndex": 10, "durChapterTitle": "第十一章", "durChapterTime": 1700000000000},
+  {"bookUrl": "http://src-a.test/book/2", "name": "斗罗大陆", "author": "唐家三少", "origin": "http://src-a.test", "kind": "玄幻", "wordCount": "296万字", "bookgroup": "武侠", "totalChapterNum": 3, "durChapterIndex": 2, "durChapterTime": 1600000000000},
+  {"bookUrl": "http://src-b.test/b/9", "name": "斗破苍穹", "author": "天蚕土豆", "origin": "http://src-b.test", "kind": "玄幻", "wordCount": "530万字", "coverUrl": ""},
+  {"bookUrl": "http://src-b.test/b/10", "name": "武动乾坤", "author": "天蚕土豆", "origin": "http://src-b.test", "wordCount": "1200字"}
+]
