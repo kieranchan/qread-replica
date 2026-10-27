@@ -13,7 +13,9 @@ import '../pages/main_page.dart';
 import '../pages/read/read_page.dart';
 import '../pages/read/reader_ai.dart';
 import '../pages/read/reader_routes.dart';
+import '../pages/rss_page.dart';
 import '../pages/setting/extras_routes.dart';
+import '../pages/web/web_hooks.dart';
 import '../read/api/read_storage_root.dart';
 import '../storage/storage.dart';
 import '../theme/extras_init.dart';
@@ -39,7 +41,7 @@ abstract class Wiring {
   }
 
   /// Area route tables tried in order by `Nav.openNamed`; each returns true when it handled the name.
-  static final List<RouteTable> routeTables = [ExtrasRoutes.open, _readerRoutes, _shelfRoutes];
+  static final List<RouteTable> routeTables = [ExtrasRoutes.open, _readerRoutes, _shelfRoutes, SourcesArea.openSourcesRoute];
 
   /// Runs once after `AppInit.init()`.
   static Future<void> init() async {
@@ -54,11 +56,16 @@ abstract class Wiring {
     // shelf: loads the shelf and routes reader progress into it (ReadApi.onProgress)
     await ShelfRoutes.init();
     await ExtrasInit.init();
+    // sources / RSS / browser: engine hooks (browser, webview, captcha, toast, cookies), import links, own-backend binding;
+    // sets Nav.openSourceEdit / Nav.openRss
+    await SourcesArea.init();
+    SourcesArea.registerNav();
 
     MainTabs.builders.addAll({
       '书架': (_) => const BookshelfPage(),
       '发现': (_) => Storage.getInt('discoveryStyle') == 0 ? const DiscoveryPageNew() : const DiscoveryPage(),
       '探索': (_) => const ExplorationPage(),
+      '订阅': (_) => const RssPage(),
     });
 
     Nav.openBook = (context, book) => ShelfRoutes.push(context, 'book_detail_page', book);
