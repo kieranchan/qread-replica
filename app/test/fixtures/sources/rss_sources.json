@@ -1,0 +1,31 @@
+[
+  {
+    "sourceUrl": "https://news.example.com",
+    "sourceName": "新闻站",
+    "sourceIcon": "",
+    "sourceGroup": "新闻",
+    "enabled": true,
+    "sortUrl": "最新::https://news.example.com/new\n热门::https://news.example.com/hot",
+    "articleStyle": 1,
+    "ruleArticles": ".item",
+    "ruleTitle": "a@text",
+    "ruleLink": "a@href",
+    "ruleContent": "#body@html",
+    "style": "body{color:#333}",
+    "loadWithBaseUrl": true,
+    "customOrder": 2,
+    "vendorExtra": "keep"
+  },
+  {
+    "sourceUrl": "https://blog.example.com/feed",
+    "sourceName": "博客",
+    "sourceGroup": "",
+    "enabled": false
+  },
+  {
+    "sourceUrl": "https://single.example.com",
+    "sourceName": "单页",
+    "singleUrl": true,
+    "enabled": true
+  }
+]

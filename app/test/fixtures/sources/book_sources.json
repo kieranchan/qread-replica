@@ -1,0 +1,33 @@
+[
+  {
+    "bookSourceUrl": "https://a.example.com",
+    "bookSourceName": "甲站",
+    "bookSourceGroup": "玄幻,精品",
+    "bookSourceType": 0,
+    "enabled": true,
+    "searchUrl": "/search?q={{key}}",
+    "ruleSearch": {"bookList": ".list li", "name": "a@text", "bookUrl": "a@href", "checkKeyWord": "斗破"},
+    "ruleToc": {"chapterList": "#toc a", "chapterName": "text", "chapterUrl": "href"},
+    "ruleContent": {"content": "#content@html"}
+  },
+  {
+    "bookSourceUrl": "https://b.example.com",
+    "bookSourceName": "乙站",
+    "bookSourceGroup": "",
+    "enabled": false,
+    "loginUrl": "https://b.example.com/login",
+    "searchUrl": "/s?wd={{key}}",
+    "ruleSearch": {"bookList": "$.data[*]", "name": "$.name", "bookUrl": "$.url"}
+  },
+  {
+    "bookSourceUrl": "https://sg.example.com",
+    "bookSourceName": "时光示例",
+    "bookSourceGroup": "原生",
+    "author": "作者甲",
+    "enabled": true,
+    "html": "<!DOCTYPE html><html><body><script>function search(key){return []}</script></body></html>"
+  },
+  {
+    "bookSourceName": "没有地址"
+  }
+]
