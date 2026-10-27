@@ -1,0 +1,71 @@
+{
+  "bookSourceComment": "// 示例：所有字段\n// 第二行注释",
+  "bookSourceGroup": "测试,完整",
+  "bookSourceName": "完整书源",
+  "bookSourceType": 0,
+  "bookSourceUrl": "https://full.example.com",
+  "bookUrlPattern": "https?://full\\.example\\.com/book/\\d+",
+  "concurrentRate": "1000",
+  "coverDecodeJs": "",
+  "customOrder": 7,
+  "enabled": true,
+  "enabledCookieJar": false,
+  "enabledExplore": false,
+  "exploreUrl": "[{\"title\":\"玄幻\",\"url\":\"/cat/1/{{page}}\",\"style\":{\"layout_flexBasisPercent\":0.25}}]",
+  "header": "{\"User-Agent\":\"Mozilla/5.0\",\"Referer\":\"https://full.example.com\"}",
+  "jsLib": "function sign(x){return java.md5Encode(x)}",
+  "lastUpdateTime": 1700000000000,
+  "loginCheckJs": "result",
+  "loginUi": "[{\"name\":\"账号\",\"type\":\"text\"},{\"name\":\"密码\",\"type\":\"password\"},{\"name\":\"注册\",\"type\":\"button\",\"action\":\"https://full.example.com/reg\"}]",
+  "loginUrl": "function login(){java.log(source.getLoginInfoMap().get('账号'))}",
+  "respondTime": 180000,
+  "ruleBookInfo": {
+    "author": "class.author@text",
+    "canReName": "",
+    "coverUrl": "img@src",
+    "init": "@js:result",
+    "intro": "#intro@html",
+    "kind": "class.kind@text&&class.status@text",
+    "lastChapter": "#last@text",
+    "name": "h1@text",
+    "tocUrl": "#toc@href",
+    "wordCount": "class.words@text"
+  },
+  "ruleContent": {
+    "content": "#content@html",
+    "imageStyle": "FULL",
+    "nextContentUrl": "text.下一页@href",
+    "replaceRegex": "##本章未完.*",
+    "title": "h1@text",
+    "webJs": ""
+  },
+  "ruleExplore": {
+    "bookList": ".item",
+    "bookUrl": "a@href",
+    "name": "a@text"
+  },
+  "ruleSearch": {
+    "author": "class.author@text",
+    "bookList": "<js>result</js>.list li",
+    "bookUrl": "a@href",
+    "checkKeyWord": "我的",
+    "coverUrl": "img@src",
+    "intro": "class.intro@text",
+    "kind": "class.kind@text",
+    "lastChapter": "class.last@text",
+    "name": "a@text",
+    "wordCount": "class.words@text"
+  },
+  "ruleToc": {
+    "chapterList": "-#list a",
+    "chapterName": "text",
+    "chapterUrl": "href",
+    "isVip": "class.vip@text",
+    "nextTocUrl": "text.下一页@href",
+    "updateTime": "span@text"
+  },
+  "searchUrl": "/search,{\"method\":\"POST\",\"body\":\"q={{key}}&p={{page}}\",\"charset\":\"gbk\"}",
+  "variableComment": "填写 token",
+  "weight": 3,
+  "vendorExtra": {"keep": [1, 2, 3], "flag": true}
+}

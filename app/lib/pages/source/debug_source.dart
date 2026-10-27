@@ -43,8 +43,19 @@ class DebugRun {
     '︾开始解析正文页': 'content',
   };
 
+  bool _detailNext = false;
+
   void add(String line) {
     lines.add(line);
+    // the detail page is not logged with its url: take the first `详情页链接` of the list, or the url a detail run starts with
+    final start = line.indexOf('⇒开始访问详情页:');
+    if (start >= 0) urls['book'] = line.substring(start + 9).trim();
+    if (_detailNext && line.contains('└')) {
+      final u = line.substring(line.indexOf('└') + 1).trim();
+      if (u.startsWith('http')) urls.putIfAbsent('book', () => u);
+      _detailNext = false;
+    }
+    if (line.contains('┌获取详情页链接')) _detailNext = true;
     for (final e in _markers.entries) {
       if (line.contains(e.key)) _stage = e.value;
     }

@@ -152,6 +152,36 @@ abstract class SourceImport {
   }
 }
 
+/// 0xf84838: checks one source (search with its check keyword, details, toc, first chapter). Gives `检验成功` or
+/// `检验失败:<reason>`; [onStep] receives the intermediate texts (`尝试搜索：…`, `搜索成功：…`, `详情页检验成功`, `目录获取成功：…`).
+Future<String> checkSource(Map<String, dynamic> raw, {void Function(String step)? onStep}) async {
+  final source = BookSource.fromJson(raw);
+  final rs = raw['ruleSearch'];
+  var key = rs is Map ? '${rs['checkKeyWord'] ?? ''}'.trim() : '';
+  if (key.isEmpty) key = '我的';
+  try {
+    onStep?.call('尝试搜索：$key');
+    final hits = await SourceApi.search(source, key, useCache: false);
+    if (hits.isEmpty) return '检验失败:搜索内容为空';
+    onStep?.call('搜索成功：${hits.length}');
+    final book = hits.first.toBook();
+    final url = book.bookUrl;
+    await SourceApi.bookInfo(source, book);
+    if (book.bookUrl != url) return '检验失败:bookurl 为书本唯一标识不能改动';
+    onStep?.call('详情页检验成功');
+    final chapters = await SourceApi.chapters(source, book);
+    if (chapters.isEmpty) return '检验失败:目录内容为空';
+    onStep?.call('目录获取成功：${chapters.length}');
+    final first = chapters.firstWhere((c) => !c.isVolume, orElse: () => chapters.first);
+    final i = chapters.indexOf(first);
+    final text = await SourceApi.content(source, book, first, nextChapterUrl: i + 1 < chapters.length ? chapters[i + 1].getAbsoluteURL() : null);
+    if (text.trim().isEmpty) return '检验失败:正文内容为空';
+    return '检验成功';
+  } catch (e) {
+    return '检验失败:$e';
+  }
+}
+
 /// One row of the list.
 class _Item {
   final Map<String, dynamic> raw;
@@ -587,36 +617,6 @@ class _SourceSettingPageState extends State<SourceSettingPage> {
   }
 
   // ------------------------------------------------------------------------------------------------------------------- check
-
-  /// 0xf84838: checks one source (search with its check keyword, details, toc, first chapter). Gives `检验成功` or
-  /// `检验失败:<reason>`; [onStep] receives the intermediate texts.
-  static Future<String> checkSource(Map<String, dynamic> raw, {void Function(String step)? onStep}) async {
-    final source = BookSource.fromJson(raw);
-    final rs = raw['ruleSearch'];
-    var key = rs is Map ? '${rs['checkKeyWord'] ?? ''}'.trim() : '';
-    if (key.isEmpty) key = '我的';
-    try {
-      onStep?.call('尝试搜索：$key');
-      final hits = await SourceApi.search(source, key, useCache: false);
-      if (hits.isEmpty) return '检验失败:搜索内容为空';
-      onStep?.call('搜索成功：${hits.length}');
-      final book = hits.first.toBook();
-      final url = book.bookUrl;
-      await SourceApi.bookInfo(source, book);
-      if (book.bookUrl != url) return '检验失败:bookurl 为书本唯一标识不能改动';
-      onStep?.call('详情页检验成功');
-      final chapters = await SourceApi.chapters(source, book);
-      if (chapters.isEmpty) return '检验失败:目录内容为空';
-      onStep?.call('目录获取成功：${chapters.length}');
-      final first = chapters.firstWhere((c) => !c.isVolume, orElse: () => chapters.first);
-      final i = chapters.indexOf(first);
-      final text = await SourceApi.content(source, book, first, nextChapterUrl: i + 1 < chapters.length ? chapters[i + 1].getAbsoluteURL() : null);
-      if (text.trim().isEmpty) return '检验失败:正文内容为空';
-      return '检验成功';
-    } catch (e) {
-      return '检验失败:$e';
-    }
-  }
 
   /// 0xf83ec8: checks the chosen sources, a few at a time (`startNextTask`).
   Future<void> _check(List<_Item> items) async {
