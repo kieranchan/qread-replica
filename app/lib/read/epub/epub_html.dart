@@ -250,9 +250,10 @@ class _Builder {
       }
       return;
     }
-    s = s.replaceAll(RegExp(r'[\s ]+'), ' ');
-    if (s.trim().isEmpty && _para.isEmpty) return;
-    if (_para.isEmpty) s = s.trimLeft();
+    // Whitespace that contains a line break is source wrapping: mark it, [_stripCjkSpaces] drops it between CJK characters
+    // and turns it into one space otherwise. Plain spaces are real and are only collapsed.
+    s = s.replaceAll(RegExp(r'[ \t\u00a0]*[\r\n][\s\u00a0]*'), _wrap).replaceAll(RegExp(r'[ \t\u00a0]+'), ' ');
+    if (_para.isEmpty) s = s.replaceFirst(RegExp(r'^[ \u0001]+'), '');
     if (s.isEmpty) return;
     _append(s, ctx);
   }
@@ -291,9 +292,9 @@ class _Builder {
     final runs = _runs;
     _runs = [];
     _para.clear();
+    _stripCjkSpaces(runs);
     runs.first.str = runs.first.str.trimLeft();
     runs.last.str = runs.last.str.trimRight();
-    _stripCjkSpaces(runs);
     runs.removeWhere((r) => r.str.isEmpty && r.id.isEmpty);
     if (runs.isEmpty || runs.every((r) => r.str.isEmpty)) {
       // keep a pending anchor for the next block
@@ -320,19 +321,22 @@ class _Builder {
     _blocks.add(CalcuPages.text(runs));
   }
 
+  static const String _wrap = '\u0001';
   static final RegExp _cjk = RegExp(r'[⺀-鿿＀-￯　-〿]');
 
   void _stripCjkSpaces(List<CLine> runs) {
     for (var i = 0; i < runs.length; i++) {
       final s = runs[i].str;
-      if (!s.contains(' ')) continue;
+      if (!s.contains(_wrap)) continue;
       final sb = StringBuffer();
       for (var k = 0; k < s.length; k++) {
         final ch = s[k];
-        if (ch == ' ') {
+        if (ch == _wrap) {
           final prev = k > 0 ? s[k - 1] : (i > 0 && runs[i - 1].str.isNotEmpty ? runs[i - 1].str[runs[i - 1].str.length - 1] : '');
           final next = k + 1 < s.length ? s[k + 1] : (i + 1 < runs.length && runs[i + 1].str.isNotEmpty ? runs[i + 1].str[0] : '');
           if ((prev.isNotEmpty && _cjk.hasMatch(prev)) || (next.isNotEmpty && _cjk.hasMatch(next))) continue;
+          sb.write(' ');
+          continue;
         }
         sb.write(ch);
       }
