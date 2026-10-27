@@ -1,5 +1,4 @@
 // Scroll mode ("上下滚动", `turn` = 4): the list of page bodies, progress while scrolling, the next chapter appended at the end.
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:newread/pages/read/pages/novel/list.dart';
 import 'package:newread/read/setting/read_setting.dart';

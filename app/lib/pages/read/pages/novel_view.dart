@@ -885,7 +885,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
         final color = _setting.config().speakColor;
         out.add(_setting.readHighlightType == 0
             ? TextDeco(r.start, r.end, decoration: TextDecoration.underline, decorationColor: color)
-            : TextDeco(r.start, r.end, color: color));
+            : TextDeco(r.start, r.end, color: color, background: color.withValues(alpha: 0.18)));
       }
     }
     final sel = _sel;

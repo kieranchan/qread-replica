@@ -1,6 +1,5 @@
 // Read aloud through a fake ReaderSpeaker: paragraph order (title first), the reader follows the spoken paragraph, pause/resume,
 // speed (`readspeed2`), stop timer, the listen bar and the full listen page; "从这行开始朗读" from a selection.
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:newread/pages/read/listen_page.dart';
 import 'package:newread/pages/read/read_aloud.dart';
