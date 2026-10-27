@@ -9,9 +9,14 @@
 // delete and replace. Cloud list `getBRss` (etag `rsstag`, md5 `rssmd5`).
 import 'dart:convert';
 
+import '../api/userapi.dart' show CloudKind;
 import '../models/rsssource.dart';
+import '../storage/storage.dart';
+import 'cloud_api.dart';
+import 'cloud_sync.dart';
 import 'list_store.dart';
 import 'source.dart' show SourceImportResult, normalizeGroups;
+import 'user.dart';
 
 abstract class Rssdata {
   static final ListStore<Map<String, dynamic>> store = ListStore<Map<String, dynamic>>(
@@ -175,5 +180,40 @@ abstract class RssSources {
     final list = await Rssdata.load();
     final set = urls?.toSet();
     return const JsonEncoder.withIndent('  ').convert([for (final e in list) if (set == null || set.contains(_url(e))) e]);
+  }
+
+  static int _stamp(Map<String, dynamic> m) => int.tryParse('${m['lastUpdateTime'] ?? 0}') ?? 0;
+
+  /// Cloud sync of the RSS list (`getBRss`, etag prefs key `rsstag`; the original shares the `cloudsource` switch with the book
+  /// sources, 0xe73348 `更新订阅源`). Three-way merge by `sourceUrl`, the later `lastUpdateTime` wins. Null when the switch is off.
+  static Future<CloudSyncResult?> syncCloud({CloudApi? api}) async {
+    if (!UserSession.cloudsource) return null;
+    await Rssdata.load();
+    return Rssdata.store.lock.synchronized(() async {
+      final result = await CloudSync.syncList(
+        api: api ?? defaultCloudApi,
+        kind: CloudKind.rss,
+        itemName: 'rss',
+        etagKey: PrefKeys.rsstag,
+        encodeLocal: () => jsonEncode(Rssdata.store.items),
+        mergeRemote: (text) async {
+          final remote = [for (final e in Storage.jsondecode(text)) if (e is Map) Map<String, dynamic>.from(e)];
+          final base = await CloudSync.loadBase('rss');
+          final before = jsonEncode(Rssdata.store.items);
+          Rssdata.store.items = CloudSync.merge3<Map<String, dynamic>>(
+            local: Rssdata.store.items,
+            remote: remote,
+            key: _url,
+            base: base,
+            both: (l, r) => _stamp(r) > _stamp(l) ? r : l,
+          );
+          final changed = jsonEncode(Rssdata.store.items) != before;
+          if (changed) await Rssdata.store.save();
+          return changed;
+        },
+      );
+      await CloudSync.saveBase('rss', Rssdata.store.items.map(_url));
+      return result;
+    });
   }
 }

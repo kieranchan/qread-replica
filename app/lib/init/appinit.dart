@@ -23,6 +23,7 @@ import '../data/replace.dart';
 import '../data/rss.dart';
 import '../data/source.dart';
 import '../data/svg.dart';
+import '../data/theme.dart';
 import '../data/tts.dart';
 import '../data/txtrule.dart';
 import '../data/user.dart';
@@ -48,7 +49,12 @@ abstract class AppInit {
   /// managers (tests that only need storage).
   static Future<void> init({SharedPreferences? prefs, Directory? root, bool loadData = true}) async {
     await Storage.init(prefs: prefs);
-    await AppDirs.init(root: root);
+    try {
+      await AppDirs.init(root: root);
+    } catch (e) {
+      // without a documents directory the file store cannot work; the managers log their own failures and start empty
+      debugPrint('app directories failed $e');
+    }
     keepAccountKeys();
     await _initDevice();
     await UserSession.restore();
@@ -87,6 +93,7 @@ abstract class AppInit {
       'fonts': FontsData.load,
       'ground': Ground.load,
       'svg': Svg.load,
+      'themes': ThemeManager.load,
       'tts': TTSData.load,
       'webdav': WebDav.load,
       'exploration': ExplorationData.load,

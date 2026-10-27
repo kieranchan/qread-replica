@@ -15,8 +15,13 @@
 //   enable flags 0xf8acf4 0xf8b074 (`enabled`) and 0xf89df4 0xf8a174 (`enabledExplore`)   delete 0xf8c698 0xf8c9f0 0xf8ce18
 import 'dart:convert';
 
+import '../api/userapi.dart' show CloudKind;
 import '../models/source.dart';
+import '../storage/storage.dart';
+import 'cloud_api.dart';
+import 'cloud_sync.dart';
 import 'list_store.dart';
+import 'user.dart';
 
 /// Normalises a comma separated group text: trims entries, drops empty ones and duplicates, keeps the first-seen order.
 String normalizeGroups(String groups) {
@@ -248,5 +253,41 @@ abstract class Sources {
     final list = await Sourcedata.load();
     final set = urls?.toSet();
     return const JsonEncoder.withIndent('  ').convert([for (final e in list) if (set == null || set.contains(_url(e))) e]);
+  }
+
+  static int _stamp(Map<String, dynamic> m) => int.tryParse('${m['lastUpdateTime'] ?? 0}') ?? 0;
+
+  /// Cloud sync of the source list (`getBSource`, etag prefs key `sourcetag`, switch `cloudsource`; original 0xe77130
+  /// `更新书源`). Same flow as the bookshelf (data/cloud_sync.dart): a three-way merge by `bookSourceUrl`; a source present on
+  /// both sides keeps the copy with the later `lastUpdateTime`. Returns null when the switch is off.
+  static Future<CloudSyncResult?> syncCloud({CloudApi? api}) async {
+    if (!UserSession.cloudsource) return null;
+    await Sourcedata.load();
+    return Sourcedata.store.lock.synchronized(() async {
+      final result = await CloudSync.syncList(
+        api: api ?? defaultCloudApi,
+        kind: CloudKind.sources,
+        itemName: 'sources',
+        etagKey: PrefKeys.sourcetag,
+        encodeLocal: () => jsonEncode(Sourcedata.store.items),
+        mergeRemote: (text) async {
+          final remote = [for (final e in Storage.jsondecode(text)) if (e is Map) Map<String, dynamic>.from(e)];
+          final base = await CloudSync.loadBase('sources');
+          final before = jsonEncode(Sourcedata.store.items);
+          Sourcedata.store.items = CloudSync.merge3<Map<String, dynamic>>(
+            local: Sourcedata.store.items,
+            remote: remote,
+            key: _url,
+            base: base,
+            both: (l, r) => _stamp(r) > _stamp(l) ? r : l,
+          );
+          final changed = jsonEncode(Sourcedata.store.items) != before;
+          if (changed) await Sourcedata.store.save();
+          return changed;
+        },
+      );
+      await CloudSync.saveBase('sources', Sourcedata.store.items.map(_url));
+      return result;
+    });
   }
 }

@@ -6,8 +6,13 @@
 // `updateTime` with the current time in ms (0xed3590); the original saves through a debounce timer, the replica saves at once.
 import 'dart:convert';
 
+import '../api/userapi.dart' show CloudKind;
 import '../models/note.dart';
+import '../storage/storage.dart';
+import 'cloud_api.dart';
+import 'cloud_sync.dart';
 import 'list_store.dart';
+import 'user.dart';
 
 abstract class NoteDataN {
   static const String bookmarkPrefix = 'bm_';
@@ -101,4 +106,37 @@ abstract class NoteDataN {
       });
 
   static String exportJson() => jsonEncode([for (final n in store.items) n.toJson()]);
+
+  /// Cloud sync of notes and bookmarks (`getBjs`, etag prefs key `bjetag`, switch `cloudmark`, member only like the switch).
+  /// Three-way merge by note id; a note on both sides keeps the copy with the later `updateTime`. Null when the switch is off.
+  static Future<CloudSyncResult?> syncCloud({CloudApi? api}) async {
+    if (!UserSession.cloudmark) return null;
+    await load();
+    return store.lock.synchronized(() async {
+      final result = await CloudSync.syncList(
+        api: api ?? defaultCloudApi,
+        kind: CloudKind.notes,
+        itemName: 'notes',
+        etagKey: PrefKeys.bjetag,
+        encodeLocal: exportJson,
+        mergeRemote: (text) async {
+          final remote = [for (final e in Storage.jsondecode(text)) if (e is Map) BookNote.fromJson(Map<String, dynamic>.from(e))];
+          final base = await CloudSync.loadBase('notes');
+          final before = exportJson();
+          store.items = CloudSync.merge3<BookNote>(
+            local: store.items,
+            remote: remote,
+            key: (n) => n.id,
+            base: base,
+            both: (l, r) => r.updateTime > l.updateTime ? r : l,
+          );
+          final changed = exportJson() != before;
+          if (changed) await store.save();
+          return changed;
+        },
+      );
+      await CloudSync.saveBase('notes', store.items.map((n) => n.id));
+      return result;
+    });
+  }
 }

@@ -16,6 +16,7 @@ import 'package:newread/data/replace.dart';
 import 'package:newread/data/rss.dart';
 import 'package:newread/data/source.dart';
 import 'package:newread/data/svg.dart';
+import 'package:newread/data/theme.dart';
 import 'package:newread/data/tts.dart';
 import 'package:newread/data/txtrule.dart';
 import 'package:newread/data/user.dart';
@@ -39,6 +40,7 @@ void resetManagers() {
     FontsData.store,
     Ground.store,
     Svg.store,
+    ThemeManager.store,
     TTSData.store,
     WebDav.store,
     ExplorationData.store,
