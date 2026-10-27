@@ -6,6 +6,9 @@ import '../util/webbook/model/rss_source.dart';
 import '../util/webbook/web_book.dart';
 
 abstract class RssRunapi {
+  /// A subscription-source file may hold one source or an array.
+  static List<RssSource> parseSources(String json) => RssSource.listFromJsonString(json);
+
   /// The sort tabs (`name`, `url`) of [source]; a source without `sortUrl` has one entry with an empty name.
   static Future<List<(String, String)>> sorts(RssSource source) => source.sortUrls();
 

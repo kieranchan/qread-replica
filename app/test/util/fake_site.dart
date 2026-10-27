@@ -111,6 +111,8 @@ class FakeSite {
           return _text(req, fixture('json_toc.json'), type: 'application/json');
         case '/json/chapter/11':
           return _text(req, fixture('json_chapter.json'), type: 'application/json');
+        case '/source.json':
+          return _text(req, '[${sourceJson('source_html.json')},${sourceJson('source_json.json')}]', type: 'application/json');
         case '/rss':
           return _text(req, fixture('rss.xml'), type: 'application/rss+xml');
         case '/cookie/set':

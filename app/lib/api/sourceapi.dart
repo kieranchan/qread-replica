@@ -12,6 +12,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import '../util/http.dart';
 import '../util/webbook/debug.dart';
 import '../util/webbook/model/book.dart';
 import '../util/webbook/model/book_chapter.dart';
@@ -136,4 +137,68 @@ abstract class SourceApi {
 
   /// Runs the content rule's `payAction` script for a paid chapter (login/payment flows live in the script).
   static Future<Object?> payAction(BookSource source, Book book, BookChapter chapter) => WebBook(source).payAction(book, chapter);
+
+  /// Downloads a source file (JSON object or array) from [url] and parses it.
+  static Future<List<BookSource>> importFromUrl(String url) async {
+    final res = await AppHttp.send(HttpRequest(url: url, useCookieJar: false));
+    if (!res.isSuccessful) throw WebBookException('下载书源失败: HTTP ${res.statusCode}');
+    return parseSources(AppHttp.decodeBody(res.bodyBytes, contentType: res.contentType).trim());
+  }
+
+  /// The source debugger (Legado `Debug.startDebug`): [key] selects where the chain starts and it then runs down to the content of
+  /// the first chapter, logging every step:
+  ///   * a keyword -> search, then the first result's details, toc and first chapter
+  ///   * an absolute url -> that book's detail page, toc, first chapter
+  ///   * `title::url` -> that explore page, then the first result as above
+  ///   * `++url` -> that toc url, then the first chapter
+  ///   * `--url` -> that chapter url only
+  /// Errors end the run and are logged; the returned [DebugLog] holds all lines.
+  static Future<DebugLog> debug(BookSource source, String key, {void Function(String line)? onLine}) async {
+    final log = DebugLog(onLine: onLine);
+    final web = WebBook(source, debug: log);
+    try {
+      Book? book;
+      if (key.startsWith('--')) {
+        final url = key.substring(2);
+        final b = Book(bookUrl: url, origin: source.bookSourceUrl);
+        final ch = BookChapter(url: url, title: '调试', baseUrl: url, bookUrl: url);
+        final text = await web.getContent(b, ch);
+        log.log('︽正文页解析完成 ${text.length}');
+        return log;
+      }
+      if (key.startsWith('++')) {
+        book = Book(bookUrl: key.substring(2), origin: source.bookSourceUrl)..tocUrl = key.substring(2);
+      } else if (RegExp(r'^https?://', caseSensitive: false).hasMatch(key)) {
+        book = Book(bookUrl: key, origin: source.bookSourceUrl, originName: source.bookSourceName);
+        await web.getBookInfo(book);
+        log.log('︽详情页解析完成');
+      } else {
+        final List<SearchBook> list;
+        if (key.contains('::')) {
+          list = await web.exploreBook(key.substring(key.indexOf('::') + 2));
+          log.log('︽发现页解析完成 ${list.length}');
+        } else {
+          list = await web.searchBook(key);
+          log.log('︽搜索页解析完成 ${list.length}');
+        }
+        if (list.isEmpty) {
+          log.log('≡未获取到书籍');
+          return log;
+        }
+        book = list.first.toBook();
+        await web.getBookInfo(book);
+        log.log('︽详情页解析完成');
+      }
+      final chapters = await web.getChapterList(book);
+      log.log('︽目录页解析完成 ${chapters.length}');
+      final first = chapters.firstWhere((c) => !c.isVolume, orElse: () => chapters.first);
+      final idx = chapters.indexOf(first);
+      final next = idx + 1 < chapters.length ? chapters[idx + 1].getAbsoluteURL() : null;
+      final text = await web.getContent(book, first, nextChapterUrl: next);
+      log.log('︽正文页解析完成 ${text.length}');
+    } catch (e) {
+      log.log('error: $e');
+    }
+    return log;
+  }
 }
