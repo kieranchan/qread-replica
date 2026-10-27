@@ -1,0 +1,29 @@
+{
+  "bookSourceName": "XPath POST站",
+  "bookSourceUrl": "__BASE__",
+  "searchUrl": "/html/search_post,{'method':'POST','body':'keyword={{key}}&page={{page}}'}",
+  "ruleSearch": {
+    "bookList": "//li[@class='book']",
+    "name": ".//a[@class='name']/text()",
+    "author": "./span[@class='author']/text()##作者：",
+    "bookUrl": ".//a[@class='name']/@href",
+    "coverUrl": "./img/@src",
+    "intro": "./p/text()",
+    "kind": "./i[@class='kind']/text()"
+  },
+  "ruleBookInfo": {
+    "name": "//h1[@id='name']/text()",
+    "author": "//span[@class='author']/text()##作者：",
+    "tocUrl": "//a[@id='read']/@href"
+  },
+  "ruleToc": {
+    "chapterList": "//ul[@id='chapters']/li[a]",
+    "chapterName": "./a/text()",
+    "chapterUrl": "./a/@href",
+    "nextTocUrl": "//a[@id='next']/@href"
+  },
+  "ruleContent": {
+    "content": "//div[@id='content']/p/text()",
+    "nextContentUrl": "//a[@id='np']/@href"
+  }
+}

@@ -15,8 +15,23 @@ import 'debug.dart';
 import 'model/book.dart';
 import 'model/book_chapter.dart';
 import 'model/book_source.dart';
+import 'model/rss_article.dart';
+import 'model/rss_source.dart';
 import 'model/search_book.dart';
+import 'rss/rss.dart';
 import 'util/str_response.dart';
+
+/// RSS counterpart of [WebBook] (the original's `WebBookRss` wraps a `Rss`).
+class WebBookRss {
+  final RssSource source;
+  final Rss _rss;
+
+  WebBookRss(this.source, {DebugLog? debug}) : _rss = Rss(source, debug: debug);
+
+  Future<(List<RssArticle>, String?)> getArticles(String sortName, String sortUrl, {int page = 1}) => _rss.getArticles(sortName, sortUrl, page: page);
+
+  Future<String> getContent(RssArticle article) => _rss.getContent(article);
+}
 
 class WebBook {
   final BookSource source;

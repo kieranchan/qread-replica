@@ -29,13 +29,74 @@ class NetworkUtils {
     if (isAbsUrl(rel) || isDataUrl(rel)) return rel;
     if (rel.startsWith('javascript')) return '';
     final base = baseUrl.split(paramPattern).first.trim();
-    try {
-      final b = Uri.parse(base);
-      if (!b.hasScheme) return rel;
-      return b.resolve(rel).toString();
-    } on FormatException {
+    return resolveReference(base, rel) ?? rel;
+  }
+
+  static final RegExp _uriRe = RegExp(r'^(?:([A-Za-z][A-Za-z0-9+.\-]*):)?(?://([^/?#]*))?([^?#]*)(?:\?([^#]*))?(?:#(.*))?$', dotAll: true);
+
+  /// RFC 3986 reference resolution done on the *text*, like `java.net.URL(base, rel)`: characters are never re-encoded (Dart's
+  /// `Uri.resolve` would percent-encode `你` as UTF-8, which breaks `charset: gbk` url options). Null when [base] is not absolute.
+  static String? resolveReference(String base, String rel) {
+    final b = _uriRe.firstMatch(base);
+    final r = _uriRe.firstMatch(rel);
+    if (b == null || r == null || b.group(1) == null) return null;
+    final bScheme = b.group(1)!;
+    final bAuth = b.group(2);
+    final bPath = b.group(3) ?? '';
+    final bQuery = b.group(4);
+    String? scheme = r.group(1);
+    String? auth;
+    String path;
+    String? query;
+    if (scheme != null) {
       return rel;
     }
+    scheme = bScheme;
+    if (r.group(2) != null) {
+      auth = r.group(2);
+      path = _removeDots(r.group(3) ?? '');
+      query = r.group(4);
+    } else {
+      auth = bAuth;
+      final rp = r.group(3) ?? '';
+      if (rp.isEmpty) {
+        path = bPath;
+        query = r.group(4) ?? bQuery;
+      } else {
+        if (rp.startsWith('/')) {
+          path = _removeDots(rp);
+        } else {
+          final merged = bAuth != null && bPath.isEmpty ? '/$rp' : (bPath.contains('/') ? bPath.substring(0, bPath.lastIndexOf('/') + 1) + rp : rp);
+          path = _removeDots(merged);
+        }
+        query = r.group(4);
+      }
+    }
+    final sb = StringBuffer('$scheme:');
+    if (auth != null) sb.write('//$auth');
+    sb.write(path);
+    if (query != null) sb.write('?$query');
+    final frag = r.group(5);
+    if (frag != null) sb.write('#$frag');
+    return sb.toString();
+  }
+
+  static String _removeDots(String path) {
+    if (!path.contains('.')) return path;
+    final out = <String>[];
+    final segs = path.split('/');
+    for (var i = 0; i < segs.length; i++) {
+      final s = segs[i];
+      if (s == '..') {
+        if (out.length > 1 || (out.length == 1 && out.first.isNotEmpty)) out.removeLast();
+        if (i == segs.length - 1) out.add('');
+      } else if (s == '.') {
+        if (i == segs.length - 1) out.add('');
+      } else {
+        out.add(s);
+      }
+    }
+    return out.join('/');
   }
 
   static String getAbsoluteUri(Uri? base, String relativePath) => getAbsoluteURL(base?.toString(), relativePath);
