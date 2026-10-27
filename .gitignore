@@ -20,3 +20,6 @@
 
 # downloaded CI artifacts
 /artifacts/
+
+# agent worktrees
+/worktrees/
