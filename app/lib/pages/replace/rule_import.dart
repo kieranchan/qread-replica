@@ -43,7 +43,6 @@ abstract class RuleImport {
         ],
       ),
     );
-    c.dispose();
     if (url == null || url.isEmpty) return null;
     return download(url);
   }

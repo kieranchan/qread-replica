@@ -55,8 +55,6 @@ class _AiCharacterPageState extends State<AiCharacterPage> {
     );
     final n = name.text.trim();
     final p = desc.text.trim();
-    name.dispose();
-    desc.dispose();
     if (ok != true || n.isEmpty) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     if (c == null) {

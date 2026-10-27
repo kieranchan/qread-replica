@@ -266,8 +266,6 @@ class AudioViewState extends State<AudioView> {
     );
     final s = int.tryParse(start.text.trim());
     final e = int.tryParse(end.text.trim());
-    start.dispose();
-    end.dispose();
     if (ok != true) return;
     if (s == null || e == null || s < 0 || e < 0) {
       Toast.show('请输入有效的时间');

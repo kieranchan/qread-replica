@@ -69,7 +69,7 @@ void main() {
     await settle(tester, until: () => !s.isBookmarked);
 
     // --- long press selects a sentence; the menu copies it
-    await tester.longPressAt(const Offset(200, 340));
+    await tester.longPress(textBlock(1));
     await settle(tester, max: 5);
     expect(find.text('笔记/高亮'), findsOneWidget);
     expect(find.text('从这行开始朗读'), findsOneWidget);

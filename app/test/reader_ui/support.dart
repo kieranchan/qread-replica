@@ -13,6 +13,7 @@ import 'package:newread/data/replace.dart';
 import 'package:newread/data/txtrule.dart';
 import 'package:newread/data/user.dart';
 import 'package:newread/models/book.dart';
+import 'package:newread/pages/read/pages/novel/content.dart';
 import 'package:newread/pages/read/pages/novel_view.dart';
 import 'package:newread/pages/read/read_page.dart';
 import 'package:newread/models/bookchapter.dart';
@@ -156,3 +157,6 @@ Future<NovelViewState> openReader(WidgetTester tester, Book book, {int? chapterI
   }
   return stateOf(tester);
 }
+
+/// The [i]-th text block of the page on screen (index 0 is the chapter title on a chapter's first page).
+Finder textBlock(int i) => find.descendant(of: find.byType(PageBody), matching: find.byType(RichText)).at(i);

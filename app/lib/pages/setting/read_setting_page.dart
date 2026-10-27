@@ -73,7 +73,6 @@ class _ReadSettingPageState extends State<ReadSettingPage> {
             ],
           ),
         );
-        c.dispose();
         if (r == null) return;
         final n = int.tryParse(r);
         if (n == null) return Toast.show('请输入有效的数字');
@@ -103,7 +102,6 @@ class _ReadSettingPageState extends State<ReadSettingPage> {
         ],
       ),
     );
-    c.dispose();
     if (r == null) return;
     try {
       RegExp(r);

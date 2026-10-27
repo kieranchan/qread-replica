@@ -144,7 +144,6 @@ class _ReplaceRuleSettingState extends State<ReplaceRuleSetting> {
         ),
       ),
     );
-    input.dispose();
   }
 
   @override
