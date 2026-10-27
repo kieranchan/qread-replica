@@ -25,10 +25,10 @@ class UploadedBook {
 }
 
 /// Multipart parsing of one upload (0xfd7a48): the first part with a `filename`.
-class MultipartFile {
+class UploadPart {
   final String filename;
   final Uint8List data;
-  const MultipartFile(this.filename, this.data);
+  const UploadPart(this.filename, this.data);
 
   static int _indexOf(Uint8List h, List<int> n, [int start = 0]) {
     outer:
@@ -41,7 +41,7 @@ class MultipartFile {
     return -1;
   }
 
-  static MultipartFile? parse(Uint8List body, String boundary) {
+  static UploadPart? parse(Uint8List body, String boundary) {
     final delim = utf8.encode('--$boundary');
     var pos = _indexOf(body, delim);
     final sep = utf8.encode('\r\n\r\n');
@@ -53,10 +53,10 @@ class MultipartFile {
       final next = _indexOf(body, delim, headEnd + 4);
       if (next < 0) return null;
       final m = RegExp(r'filename="([^"]+)"').firstMatch(head);
-      if (head.contains('Content-Disposition:') && m != null) {
+      if (head.toLowerCase().contains('content-disposition:') && m != null) {
         var end = next;
         if (end >= 2 && body[end - 2] == 13 && body[end - 1] == 10) end -= 2;
-        return MultipartFile(m.group(1)!, Uint8List.sublistView(body, headEnd + 4, end));
+        return UploadPart(m.group(1)!, Uint8List.sublistView(body, headEnd + 4, end));
       }
       pos = next;
     }
@@ -121,7 +121,7 @@ class WifiTransferServer {
         builder.add(chunk);
       }
       final body = builder.takeBytes();
-      final file = boundary == null ? null : MultipartFile.parse(body, boundary);
+      final file = boundary == null ? null : UploadPart.parse(body, boundary);
       if (file == null || !extensions.contains(p.extension(file.filename).toLowerCase())) {
         return _reply(req, 400, {'status': 'error', 'message': '上传失败：请先选择需要上传的书本'});
       }

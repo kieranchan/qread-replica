@@ -90,8 +90,10 @@ abstract class BackupService {
   static Future<Map<String, dynamic>> performBackup(Map<String, dynamic> a) async {
     try {
       final docs = a['documentsPath'] as String;
-      final fileName = '${a['backupName']}_${a['timestamp']}.zip';
-      final path = p.join(a['backupFolder'] as String, fileName);
+      var path = p.join(a['backupFolder'] as String, '${a['backupName']}_${a['timestamp']}.zip');
+      if (File(path).existsSync()) {
+        path = p.join(a['backupFolder'] as String, '${a['backupName']}_${a['timestamp']}_${'${a['backupId']}'.substring(0, 6)}.zip');
+      }
       final dirs = a['isquick2'] == true ? autoDirs : (a['isquick'] == true ? quickDirs : fullDirs);
       final enc = ZipFileEncoder();
       enc.create(path);
