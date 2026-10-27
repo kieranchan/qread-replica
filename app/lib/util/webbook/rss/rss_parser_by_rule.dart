@@ -10,9 +10,11 @@ import '../util/network_utils.dart';
 
 abstract class RssParserByRule {
   /// Returns the articles and the url of the next page (null when there is none).
+  /// [redirectUrl] is the url the page was actually loaded from (relative links resolve against it).
   static Future<(List<RssArticle>, String?)> parseXML(
     String sortName,
     String sortUrl,
+    String redirectUrl,
     String? body,
     RssSource rssSource,
     RuleData ruleData, {
@@ -23,12 +25,12 @@ abstract class RssParserByRule {
     debug?.log('≡获取成功:$sourceUrl');
     var ruleArticles = rssSource.ruleArticles;
     if (ruleArticles == null || ruleArticles.trim().isEmpty) {
-      return (RssParserDefault.parseXML(body, sortName, sourceUrl), null);
+      return (RssParserDefault.parseXML(body, sortName, redirectUrl), null);
     }
     final articleList = <RssArticle>[];
     final analyzeRule = AnalyzeRule(ruleData, rssSource);
-    analyzeRule.setContent(body).setBaseUrl(sortUrl);
-    analyzeRule.setRedirectUrl(sortUrl);
+    analyzeRule.setContent(body).setBaseUrl(redirectUrl);
+    analyzeRule.setRedirectUrl(redirectUrl);
     var reverse = false;
     if (ruleArticles.startsWith('-')) {
       reverse = true;
@@ -42,7 +44,7 @@ abstract class RssParserByRule {
     if (nextRule != null && nextRule.isNotEmpty) {
       debug?.log('┌获取下一页链接');
       nextUrl = nextRule.toUpperCase() == 'PAGE' ? sortUrl : await analyzeRule.getString(nextRule);
-      if (nextUrl.isNotEmpty) nextUrl = NetworkUtils.getAbsoluteURL(sortUrl, nextUrl);
+      if (nextUrl.isNotEmpty) nextUrl = NetworkUtils.getAbsoluteURL(redirectUrl, nextUrl);
       debug?.log('└$nextUrl');
     }
     final ruleTitle = analyzeRule.splitSourceRule(rssSource.ruleTitle);
@@ -60,7 +62,7 @@ abstract class RssParserByRule {
       a.pubDate = await analyzeRule.getString(rulePubDate);
       a.description = await analyzeRule.getString(ruleDescription);
       a.image = await analyzeRule.getString(ruleImage, isUrl: true);
-      a.link = NetworkUtils.getAbsoluteURL(sortUrl, await analyzeRule.getString(ruleLink));
+      a.link = NetworkUtils.getAbsoluteURL(redirectUrl, await analyzeRule.getString(ruleLink));
       if (a.title.trim().isEmpty) continue;
       a.order = order++;
       articleList.add(a);

@@ -27,7 +27,7 @@
     "chapterList": "$.data.chapters[*]",
     "chapterName": "$.name",
     "chapterUrl": "/json/chapter/{{$.id}}",
-    "updateTime": "{{java.timeFormat($.time)}}"
+    "updateTime": "{{java.timeFormat(java.getString('$.time'))}}"
   },
   "ruleContent": {
     "content": "$.data.text"

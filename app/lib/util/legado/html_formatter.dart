@@ -3,17 +3,16 @@
 import '../webbook/util/network_utils.dart';
 
 class HtmlFormatter {
-  // Java's `\s` is ASCII-only; the ideographic indent U+3000 must not be swallowed by it.
-  static const String _ws = r'[ \t\n\x0B\f\r]';
-
+  // Legado runs on Android, whose (ICU) `\s` is Unicode-aware like Dart's: it also matches U+3000 and NBSP. That is what makes
+  // `^[\n\s]+` swallow the indent produced by the first step instead of doubling it.
   static final RegExp _wrapHtml = RegExp(r'</?(?:div|p|br|hr|h\d|article|dd|dl)[^>]*>');
   static final RegExp _comment = RegExp(r'<!--[^>]*-->');
   static final RegExp _notImgHtml = RegExp(r'</?(?!img)[a-zA-Z]+(?=[ >])[^<>]*>');
   static final RegExp _otherHtml = RegExp(r'</?[a-zA-Z]+(?=[ >])[^<>]*>');
   static final RegExp _formatImage = RegExp(r'''<img[^>]*src="([^"]*(?:"[^>]+\})?)"[^>]*>''', caseSensitive: false);
-  static final RegExp _indent1 = RegExp('$_ws*\\n+$_ws*');
-  static final RegExp _indent2 = RegExp('^[\\n\\x20\\t\\x0B\\f\\r]+');
-  static final RegExp _last = RegExp('[\\n\\x20\\t\\x0B\\f\\r]+\$');
+  static final RegExp _indent1 = RegExp(r'\s*\n+\s*');
+  static final RegExp _indent2 = RegExp(r'^[\n\s]+');
+  static final RegExp _last = RegExp(r'[\n\s]+$');
 
   static const String indent = '　　';
 

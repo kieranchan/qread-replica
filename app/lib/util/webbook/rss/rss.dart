@@ -22,7 +22,7 @@ class Rss {
         page: page, baseUrl: source.sourceUrl, source: source, ruleData: ruleData, headerMapF: await source.getHeaderMap(true));
     debug?.log('≡请求:${au.requestUrl}');
     final res = await au.getStrResponse();
-    return RssParserByRule.parseXML(sortName, sortUrl, res.body, source, ruleData, debug: debug);
+    return RssParserByRule.parseXML(sortName, sortUrl, res.url, res.body, source, ruleData, debug: debug);
   }
 
   /// The article body (HTML). Without `ruleContent` the article link itself is returned so that the UI can open it as a web page.
