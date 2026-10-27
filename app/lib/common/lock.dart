@@ -7,18 +7,27 @@ import 'dart:async';
 
 class Lock {
   Future<void> _tail = Future<void>.value();
+  int _pending = 0;
 
   /// Runs [body] once every earlier call has finished.
+  ///
+  /// An idle lock runs [body] at once instead of chaining onto the last (already completed) future: listeners of a completed
+  /// future are scheduled in the zone that created it, and when that zone is gone (a finished widget test's fake-async zone)
+  /// the chained call would never run.
   Future<T> synchronized<T>(FutureOr<T> Function() body) {
     final done = Completer<void>();
-    final previous = _tail;
+    final previous = _pending == 0 ? null : _tail;
+    _pending++;
     _tail = done.future;
-    return previous.then((_) async {
+    Future<T> run() async {
       try {
         return await body();
       } finally {
+        _pending--;
         done.complete();
       }
-    });
+    }
+
+    return previous == null ? run() : previous.then((_) => run());
   }
 }
