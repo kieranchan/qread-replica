@@ -25,6 +25,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('privacy_agree')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('immersive_ok')));
+    await tester.pumpAndSettle();
 
     await MainTabs.save(MainTabs.configured(), found: true, ding: true); // 订阅 is off by default, as in the original
     await tester.pumpAndSettle();

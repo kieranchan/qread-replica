@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:newread/common/common.dart';
+import 'package:newread/common/immersive_light.dart';
 import 'package:newread/init/appinit.dart';
 import 'package:newread/pages/main_page.dart';
 import 'package:newread/storage/storage.dart';
@@ -35,6 +36,15 @@ void main() {
     expect(find.byKey(const Key('privacy_dialog')), findsNothing);
     expect(Storage.getBool(MainPage.privacyKey), isTrue);
 
+    // then the 沉浸光感 choice, once (强 2 / 均衡 1 / 弱 0)
+    expect(find.byKey(const Key('immersive_dialog')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('immersive_1')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('immersive_ok')));
+    await tester.pumpAndSettle();
+    expect(Storage.getString(ImmersiveLight.key), '1');
+    expect(ImmersiveLight.level.value, 1);
+
     // the original's defaults: 发现 on, 订阅 off (`ding` has no default)
     expect(_labels(tester), ['书架', '发现', '探索', '我的']);
     await tester.tap(find.byKey(const Key('tab_探索')));
@@ -53,6 +63,7 @@ void main() {
 
   testWidgets('bottomBarTabs order and the found/ding switches', (tester) async {
     await Storage.setString(MainPage.privacyKey, 'true');
+    await Storage.setString(ImmersiveLight.key, '0');
     await Storage.setString('bottomBarTabs', '["我的","书架","探索","发现","订阅"]');
     await Storage.setBool('ding', true);
     await Storage.setBool('found', false);
@@ -63,6 +74,7 @@ void main() {
 
   testWidgets('no dialog once agreed', (tester) async {
     await Storage.setString(MainPage.privacyKey, 'true');
+    await Storage.setString(ImmersiveLight.key, '0');
     await tester.pumpWidget(const GetMaterialApp(home: MainPage()));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('privacy_dialog')), findsNothing);

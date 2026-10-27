@@ -2,8 +2,9 @@
 // (see [MainTabs]), tab icons and colours from the applied theme (ThemeProvider), and the start-up prompts of the original:
 //   * privacy agreement on first launch (`privacy_agreement_agreed` = "true", dialog 0x8eb3b0, check 0x10bd05c)
 //   * "continue reading" when the last reading ended less than 5 minutes ago (`last_open_time`, 0x10bdd44 / dialog 0x8eb8ec)
-// Not ported: the update check (发现新版本: no update service for the replica), the 沉浸光感 effect picker (no shader effects),
-// app links (`linkinit`) and the TTS shared-resource migration.
+//   * 沉浸光感 level asked once after the agreement (0x10bd05c → dialog 0x8e950c)
+// Not ported: the update check (发现新版本: no update service for the replica) and the TTS shared-resource migration; app links
+// (`linkinit`) are started by init/wiring.dart.
 import 'dart:convert';
 import 'dart:io';
 
@@ -11,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../common/common.dart';
+import '../common/immersive_light.dart';
 import '../common/nav.dart';
 import '../read/api/readapi.dart';
 import '../storage/storage.dart';
@@ -76,6 +78,7 @@ class MainPage extends StatefulWidget {
   static const privacyKey = 'privacy_agreement_agreed';
   static const lastOpenKey = 'last_open_time';
 
+
   /// Marks "the user was reading just now" (the reader hook in wiring.dart stamps it when a book is closed).
   static Future<void> stampReading() => Storage.setInt(lastOpenKey, DateTime.now().millisecondsSinceEpoch);
 
@@ -124,7 +127,58 @@ class _MainPageState extends State<MainPage> {
       await _privacy();
       if (!mounted) return;
     }
+    // 0x10bd05c: after the agreement, the 沉浸光感 choice is asked once (while the prefs value is empty)
+    if (ImmersiveLight.unset) {
+      await _immersiveLight();
+      if (!mounted) return;
+    }
     await _continueReading();
+  }
+
+  /// 沉浸光感 (dialog 0x8e950c, save 0x10956fc): 强 = 2, 均衡 = 1, 弱 = 0 stored as text under `immersiveLight2223`.
+  Future<void> _immersiveLight() async {
+    var level = ImmersiveLight.level.value;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) {
+          final cs = Theme.of(ctx).colorScheme;
+          Widget option(int value, String title, String sub) => Card(
+                key: Key('immersive_$value'),
+                elevation: 0,
+                color: level == value ? cs.primaryContainer : cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                child: ListTile(
+                  title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(sub),
+                  trailing: level == value ? Icon(Icons.check_circle, color: cs.primary) : null,
+                  onTap: () => set(() => level = value),
+                ),
+              );
+          return AlertDialog(
+            key: const Key('immersive_dialog'),
+            title: const Text('沉浸光感'),
+            content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text('沉浸光感需要较强性能的手机才能流畅使用', style: TextStyle(fontSize: 13, color: cs.outline)),
+              const SizedBox(height: 12),
+              option(2, '强', '最强光感特效，视觉效果最佳'),
+              option(1, '均衡', '兼顾效果与性能'),
+              option(0, '弱', '无光感，适合性能较低的设备'),
+            ]),
+            actions: [
+              FilledButton(
+                key: const Key('immersive_ok'),
+                onPressed: () async {
+                  await ImmersiveLight.set(level);
+                  if (ctx.mounted) Navigator.of(ctx).pop();
+                },
+                child: const Text('确定'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _privacy() async {
