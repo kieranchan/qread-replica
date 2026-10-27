@@ -80,7 +80,7 @@ class DemoSite {
       '<div class="book"><a class="name" href="/book/${b.id}">${b.name}</a><span class="author">作者：${b.author}</span>'
       '<span class="kind">${b.kind}</span><p class="desc">${b.intro}</p></div>';
 
-  static String chapterTitle(int n) => '第${n}章 ${_titles[(n - 1) % _titles.length]}';
+  static String chapterTitle(int n) => '第$n章 ${_titles[(n - 1) % _titles.length]}';
 
   static const _titles = ['启程', '旧地图', '夜航', '无声的灯塔', '雾中来客', '钟表匠', '星图', '远方', '归途', '风暴', '残光', '尽头'];
 
