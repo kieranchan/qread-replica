@@ -42,6 +42,38 @@ class ChapterContent {
     return ChapterContent(text, blocks);
   }
 
+  /// Re-derives text and offsets from the runs of [blocks] (after the strings of the runs were edited, e.g. by replace rules).
+  /// Paragraphs are joined by `\n`; image runs sit at the current end of the text. Paragraphs that became empty are dropped.
+  factory ChapterContent.fromBlocks(List<CalcuPages> blocks) {
+    final sb = StringBuffer();
+    final out = <CalcuPages>[];
+    for (final b in blocks) {
+      if (b.isImage) {
+        final r = b.runs.first;
+        r.start = sb.length;
+        r.end = sb.length;
+        out.add(b);
+        continue;
+      }
+      final runs = b.runs.where((r) => r.str.isNotEmpty).toList();
+      if (runs.isEmpty) continue;
+      if (out.isNotEmpty) sb.write('\n');
+      var pos = sb.length;
+      for (var i = 0; i < runs.length; i++) {
+        runs[i].start = pos;
+        pos += runs[i].str.length;
+        runs[i].end = pos;
+        runs[i].isfirst = i == 0;
+        sb.write(runs[i].str);
+      }
+      out.add(CalcuPages.text(runs));
+    }
+    return ChapterContent(sb.toString(), out);
+  }
+
+  /// True when every block is a single plain-text run (TXT / source-book text): the content can be cached and rewritten as text.
+  bool get isPlainText => blocks.every((b) => !b.isImage && b.runs.length == 1 && b.runs.first.style.isEmpty);
+
   static bool _isSpace(int c) => c == 0x20 || c == 0x09 || c == 0x0d || c == 0x3000 || c == 0xa0 || c == 0xfeff || c == 0x200b;
 
   /// Number of source characters in the blocks (for progress fractions).
