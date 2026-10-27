@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:newread/data/bookself.dart';
 import 'package:newread/models/book.dart';
+import 'package:newread/pages/book/shelf_routes.dart';
 import 'package:newread/pages/bookshelf_page.dart';
+import 'package:newread/read/api/readapi.dart';
 import 'package:newread/pages/search/fake_book_search_service.dart';
 import 'package:newread/storage/storage.dart';
 import 'package:newread/widget/book/shelf_prefs.dart';
@@ -84,6 +86,23 @@ void main() {
     expect(b.latestChapterTitle, '第5章');
     expect(b.totalChapterNum, 5);
     expect(b.isredupdate, isTrue);
+  });
+
+  test('ShelfRoutes.init makes reader progress land on the shelf entry; route names resolve', () async {
+    env = await shelfEnv();
+    await BookSelfN.addAll(fixtureBooks().take(1));
+    await ShelfRoutes.init();
+    final b = Book.fromJson(BookSelfN.books.single.toJson())
+      ..durChapterIndex = 42
+      ..durChapterPos = 0.5
+      ..durChapterTitle = '第四十三章';
+    await ReadApi.onProgress!(b);
+    final s = BookSelfN.books.single;
+    expect(s.durChapterIndex, 42);
+    expect(s.durChapterTitle, '第四十三章');
+    expect(ShelfRoutes.handles('history_page'), isTrue);
+    expect(ShelfRoutes.handles('book_detail_page'), isTrue);
+    expect(ShelfRoutes.handles('me_page'), isFalse);
   });
 
   test('built-in groups filter by rule', () {
