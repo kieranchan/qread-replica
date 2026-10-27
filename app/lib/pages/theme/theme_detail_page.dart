@@ -147,8 +147,8 @@ class _ThemeDetailPageState extends State<ThemeDetailPage> {
     return Scaffold(
       appBar: AppBar(title: Text(_t.name.isEmpty ? '主题' : _t.name)),
       body: ListView(padding: const EdgeInsets.all(16), children: [
-        AspectRatio(
-          aspectRatio: 9 / 12,
+        SizedBox(
+          height: 320,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: _t.imagePath.isEmpty

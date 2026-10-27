@@ -185,22 +185,23 @@ class SectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tp = ThemeProvider.instance;
+    final radius = BorderRadius.circular(12);
     return Container(
       margin: margin,
-      decoration: BoxDecoration(
+      decoration: BoxDecoration(borderRadius: radius, boxShadow: tp.shadow(page)),
+      child: Material(
         color: tp.tableColor(page, context),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: tp.shadow(page),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        borderRadius: radius,
+        clipBehavior: Clip.antiAlias,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (title != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
             child: Text(title!, style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Theme.of(context).colorScheme.primary)),
           ),
         ...children,
-      ]),
+        ]),
+      ),
     );
   }
 }
