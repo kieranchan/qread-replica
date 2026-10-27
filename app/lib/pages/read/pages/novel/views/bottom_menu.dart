@@ -83,7 +83,7 @@ class _ButtomMenuState extends State<ButtomMenu> {
             _tool(Icons.format_list_bulleted, '目录', host.openCatalog),
             _tool(Icons.headphones_outlined, '朗读', host.startListen),
             _tool(Icons.text_fields, '界面', () => _go(_Panel.ui)),
-            _tool(Icons.settings_outlined, '设置', () => _push(context, ReadMoreSettingPage(setting: s))),
+            _tool(Icons.settings_outlined, '设置', () => _push(context, ReadMoreSettingPage(setting: s, book: host.book))),
             _tool(s.night ? Icons.light_mode_outlined : Icons.dark_mode_outlined, s.night ? '白天' : '夜间', host.toggleNight),
           ],
         ),
@@ -121,7 +121,7 @@ class _ButtomMenuState extends State<ButtomMenu> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _title('界面设置', trailing: TextButton(onPressed: () => _push(context, ReadMoreSettingPage(setting: s)), child: const Text('更多'))),
+        _title('界面设置', trailing: TextButton(onPressed: () => _push(context, ReadMoreSettingPage(setting: s, book: host.book)), child: const Text('更多'))),
         _row('字号', Row(children: [
           IconButton(key: const ValueKey('font_minus'), icon: const Icon(Icons.text_decrease), onPressed: s.fontSize <= 10 ? null : () => s.setFontSize(s.fontSize - 1)),
           SizedBox(width: 36, child: Text('${s.fontSize}', textAlign: TextAlign.center, key: const ValueKey('font_size_value'))),
@@ -152,8 +152,17 @@ class _ButtomMenuState extends State<ButtomMenu> {
           ),
         )),
         _row('排版', Wrap(spacing: 6, children: [
-          ChoiceChip(label: const Text('单列'), selected: s.fen != 2, onSelected: (_) => s.setFen(1)),
-          ChoiceChip(label: const Text('双列'), selected: s.fen == 2, onSelected: (_) => s.setFen(2)),
+          ChoiceChip(label: const Text('单列'), selected: !s.ispad, onSelected: (_) => s.setBool('ispad', false)),
+          ChoiceChip(label: const Text('双列'), selected: s.ispad, onSelected: (_) => s.setBool('ispad', true)),
+        ])),
+        _row('简体繁体', Wrap(spacing: 6, children: [
+          for (final e in const {FanMode.off: '原文', FanMode.toSimplified: '简体', FanMode.toTraditional: '繁体'}.entries)
+            ChoiceChip(
+              key: ValueKey('simplified_${e.key}'),
+              label: Text(e.value),
+              selected: s.simplified == e.key,
+              onSelected: (_) => s.setSimplified(e.key),
+            ),
         ])),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),

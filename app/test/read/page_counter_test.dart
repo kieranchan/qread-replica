@@ -73,9 +73,12 @@ void main() {
   });
 
   test('zh converter hook', () {
-    expect(EpubZhConvert.convert('简体', toTraditional: true), '简体');
+    // the default converter is the engine's ChineseUtils
+    expect(EpubZhConvert.convert('简体', toTraditional: true), '簡體');
+    expect(EpubZhConvert.convert('簡體', toTraditional: false), '简体');
+    final saved = EpubZhConvert.converter;
     EpubZhConvert.converter = (t, trad) => trad ? t.replaceAll('简', '簡') : t;
-    addTearDown(() => EpubZhConvert.converter = null);
+    addTearDown(() => EpubZhConvert.converter = saved);
     expect(EpubZhConvert.convert('简体', toTraditional: true), '簡体');
     expect(EpubZhConvert.convert('', toTraditional: true), '');
   });

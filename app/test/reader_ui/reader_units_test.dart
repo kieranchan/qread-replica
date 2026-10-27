@@ -114,11 +114,14 @@ void main() {
       expect(style.padding.left, 20);
       expect(style.padding.right, 30);
       expect(style.padding.top, 40 + again.topMargin); // header hidden
-      expect(style.fontSize, closeTo(55 * 390 / 750, 0.01));
-      expect(again.columnsFor(const Size(390, 800)), 1);
-      expect(again.columnsFor(const Size(1200, 800)), 2);
-      await again.setFen(1);
+      // the stored size is used as logical pixels (0x2b3a24 / 0x236afc), key `fontSizedefault` (static 0x2240 "fontSize" + "default")
+      expect(ReadSetting.fontSizeKey, 'fontSizedefault');
+      expect(style.fontSize, 55);
+      // 单列 / 双列 is `ispad`
       expect(again.columnsFor(const Size(1200, 800)), 1);
+      await again.setBool('ispad', true);
+      expect(again.columnsFor(const Size(1200, 800)), 2);
+      expect(Storage.getString('ispad'), 'true');
 
       final b = again.toBackGround(name: 30, themeName: '排版 1');
       expect(b.fontSize, 55);
