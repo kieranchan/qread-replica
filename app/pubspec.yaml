@@ -52,6 +52,7 @@ dependencies:
   path: ^1.9.1
   uuid: ^4.6.0
   encrypt: ^5.0.3
+  pointycastle: ^3.9.1
   flutter_js: ^0.8.7
   file_picker: ^13.3.0
   share_plus: ^13.3.1
