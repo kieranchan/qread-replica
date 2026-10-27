@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+<channel><title>Feed</title>
+<item><title>First post</title><link>/post/1</link><description>&lt;p&gt;Hello &lt;img src="/i/1.png"&gt;&lt;/p&gt;</description><pubDate>Mon, 01 Jan 2024 10:00:00 GMT</pubDate></item>
+<item><title>Second post</title><link>http://other.example/post/2</link><description>plain</description><media:thumbnail url="/i/2.png"/></item>
+<item><link>/post/3</link><description>no title is skipped</description></item>
+</channel></rss>
