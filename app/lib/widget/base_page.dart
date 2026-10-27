@@ -46,6 +46,25 @@ Future<String?> showInputDialog(BuildContext context,
   return r;
 }
 
+/// One option of a single-choice dialog: a check mark on the current value; tapping pops the dialog with [value].
+class ChoiceOption<V> extends StatelessWidget {
+  final V value;
+  final V current;
+  final String title;
+
+  const ChoiceOption({super.key, required this.value, required this.current, required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    final on = value == current;
+    return ListTile(
+      title: Text(title, style: TextStyle(fontWeight: on ? FontWeight.w600 : FontWeight.normal)),
+      trailing: on ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary) : null,
+      onTap: () => Navigator.of(context).pop(value),
+    );
+  }
+}
+
 abstract class BasePage<T extends StatefulWidget> extends State<T> {
   /// setState that ignores calls after dispose (async callbacks).
   void update([VoidCallback? fn]) {
