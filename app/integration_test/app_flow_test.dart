@@ -153,6 +153,11 @@ void main() {
 
       if (find.byKey(const Key('detail_add')).evaluate().isNotEmpty) {
         await tester.tap(find.byKey(const Key('detail_add')));
+        // the original asks first: 加入书架 / 确定要将《…》加入书架吗？ (group choice, 确定)
+        await softUntil(tester, find.byKey(const Key('add_ok')), 'add-to-shelf dialog');
+        await pumpFor(tester, const Duration(milliseconds: 600));
+        await binding.takeScreenshot('12b_add_to_shelf');
+        if (find.byKey(const Key('add_ok')).evaluate().isNotEmpty) await tester.tap(find.byKey(const Key('add_ok')));
         await pumpFor(tester, const Duration(seconds: 1));
       }
       if (find.byKey(const Key('detail_read')).evaluate().isNotEmpty) {
