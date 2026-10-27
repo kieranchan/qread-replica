@@ -1,0 +1,35 @@
+{
+  "bookSourceName": "JSON站",
+  "bookSourceUrl": "__BASE__",
+  "bookSourceType": 0,
+  "searchUrl": "/json/search?q={{key}}&page={{(page-1)*20}}",
+  "ruleSearch": {
+    "bookList": "$.data.list[*]",
+    "name": "$.title",
+    "author": "$.author",
+    "bookUrl": "/json/book/{{$.id}}",
+    "coverUrl": "$.cover",
+    "intro": "$.intro",
+    "kind": "$.tags[*]",
+    "wordCount": "$.words"
+  },
+  "ruleBookInfo": {
+    "name": "$.data.title",
+    "author": "$.data.author",
+    "kind": "$.data.tags[*]",
+    "wordCount": "$.data.words",
+    "lastChapter": "$.data.latest",
+    "coverUrl": "$.data.cover",
+    "intro": "$.data.intro",
+    "tocUrl": "$.data.tocApi"
+  },
+  "ruleToc": {
+    "chapterList": "$.data.chapters[*]",
+    "chapterName": "$.name",
+    "chapterUrl": "/json/chapter/{{$.id}}",
+    "updateTime": "{{java.timeFormat(java.getString('$.time'))}}"
+  },
+  "ruleContent": {
+    "content": "$.data.text"
+  }
+}
