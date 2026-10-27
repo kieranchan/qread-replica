@@ -1,17 +1,35 @@
 // End-to-end UI flow on a device / simulator against a real local server (started by the CI workflow):
-//   signed out -> login page -> login (non-member) -> member-only cloud switch is gated -> activation code -> member
-//   -> self-check page (cloud round trip) -> report -> 会员中心 page opens.
+//   privacy agreement -> signed out -> login page -> login (non-member) -> member-only cloud switch is gated -> activation code
+//   -> member -> self-check page (cloud round trip) -> report -> 会员中心 page opens
+//   -> books on a demo site (integration_test/demo_site.dart): import source -> search -> detail -> add to shelf -> read, turn a
+//      page, menus -> shelf -> the other tabs.
 // Inputs come from --dart-define: QREAD_BASE_URL, QREAD_TEST_USER, QREAD_TEST_PASS, QREAD_TEST_VIPCODE.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:newread/api/userapi.dart';
+import 'package:newread/common/nav.dart';
+import 'package:newread/data/source.dart';
 import 'package:newread/data/user.dart';
 import 'package:newread/main.dart' as app;
+import 'package:newread/pages/main_page.dart';
+
+import 'demo_site.dart';
 
 const testUser = String.fromEnvironment('QREAD_TEST_USER');
 const testPass = String.fromEnvironment('QREAD_TEST_PASS');
 const testVipCode = String.fromEnvironment('QREAD_TEST_VIPCODE');
+
+/// Pumps frames for [d] without waiting for animations to settle (the reader and loaders keep animating).
+Future<void> pumpFor(WidgetTester t, Duration d) async {
+  final end = DateTime.now().add(d);
+  while (DateTime.now().isBefore(end)) {
+    await t.pump(const Duration(milliseconds: 100));
+  }
+}
 
 Future<void> pumpUntil(WidgetTester t, Finder f, {Duration timeout = const Duration(seconds: 25)}) async {
   final end = DateTime.now().add(timeout);
@@ -20,6 +38,17 @@ Future<void> pumpUntil(WidgetTester t, Finder f, {Duration timeout = const Durat
     if (f.evaluate().isNotEmpty) return;
   }
   throw TestFailure('timed out waiting for $f');
+}
+
+/// Book-flow steps that did not reach their expected state; the flow keeps going (so every screenshot is taken) and fails at the end.
+final List<String> softFailures = [];
+
+Future<void> softUntil(WidgetTester t, Finder f, String step, {Duration timeout = const Duration(seconds: 25)}) async {
+  try {
+    await pumpUntil(t, f, timeout: timeout);
+  } on TestFailure {
+    softFailures.add(step);
+  }
 }
 
 void main() {
@@ -100,5 +129,66 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle(const Duration(seconds: 2));
     await binding.takeScreenshot('09_back_on_me');
+
+    // ---- books: a demo book site inside the test process, its source imported like a user would paste it
+    final site = await tester.runAsync(DemoSite.start);
+    addTearDown(() => site!.close());
+    await tester.runAsync(() => Sources.importJson(site!.sourceJson()));
+
+    await tester.tap(find.byKey(const Key('tab_书架')));
+    await pumpFor(tester, const Duration(seconds: 1));
+    await binding.takeScreenshot('10_shelf_empty');
+
+    final ctx = tester.element(find.byType(MainPage));
+    unawaited(Nav.openSearch(ctx, key: '星河'));
+    await softUntil(tester, find.text('星河旅人'), 'search result');
+    await pumpFor(tester, const Duration(seconds: 1));
+    await binding.takeScreenshot('11_search');
+
+    if (find.text('星河旅人').evaluate().isNotEmpty) {
+      await tester.tap(find.text('星河旅人').first);
+      await softUntil(tester, find.byKey(const Key('detail_name')), 'detail page');
+      await pumpFor(tester, const Duration(seconds: 3)); // book info + table of contents load
+      await binding.takeScreenshot('12_book_detail');
+
+      if (find.byKey(const Key('detail_add')).evaluate().isNotEmpty) {
+        await tester.tap(find.byKey(const Key('detail_add')));
+        await pumpFor(tester, const Duration(seconds: 1));
+      }
+      if (find.byKey(const Key('detail_read')).evaluate().isNotEmpty) {
+        await tester.tap(find.byKey(const Key('detail_read')));
+        // the reader paints the text itself (no Text widgets): wait for the chapter request instead
+        final end = DateTime.now().add(const Duration(seconds: 30));
+        while (!site!.requests.any((r) => r.startsWith('/chapter/1/1')) && DateTime.now().isBefore(end)) {
+          await tester.pump(const Duration(milliseconds: 150));
+        }
+        if (!site.requests.any((r) => r.startsWith('/chapter/1/1'))) softFailures.add('chapter request');
+        await pumpFor(tester, const Duration(seconds: 2));
+        await binding.takeScreenshot('13_reader');
+
+        final size = tester.view.physicalSize / tester.view.devicePixelRatio;
+        await tester.tapAt(Offset(size.width * 0.85, size.height * 0.5)); // right third: next page
+        await pumpFor(tester, const Duration(seconds: 2));
+        await binding.takeScreenshot('14_reader_page2');
+        await tester.tapAt(Offset(size.width * 0.5, size.height * 0.5)); // centre: menus
+        await pumpFor(tester, const Duration(seconds: 2));
+        await binding.takeScreenshot('15_reader_menu');
+      } else {
+        softFailures.add('read button');
+      }
+    }
+
+    // back to the tabs: the book is on the shelf with its progress
+    Get.until((route) => route.isFirst);
+    await pumpFor(tester, const Duration(seconds: 2));
+    await softUntil(tester, find.text('星河旅人'), 'book on the shelf');
+    await binding.takeScreenshot('16_shelf_with_book');
+
+    for (final (tab, shot) in [('发现', '17_tab_discovery'), ('探索', '18_tab_explore'), ('订阅', '19_tab_rss')]) {
+      await tester.tap(find.byKey(Key('tab_$tab')));
+      await pumpFor(tester, const Duration(seconds: 3));
+      await binding.takeScreenshot(shot);
+    }
+    expect(softFailures, isEmpty, reason: 'book flow steps that failed');
   });
 }
