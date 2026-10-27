@@ -19,7 +19,7 @@ class CatalogView extends StatefulWidget {
 }
 
 class _CatalogViewState extends State<CatalogView> with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 3, vsync: this);
+  late final TabController _tabs;
   /// "目录倒序" of the drawer (display only; `Book.reverseCatalog` reverses the source's list when it is loaded).
   bool _reverse = false;
   List<BookNote> _marks = [];
@@ -29,6 +29,7 @@ class _CatalogViewState extends State<CatalogView> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
+    _tabs = TabController(length: 3, vsync: this);
     _load();
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToCurrent());
   }

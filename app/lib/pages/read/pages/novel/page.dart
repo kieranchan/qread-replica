@@ -58,7 +58,7 @@ class NovelPager extends StatefulWidget {
 }
 
 class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateMixin {
-  late final AnimationController _anim = AnimationController(vsync: this, duration: widget.duration)..addListener(() => setState(() {}));
+  late final AnimationController _anim;
   int _dir = 0;
   double _drag = 0;
   double _vdrag = 0;
@@ -70,6 +70,7 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
+    _anim = AnimationController(vsync: this, duration: widget.duration)..addListener(() => setState(() {}));
     widget.controller?._state = this;
   }
 
