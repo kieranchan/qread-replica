@@ -35,5 +35,4 @@ flutter analyze; flutter test
 
 ## iOS
 No Mac here: `.github/workflows/ios-unsigned.yml` (repo root) builds `flutter build ios --release --no-codesign` on a macOS
-runner and uploads `newread-unsigned.ipa`; install with Sideloadly. Nothing is pushed yet; creating the private repository is
-the owner's call. Windows desktop is not buildable locally (Visual Studio's desktop workload is not installed) and is not needed.
+runner and uploads `newread-unsigned.ipa`; install with Sideloadly. The repository is the private `kieranchan/qread-replica` (root = `qread/`, only `app/`, `server/`, `docs/`, the workflow). Windows desktop is not buildable locally (Visual Studio's desktop workload is not installed) and is not needed.

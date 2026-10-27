@@ -7,7 +7,7 @@
   "engines": { "node": ">=24" },
   "scripts": {
     "start": "node src/server.mjs",
-    "test": "node --test --test-concurrency=1 "test/*.test.mjs"",
+    "test": "node --test --test-concurrency=1 test/*.test.mjs",
     "admin": "node src/admin.mjs"
   }
 }
