@@ -31,20 +31,26 @@ void main() {
   });
   tearDown(() => tmp.deleteSync(recursive: true));
 
-  test('byte caches evict the least recently used entries by total size', () {
-    for (var i = 0; i < 100; i++) {
-      Imagecache.put('u$i', Uint8List(1024 * 1024)); // 100 MB in total, the cache holds 64 MB
+  test('byte caches keep the newest 50 / 10 entries (0x22bcdc / 0x22be28)', () {
+    for (var i = 0; i < 60; i++) {
+      Imagecache.put('u$i', Uint8List(16));
     }
-    expect(Imagecache.totalBytes, lessThanOrEqualTo(64 * 1024 * 1024));
-    expect(Imagecache.get('u0'), isNull);
-    expect(Imagecache.get('u99'), isNotNull);
-    Imagecache.put('huge', Uint8List(65 * 1024 * 1024)); // larger than the cache: not stored
-    expect(Imagecache.get('huge'), isNull);
+    expect(Imagecache.length, 50);
+    expect(Imagecache.get('u9'), isNull);
+    expect(Imagecache.get('u10'), isNotNull);
+    Imagecache.put('u10', Uint8List(1)); // re-put moves the key to the end
+    Imagecache.put('new', Uint8List(1));
+    expect(Imagecache.get('u10'), hasLength(1));
+    expect(Imagecache.get('u11'), isNull);
+    for (var i = 0; i < 12; i++) {
+      Imagecache2.put('k$i', Uint8List(3));
+    }
+    expect(Imagecache2.length, 10);
     Imagecache2.put('k', Uint8List(3));
     expect(Imagecache2.get('k'), hasLength(3));
   });
 
-  test('path cache: bounded, refreshed on read', () {
+  test('path cache keeps the newest 10 urls (0x22bf74)', () {
     for (var i = 0; i < Imagecache3.maxEntries + 10; i++) {
       Imagecache3.put('u$i', '/p/$i');
     }

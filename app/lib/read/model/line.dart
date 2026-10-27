@@ -171,11 +171,11 @@ class Line {
 }
 
 /// `Gender` of the AI dialogue structures. The enum carries one int in the original (`field_8`).
-/// TODO(asm class 8756 `Gender`): value order is assumed (unknown 0, male 1, female 2).
+/// Order from the const `ButtonSegment<Gender>`s of the character editor (objs: index 0 "男", 1 "女", 2 "未知").
 enum Gender {
-  unknown(0),
-  male(1),
-  female(2);
+  male(0),
+  female(1),
+  unknown(2);
 
   final int value;
   const Gender(this.value);
