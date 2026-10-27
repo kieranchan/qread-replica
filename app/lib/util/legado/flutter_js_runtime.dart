@@ -42,8 +42,17 @@ function __nrWrap(v) {
   for (var k in v) { if (Object.prototype.hasOwnProperty.call(v, k)) v[k] = __nrWrap(v[k]); }
   return v;
 }
+function __nrArg(v) {
+  if (v === null || typeof v !== 'object') return v;
+  var ref = v.__nrRef;
+  if (typeof ref === 'string') return {__nrRef: ref};
+  if (Array.isArray(v)) return v.map(__nrArg);
+  var o = {};
+  for (var k in v) { if (Object.prototype.hasOwnProperty.call(v, k)) o[k] = __nrArg(v[k]); }
+  return o;
+}
 function __call(o, m, a) {
-  var r = sendMessage('NR', JSON.stringify({o: o, m: m, a: a}));
+  var r = sendMessage('NR', JSON.stringify({o: o, m: m, a: __nrArg(a)}));
   if (typeof r === 'string') r = JSON.parse(r);
   if (r && r.p) throw new Error(__NR_PENDING);
   if (r && r.e !== undefined) throw new Error(r.e);
@@ -55,6 +64,7 @@ function __nrHost(name, props, methods) {
   return new Proxy({}, {
     get: function(t, k) {
       if (typeof k === 'symbol') return undefined;
+      if (k === '__nrRef') return name;
       if (Object.prototype.hasOwnProperty.call(props, k)) return props[k];
       if (ms[k] || k === 'toString') return function() { return __call(name, k, Array.prototype.slice.call(arguments)); };
       return undefined;
@@ -97,7 +107,7 @@ console.info = console.warn = console.error = console.debug = console.log;
         target.jsSet('${a[0]}', a.length > 1 ? a[1] : null);
         return jsonEncode({'v': null});
       }
-      final r = target.jsCall(m, List<Object?>.from(a));
+      final r = target.jsCall(m, a.map(_decodeArg).toList());
       return jsonEncode({'v': _encode(r)});
     } on JsPendingException catch (p) {
       _pending = p;
@@ -109,6 +119,19 @@ console.info = console.warn = console.error = console.debug = console.log;
     } catch (e) {
       return jsonEncode({'e': e.toString()});
     }
+  }
+
+  /// Arguments from JavaScript: native objects passed back (`java.replaceFont(t, font1, font2)`) arrive as `{__nrRef: name}`.
+  Object? _decodeArg(Object? v) {
+    if (v is Map) {
+      final ref = v['__nrRef'];
+      if (ref is String && v.length == 1) {
+        return (ref.startsWith('#') ? _handles[ref.substring(1)] : _bindings?.objects[ref]) ?? v;
+      }
+      return v.map((k, val) => MapEntry(k, _decodeArg(val)));
+    }
+    if (v is List) return v.map(_decodeArg).toList();
+    return v;
   }
 
   /// Dart value -> JSON-able. Native objects become handles the prelude wraps in proxies again.
