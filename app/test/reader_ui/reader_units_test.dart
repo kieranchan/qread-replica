@@ -17,6 +17,7 @@ import 'package:newread/read/setting/read_layout_style.dart';
 import 'package:newread/read/setting/read_setting.dart';
 import 'package:newread/read/util/chapter_content.dart';
 import 'package:newread/read/util/css.dart';
+import 'package:newread/read/util/content_painter.dart';
 import 'package:newread/read/util/highlight_apply.dart';
 import 'package:newread/read/util/listcontroller.dart';
 import 'package:newread/storage/storage.dart';
@@ -65,7 +66,8 @@ void main() {
       final f = HighlightApply.flatText(body);
       final span = HighlightApply.span(body, const ReadLayoutStyle(fontSize: 16), color: Colors.black,
           decos: HighlightApply.ruleDecos(f, rules, night: false));
-      expect(span.toPlainText(), f);
+      // same text and offsets; only the indent (U+3000 in flatText) is drawn as invisible ideographs
+      expect(span.toPlainText(), f.replaceAll('　', ReadTextBuilder.indentGlyph));
       final colored = <String>[];
       span.visitChildren((s) {
         if (s is TextSpan && s.style?.color == const Color(0xffff0000)) colored.add(s.text!);

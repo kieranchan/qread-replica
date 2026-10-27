@@ -16,6 +16,9 @@ import '../model/page.dart';
 import '../setting/read_layout_style.dart';
 
 abstract class ReadTextBuilder {
+  /// Drawn (transparent) in place of each U+3000 of a first-line indent: same width, but not whitespace for TextAlign.justify.
+  static const String indentGlyph = '中';
+
   /// All runs of a content block in drawing order (prefix + text).
   static Iterable<CLine> runsOf(Content c) sync* {
     for (final l in c.lines) {
@@ -45,7 +48,7 @@ abstract class ReadTextBuilder {
         // The first-line indent is measured as U+3000 but drawn as invisible ideographs of the same width: with TextAlign.justify
         // a line holding U+3000 gets its free space spread over the whole line (the indent vanished and the characters spread).
         // Same length, so the offset mapping below is unchanged.
-        children.add(TextSpan(text: '中' * r.prefix.length, style: s.copyWith(color: const Color(0x00000000))));
+        children.add(TextSpan(text: indentGlyph * r.prefix.length, style: s.copyWith(color: const Color(0x00000000))));
       }
       children.add(TextSpan(
         text: r.str,

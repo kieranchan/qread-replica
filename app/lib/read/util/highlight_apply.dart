@@ -148,14 +148,19 @@ abstract class HighlightApply {
     final children = <InlineSpan>[];
     var pos = 0;
     for (final r in runs) {
-      final text = r.text;
+      // the indent is drawn as invisible ideographs of the same width, not U+3000 (see ReadTextBuilder.span: justify would spread it)
+      final text = ReadTextBuilder.indentGlyph * r.prefix.length + r.str;
       final base = _runStyle(r, style, scale, isTitle, color, linkColor);
+      final indentEnd = pos + r.prefix.length;
+      if (r.prefix.isNotEmpty) {
+        children.add(TextSpan(text: text.substring(0, r.prefix.length), style: base.copyWith(color: const Color(0x00000000))));
+      }
       if (decos.isEmpty) {
-        children.add(TextSpan(text: text, style: base));
+        children.add(TextSpan(text: text.substring(r.prefix.length), style: base));
         pos += text.length;
         continue;
       }
-      final rs = pos;
+      final rs = indentEnd;
       final re = pos + text.length;
       final cuts = <int>{rs, re};
       for (final d in decos) {
@@ -172,7 +177,7 @@ abstract class HighlightApply {
         for (final d in decos) {
           if (d.start <= a && d.end >= b) s = d.apply(s);
         }
-        children.add(TextSpan(text: text.substring(a - rs, b - rs), style: s));
+        children.add(TextSpan(text: text.substring(a - pos, b - pos), style: s));
       }
       pos = re;
     }
