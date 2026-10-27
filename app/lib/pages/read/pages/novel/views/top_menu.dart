@@ -12,6 +12,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../../common/nav.dart';
 import '../../../../../data/replace.dart';
+import '../../../../../models/book.dart';
+import '../../../../../models/bookchapter.dart';
 import '../../../../../read/api/readapi.dart';
 import '../../../../../read/util/cache_book.dart';
 import '../../../../../read/util/down_notification.dart';
@@ -21,6 +23,7 @@ import '../../../../../storage/storage.dart';
 import '../../../../../util/toast.dart';
 import '../../../../highlight/highlight_rule_setting.dart';
 import '../../../../replace/replace_rule_setting.dart';
+import '../../../web_book_loader.dart';
 import 'reader_host.dart';
 
 class TopMenuEntry {
@@ -238,8 +241,8 @@ class TopMenu extends StatelessWidget {
   final ReaderHost host;
   const TopMenu({super.key, required this.host});
 
-  /// Book-source `payAction` for 购买章节 (set together with `ReadPage.webLoader`).
-  static Future<void> Function(dynamic book, dynamic chapter)? payAction;
+  /// Book-source `payAction` for 购买章节 (default: the book-source engine; the app may override it).
+  static Future<void> Function(Book book, BookChapter chapter)? payAction = WebBookLoader.pay;
 
   static final Map<String, TopMenuEntry> entries = {
     for (final e in <TopMenuEntry>[

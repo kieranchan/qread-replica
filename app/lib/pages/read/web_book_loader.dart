@@ -64,6 +64,13 @@ abstract class WebBookLoader {
     };
   }
 
+  /// "购买章节": runs the source's `payAction` for [chapter].
+  static Future<void> pay(Book book, BookChapter chapter) async {
+    final s = await sourceOf(book);
+    if (s == null) throw WebBookException('书源不存在: ${book.origin}');
+    await SourceApi.payAction(s, eb.Book.fromModel(book), ec.BookChapter.fromModel(chapter, bookUrl: book.bookUrl));
+  }
+
   /// Splits engine text into paragraphs and `<img>` blocks.
   static ChapterContent parseContent(String text) {
     if (!_img.hasMatch(text)) return ChapterContent.fromText(text);

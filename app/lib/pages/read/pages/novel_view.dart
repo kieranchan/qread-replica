@@ -170,6 +170,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    if (ReadApi.log == _logLine) ReadApi.log = null;
     _setting.removeListener(_onSetting);
     _autoTimer?.cancel();
     _aloud?.dispose();
