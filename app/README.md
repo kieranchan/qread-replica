@@ -33,6 +33,14 @@ owner's page is plain HTML; `appid` falls back to a stored random id when the de
 flutter analyze; flutter test
 ```
 
+## Self-check and UI tests without a phone
+* `lib/pages/self_check_page.dart` (「诊断自检」 on the me page): connectivity, account, member gate, device list and the cloud
+  round trip; `上报到服务器` posts the results to `diag`, the owner reads them on the server with `qread-admin list-diag`.
+* `integration_test/app_flow_test.dart` + `test_driver/`: the whole flow (signed out → login → gated switch → activation code →
+  member → self-check → 会员中心 web view) on an iOS Simulator. `.github/workflows/ios-ui-test.yml` starts the real server on the
+  macOS runner, runs it with `flutter drive` and uploads a screenshot of every step (`ui-screenshots` artifact, 14 days).
+  First green run: 4.5 min, simulator iPhone18,1 (1206×2622).
+
 ## iOS
 No Mac here: `.github/workflows/ios-unsigned.yml` (repo root) builds `flutter build ios --release --no-codesign` on a macOS
 runner and uploads `newread-unsigned.ipa`; install with Sideloadly. The repository is the private `kieranchan/qread-replica` (root = `qread/`, only `app/`, `server/`, `docs/`, the workflow). Windows desktop is not buildable locally (Visual Studio's desktop workload is not installed) and is not needed.

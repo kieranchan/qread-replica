@@ -39,6 +39,8 @@ avatar/theme URLs), `QREAD_REGISTER` (`invite` | `closed`), `QREAD_MAIL` (`off`;
   content. Lists are uploaded through `setItemJsonFile` with `item` = `books|rss|sources|notes|groups`.
 * **Theme plaza**: `GET /public/themes?page&limit&category_id`, `/public/themes/:id`, `/public/categories`, files under `/public/files/`
   (`{code: 200, data}` replies). Add content with `admin add-theme`.
+* **Web page**: `GET /` (and `/vip`) is the 会员中心 page: opened by the app with `?tockenid=` it shows the status and the activation-code box; opened in a
+  browser it first asks for username/password. `POST /diag` receives the app's self-check results (`admin list-diag`).
 * **Other**: `/images/*` (avatars, uploads), `/static/down.json`, `/static/qq.json` (`admin set-static`), `/healthz`, `/api/allocate` (stub: the
   compatibility-engine allocator is not provided), `check_update` (always "no update").
 * **Not implemented / unknown**: the app's backup-upload path (`getBookSelf`, `getRss`, `getSources` only read), `autopos`/`openAuto` payload

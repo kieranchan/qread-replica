@@ -46,7 +46,7 @@ Online features run on the owner's own server.
 ## Phase 1 — app shell and iOS pipeline (first slice done 2026-10-27)
 **Status:** `app/` exists (package `newread`, iOS 15, own bundle id); `UserApi`, `UserSession`, login / register / me / 会员中心 /
 cloud-setting pages work against `server/` (18 tests, contract tests spawn the real server); `.github/workflows/ios-unsigned.yml`
-and a root `.gitignore` are in the private repo `kieranchan/qread-replica` (created and pushed 2026-10-27 with the owner's go-ahead; it holds `app/`, `server/`, `docs/`, the workflow; `tools/` and `analysis/` stay local).
+a simulator UI test with screenshots (`ios-ui-test.yml`, green) and a root `.gitignore` are in the private repo `kieranchan/qread-replica` (created and pushed 2026-10-27 with the owner's go-ahead; it holds `app/`, `server/`, `docs/`, the workflow; `tools/` and `analysis/` stay local).
 
 - `app/` is a Flutter 3.44.9 project with package name `newread`, so file
   paths match the original 1:1. It uses its own bundle id and the same
