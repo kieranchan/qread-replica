@@ -17,8 +17,8 @@ typedef OpenReader = Future<void> Function(BuildContext context, Book book, {int
 /// Opens the book detail page for a book found by search / discovery / exploration.
 typedef OpenBook = Future<void> Function(BuildContext context, Book book);
 
-/// Opens the search page, optionally pre-filled with [key].
-typedef OpenSearch = Future<void> Function(BuildContext context, {String? key});
+/// Opens the search page, optionally pre-filled with [key] and restricted to [sources] (the source manager's 搜索 on one source).
+typedef OpenSearch = Future<void> Function(BuildContext context, {String? key, List<Source>? sources});
 
 /// Opens the editor of a book source (null = new source).
 typedef OpenSourceEdit = Future<void> Function(BuildContext context, Source? source);
@@ -34,7 +34,7 @@ abstract class Nav {
 
   static OpenReader openReader = (context, book, {chapterIndex, chapters}) => _missing('阅读器');
   static OpenBook openBook = (context, book) => _missing('书籍详情');
-  static OpenSearch openSearch = (context, {key}) => _missing('搜索');
+  static OpenSearch openSearch = (context, {key, sources}) => _missing('搜索');
   static OpenSourceEdit openSourceEdit = (context, source) => _missing('书源编辑');
   static OpenRss openRss = (context, source) => _missing('订阅');
 

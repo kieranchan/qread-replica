@@ -1,6 +1,6 @@
 // init/wiring.dart — lead-owned glue between the page areas: points the `Nav` hooks (common/nav.dart) and the start-up hooks of each
 // area at the real implementations. Each area stays importable on its own; only this file (and main.dart) knows all of them.
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
 import '../common/app_dirs.dart';
 import '../common/nav.dart';
@@ -14,6 +14,7 @@ import '../pages/read/read_page.dart';
 import '../pages/read/reader_ai.dart';
 import '../pages/read/reader_routes.dart';
 import '../pages/rss_page.dart';
+import '../pages/search/search_book_page.dart';
 import '../pages/setting/extras_routes.dart';
 import '../pages/web/web_hooks.dart';
 import '../read/api/read_storage_root.dart';
@@ -76,7 +77,8 @@ abstract class Wiring {
     });
 
     Nav.openBook = (context, book) => ShelfRoutes.push(context, 'book_detail_page', book);
-    Nav.openSearch = (context, {key}) => ShelfRoutes.push(context, 'search_book_page', key);
+    Nav.openSearch = (context, {key, sources}) =>
+        Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SearchBookPage(searchKey: key ?? '', sources: sources)));
 
     Nav.openReader = (context, book, {chapterIndex, chapters}) async {
       await MainPage.stampReading();
