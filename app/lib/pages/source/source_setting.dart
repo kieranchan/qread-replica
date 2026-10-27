@@ -12,8 +12,9 @@
 // (`请选择您想要导入的书源文件`, `选择文件失败:`); import flow 0xe73fc8 (`json解析中`, `未解析到书源`, `选择的书源为空`,
 // `轻悦时光新增…条书源，更新…条书源`, `导入书源失败:`) with the run-mode dialog util.dart 0x1c9160 (`轻阅读解析` / `兼容层解析`).
 //
-// Not ported: the per-source 远程/本地 run switch (`SourceApi.sourcerun`, `remote`) and `re` (重载书源线程) — the replica runs every
-// Legado source in its own engine.
+// `re` (重载书源线程) drops the per-source runtime state (SourceApi.reloadSource). Not ported: the 远程/本地 switch (`remote`, toggles
+// `help` of backend 阅读源 whose html starts with `@yuedu`, 0x54839c) — it moves a backend source to the original's local compat
+// layer; the replica runs backend sources on the backend only.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -28,6 +29,7 @@ import '../../api/sourceapi.dart';
 import '../../common/nav.dart';
 import '../../data/qsource.dart';
 import '../../data/source.dart';
+import '../../models/source.dart';
 import '../../qread/api/qsourceapi.dart';
 import '../../qread/qread.dart';
 import '../../util/http.dart';
@@ -403,11 +405,16 @@ class _SourceSettingPageState extends State<SourceSettingPage> {
           await showSourceVariableDialog(context, BookSource.fromJson(i.raw));
         }
       case 'search':
-        // TODO(asm 0xf8bc70): the original opens SearchBookPage restricted to this source.
-        if (mounted) await Nav.openSearch(context);
+        // 0xf8bc70: SearchBookPage(key '', the source)
+        if (mounted) await Nav.openSearch(context, sources: [Source.fromJson(i.raw)]);
       case 'found':
-        // TODO(asm 0xf8bc70): the original opens DiscoveryPageNew on this source.
-        if (mounted) await Nav.openNamed(context, 'discovery_page_new', arguments: i.url);
+        // 0xf8bc70: DiscoveryPageNew on this source
+        if (mounted) await Nav.openNamed(context, 'discovery_page_new', arguments: Source.fromJson(i.raw));
+      case 're':
+        // 0xf8bc70: `是否重载<name>书源线程` (操作提示), then the source's runner is dropped (SourceApi 0xe77e8c)
+        if (!await _confirm('操作提示', '是否重载${i.name}书源线程')) return;
+        SourceApi.reloadSource(i.url);
+        if (mounted) setState(() {});
       case 'debug':
         await _debug(i);
       case 'help':
@@ -699,6 +706,7 @@ class _SourceSettingPageState extends State<SourceSettingPage> {
                   const PopupMenuItem(value: 'search', child: Text('搜索')),
                   const PopupMenuItem(value: 'found', child: Text('发现')),
                   const PopupMenuItem(value: 'debug', child: Text('调试')),
+                  const PopupMenuItem(value: 're', child: Text('重载')),
                   if ('${i.raw['loginUrl'] ?? ''}'.trim().isNotEmpty) const PopupMenuItem(value: 'login', child: Text('登录')),
                   const PopupMenuItem(value: 'setVariable', child: Text('设置源变量')),
                   const PopupMenuItem(value: 'del', child: Text('删除')),

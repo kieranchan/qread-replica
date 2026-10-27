@@ -17,6 +17,7 @@ import '../util/webbook/debug.dart';
 import '../util/webbook/model/book.dart';
 import '../util/webbook/model/book_chapter.dart';
 import '../util/webbook/model/book_source.dart';
+import '../util/webbook/model/shared_js_scope.dart';
 import '../util/webbook/model/search_book.dart';
 import '../util/webbook/web_book.dart';
 
@@ -51,10 +52,20 @@ class SearchCache {
   }
 
   void clear() => _m.clear();
+
+  /// Drops the cached results of one source (keys start with its url).
+  void removeSource(String sourceUrl) => _m.removeWhere((k, _) => k.startsWith('$sourceUrl\u0001'));
 }
 
 abstract class SourceApi {
   static final SearchCache cache = SearchCache();
+
+  /// 重载书源线程 (0xe77e8c removes the source's runner from `sourcerun`): the replica has no long-lived runner per source, so the
+  /// source's runtime state is dropped instead (cached search results, the resolved `jsLib`); the next call starts fresh.
+  static void reloadSource(String sourceUrl) {
+    cache.removeSource(sourceUrl);
+    SharedJsScope.forget(sourceUrl);
+  }
 
   /// A source JSON file may hold one source or an array.
   static List<BookSource> parseSources(String json) => BookSource.listFromJsonString(json);
@@ -153,8 +164,8 @@ abstract class SourceApi {
   ///   * `++url` -> that toc url, then the first chapter
   ///   * `--url` -> that chapter url only
   /// Errors end the run and are logged; the returned [DebugLog] holds all lines.
-  static Future<DebugLog> debug(BookSource source, String key, {void Function(String line)? onLine}) async {
-    final log = DebugLog(onLine: onLine);
+  static Future<DebugLog> debug(BookSource source, String key, {void Function(String line)? onLine, void Function(String step, String body)? onBody}) async {
+    final log = DebugLog(onLine: onLine, onBody: onBody);
     final web = WebBook(source, debug: log);
     try {
       Book? book;
