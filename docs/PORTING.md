@@ -48,12 +48,21 @@ code containing backslashes with the Write/Edit tools. `q.py show` prints blutte
 * Report format (final message, ≤ 700 words): what exists (paths), what is verified (tests), what is approximated or missing with asm
   addresses, dependencies added, how to wire the entry points.
 
+## Navigation hooks
+Areas never import another area's page files. Use `lib/common/nav.dart` (`Nav.openReader`, `Nav.openBook`, `Nav.openSearch`,
+`Nav.openSourceEdit`, `Nav.openRss`, `Nav.openNamed(context, name)`); the lead wires them in `lib/main.dart` after merging. Route names
+for `openNamed` are the original's file stems (`ai_model_page`, `tts_setting`, `theme_manager`, `webdav_page`, `source_page`,
+`rss_page`, `history_page`, `txtrule_page`, `replace_page`, `highlight_page`, `read_setting_page`, `reading_statistics_page`, ...);
+list the names your area handles in your report. Book-source engine calls go through the engine's public API (`util/webbook/`,
+`api/sourceapi.dart`) once it is merged; until then put them behind a small interface in your own area.
+
 ## Ownership map
 | Area | Directories under `app/lib/` |
 | --- | --- |
 | A data | `models/` (refine generated classes), `storage/`, `data/` (bookself, source, rss, replace, txtrule, highlight, notes, fonts, ground, svg, tts, webdav, exploration, chromemark, music), `common/`, `init/`, `dio/` |
 | B engine | `util/legado/`, `util/webbook/`, `util/source/`, `util/regex/`, `util/html/`, `util/http.dart`, `util/cookie*.dart`, `util/json.dart`, `util/chinese_utils.dart`, `util/format.dart`, `api/sourceapi.dart`, `api/rssapi.dart` |
 | C read core | `read/` (txt, epub, mobi, paging/layout, per-book rule storage `read/api/*`), `util/epub/`, `util/image/`, `util/cahce/` |
-| D shelf pages | `pages/bookshelf_page.dart`, `pages/discovery_page*.dart`, `pages/book/`, `pages/source/`, `pages/rss/`, `pages/exploration/`, search pages, `widget/` |
-| F reader UI | `pages/read/`, `pages/txtrule/`, reader settings pages |
+| D1 shelf pages | `pages/bookshelf_page.dart`, `pages/discovery_page*.dart`, `pages/book/`, `pages/search/`, `pages/history/`, `pages/exploration/`, `widget/` (except the reader widgets below) |
+| D2 sources / RSS / web | `pages/source/`, `pages/rss/`, `pages/rss_page.dart`, `pages/web/` (keep `nwebview.dart` working), `pages/scanner/`, `pages/qread/`, `qread/` |
+| F reader UI | `pages/read/`, `pages/txtrule/`, `pages/replace/`, `pages/highlight/`, `pages/image/`, `pages/video/`, `pages/setting/read_setting_page.dart`, `widget/read/`, `widget/pageflip/`, `widget/bookfx/`, `widget/slider/`, `widget/note_sheet.dart`, `widget/select_all_paragraph.dart`, `widget/delayed_selection_area.dart`, and the unfinished parts of `read/` |
 | E extras | `pages/setting/`, `pages/theme/`, `theme/`, `ai/`, `pages/tts/`, `util/audio/`, `pages/webdav/`, `data/cloud/`, `pages/user/`, `pages/me_page.dart`, `pages/about_page.dart` |
