@@ -1,0 +1,292 @@
+// pages/read/pages/comic_view.dart — the comic reader (original `_ComicViewState`, 152 functions): the images of a chapter one below
+// the other, the next chapter appended when the end is reached, tap for the menu (上一话 / 下一话 / 目录 / day-night), progress saved as
+// the scrolled fraction of the chapter. Strings: 漫画 · 内容加载中... · 目录 · 章节列表为空 · 上一话 · 下一话 · 正在前往下一章 · 进度 ·
+// 预加载图片时出错:  · 已切换到白天模式 / 已切换到夜间模式 · 当前章节超出目录总章节，请前往目录重新选择章节 · 初始化失败: .
+// Images come from the chapter content (image blocks: EPUB images, `<img>` of a source); a source's `imageDecode` script can be applied
+// through [ComicView.imageBytes] (the app points it at `SourceApi.decodeImage`).
+// TODO(asm comic_view): two-page mode (`two`), smart crop (`smart`), menu slider type (`menuSliderType2`) are not ported.
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:flutter/material.dart';
+
+import '../../../models/book.dart';
+import '../../../models/bookchapter.dart';
+import '../../../read/api/readapi.dart';
+import '../../../util/toast.dart';
+import '../../image/gallery_viewer_page.dart';
+import 'novel_view.dart' show ChapterListLoader;
+
+class ComicView extends StatefulWidget {
+  final Book book;
+  final List<BookChapter>? chapters;
+  final int? chapterIndex;
+  final ChapterLoader loader;
+  final ChapterListLoader? chapterListLoader;
+
+  /// Downloads + decodes an image of a source (null = `Image.network`).
+  static Future<Uint8List> Function(Book book, BookChapter chapter, String url)? imageBytes;
+
+  const ComicView({super.key, required this.book, required this.loader, this.chapters, this.chapterIndex, this.chapterListLoader});
+
+  @override
+  State<ComicView> createState() => ComicViewState();
+}
+
+class _ComicChapter {
+  final int index;
+  final String title;
+  final List<String> images;
+  const _ComicChapter(this.index, this.title, this.images);
+}
+
+class ComicViewState extends State<ComicView> {
+  late ReadApi _api;
+  List<BookChapter> _chapters = [];
+  final List<_ComicChapter> _loaded = [];
+  final ScrollController _scroll = ScrollController();
+  final Map<int, GlobalKey> _keys = {};
+  int _ci = 0;
+  bool _menu = false;
+  bool _night = false;
+  bool _loadingMore = false;
+  String? _error;
+  bool _ready = false;
+
+  int get chapterIndex => _ci;
+  int get imageCount => _loaded.fold(0, (n, c) => n + c.images.length);
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_onScroll);
+    _init();
+  }
+
+  @override
+  void dispose() {
+    _save();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  Future<void> _init() async {
+    try {
+      var list = widget.chapters;
+      if (list == null || list.isEmpty) list = await widget.chapterListLoader?.call(widget.book) ?? const [];
+      _chapters = List.of(list);
+      if (_chapters.isEmpty) {
+        setState(() => _error = '章节列表为空');
+        return;
+      }
+      _api = ReadApi(widget.book, chapters: _chapters, loader: widget.loader);
+      var start = widget.chapterIndex ?? widget.book.durChapterIndex;
+      if (start < 0 || start >= _chapters.length) {
+        Toast.show('当前章节超出目录总章节，请前往目录重新选择章节');
+        start = 0;
+      }
+      await _open(start, progress: widget.chapterIndex == null ? widget.book.durChapterPos : 0);
+    } catch (e) {
+      if (mounted) setState(() => _error = '初始化失败: $e');
+    }
+  }
+
+  Future<_ComicChapter> _load(int i) async {
+    final rc = await _api.loadChapter(i);
+    final images = <String>[
+      for (final b in rc.content.blocks)
+        if (b.isImage && b.runs.first.href.isNotEmpty) b.runs.first.href,
+    ];
+    return _ComicChapter(i, rc.title, images);
+  }
+
+  Future<void> _open(int i, {double progress = 0}) async {
+    setState(() {
+      _ready = false;
+      _error = null;
+    });
+    try {
+      final c = await _load(i);
+      if (!mounted) return;
+      setState(() {
+        _loaded
+          ..clear()
+          ..add(c);
+        _ci = i;
+        _ready = true;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scroll.hasClients && progress > 0) _scroll.jumpTo(_scroll.position.maxScrollExtent * progress.clamp(0, 1));
+      });
+      await _save();
+    } catch (e) {
+      if (mounted) setState(() => _error = '发生错误: $e');
+    }
+  }
+
+  void _onScroll() {
+    if (!_scroll.hasClients || _loaded.isEmpty) return;
+    final p = _scroll.position;
+    if (p.pixels > p.maxScrollExtent - 600) _appendNext();
+    // The chapter whose header is above the viewport top is the current one.
+    var cur = _loaded.first.index;
+    for (final c in _loaded) {
+      final ctx = _keys[c.index]?.currentContext;
+      final box = ctx?.findRenderObject() as RenderBox?;
+      if (box == null || !box.attached) continue;
+      if (box.localToGlobal(Offset.zero).dy <= 80) cur = c.index;
+    }
+    if (cur != _ci) {
+      setState(() => _ci = cur);
+      _save();
+    }
+  }
+
+  Future<void> _appendNext() async {
+    final next = _loaded.last.index + 1;
+    if (_loadingMore || next >= _chapters.length) return;
+    _loadingMore = true;
+    try {
+      final c = await _load(next);
+      if (mounted) setState(() => _loaded.add(c));
+    } catch (e) {
+      Toast.show('预加载图片时出错: $e');
+    } finally {
+      _loadingMore = false;
+    }
+  }
+
+  Future<void> _save() async {
+    if (!_ready || _chapters.isEmpty) return;
+    double pos = 0;
+    if (_scroll.hasClients && _loaded.length == 1 && _scroll.position.maxScrollExtent > 0) {
+      pos = (_scroll.offset / _scroll.position.maxScrollExtent).clamp(0, 1);
+    }
+    try {
+      await _api.saveProgress(chapterIndex: _ci, pos: pos);
+    } catch (_) {}
+  }
+
+  Widget _image(BookChapter chapter, String src) {
+    final hook = ComicView.imageBytes;
+    Widget err(BuildContext _, Object _, StackTrace? _) => const SizedBox(height: 200, child: Center(child: Icon(Icons.broken_image)));
+    if (src.startsWith('http')) {
+      if (hook != null) {
+        return FutureBuilder<Uint8List>(
+          future: hook(widget.book, chapter, src),
+          builder: (context, s) => s.hasData
+              ? Image.memory(s.data!, width: double.infinity, fit: BoxFit.fitWidth)
+              : const SizedBox(height: 300, child: Center(child: CircularProgressIndicator())),
+        );
+      }
+      return Image.network(src, width: double.infinity, fit: BoxFit.fitWidth, errorBuilder: err);
+    }
+    return Image.file(File(src), width: double.infinity, fit: BoxFit.fitWidth, errorBuilder: err);
+  }
+
+  void _catalog() {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => ListView.builder(
+        itemCount: _chapters.length,
+        itemBuilder: (_, i) => ListTile(
+          selected: i == _ci,
+          title: Text(_chapters[i].name),
+          onTap: () {
+            Navigator.pop(ctx);
+            _open(i);
+          },
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = _night ? Colors.black : Colors.white;
+    Widget body;
+    if (_error != null) {
+      body = Center(child: Text(_error!, style: TextStyle(color: _night ? Colors.white70 : Colors.black87)));
+    } else if (!_ready) {
+      body = const Center(child: Text('内容加载中...'));
+    } else {
+      final children = <Widget>[];
+      for (final c in _loaded) {
+        final chapter = _chapters[c.index];
+        children.add(Padding(
+          key: _keys.putIfAbsent(c.index, GlobalKey.new),
+          padding: const EdgeInsets.all(8),
+          child: Text(c.title, style: TextStyle(color: _night ? Colors.white54 : Colors.black54)),
+        ));
+        for (var k = 0; k < c.images.length; k++) {
+          children.add(GestureDetector(
+            onLongPress: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => GalleryViewerPage(images: c.images, initialIndex: k)),
+            ),
+            child: _image(chapter, c.images[k]),
+          ));
+        }
+      }
+      if (_loaded.last.index + 1 >= _chapters.length) {
+        children.add(const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('已经到底了'))));
+      }
+      body = ListView(controller: _scroll, children: children);
+    }
+    final title = _chapters.isEmpty || _ci >= _chapters.length ? widget.book.name : _chapters[_ci].name;
+    return Scaffold(
+      backgroundColor: bg,
+      body: Stack(children: [
+        Positioned.fill(child: GestureDetector(onTap: () => setState(() => _menu = !_menu), child: body)),
+        if (_menu)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Material(
+              elevation: 4,
+              child: SafeArea(
+                bottom: false,
+                child: ListTile(
+                  leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.of(context).maybePop()),
+                  title: Text(widget.book.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+              ),
+            ),
+          ),
+        if (_menu)
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Material(
+              elevation: 4,
+              child: SafeArea(
+                top: false,
+                child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+                  TextButton(onPressed: _ci > 0 ? () => _open(_ci - 1) : null, child: const Text('上一话')),
+                  TextButton(onPressed: _catalog, child: const Text('目录')),
+                  TextButton(
+                    onPressed: () {
+                      setState(() => _night = !_night);
+                      Toast.show(_night ? '已切换到夜间模式' : '已切换到白天模式');
+                    },
+                    child: Text(_night ? '白天' : '夜间'),
+                  ),
+                  TextButton(
+                    onPressed: _ci + 1 < _chapters.length
+                        ? () {
+                            Toast.show('正在前往下一章');
+                            _open(_ci + 1);
+                          }
+                        : null,
+                    child: const Text('下一话'),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+      ]),
+    );
+  }
+}
