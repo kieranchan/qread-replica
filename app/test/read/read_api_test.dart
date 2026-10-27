@@ -1,4 +1,5 @@
 // Per-book storage (BookContent / BookRules / BookHight / BookAi / BookMark), ReadApi (chapter loading, purification, progress, history).
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -16,6 +17,7 @@ import 'package:newread/read/api/read_file_store.dart';
 import 'package:newread/read/api/read_progress_remote.dart';
 import 'package:newread/read/api/read_storage_root.dart';
 import 'package:newread/read/api/readapi.dart';
+import 'package:newread/read/util/cache_book.dart';
 import 'package:newread/read/util/chapter_content.dart';
 import 'package:newread/read/util/replace_rules.dart';
 
@@ -380,6 +382,59 @@ void main() {
       expect(posts[1].$2['readchapter'], '1,2');
       final bad = ServerReadProgressRemote(post: (u, b) async => {'code': -1, 'errorMsg': 'nope'}, enabled: () => true);
       expect(bad.autoPos(book, 0, 0), throwsA(anything));
+    });
+  });
+
+  group('CacheBook', () {
+    test('caches a range, skips cached / volume / paid chapters, reports progress and failures', () async {
+      final chapters = _chapters(8);
+      chapters[1].isVolume = true;
+      chapters[2].isPay = true;
+      final book = _webBook();
+      final started = <int>[];
+      final api = ReadApi(book, chapters: chapters, loader: (c) async {
+        started.add(c.index);
+        if (c.index == 5) throw StateError('下载失败');
+        if (c.index == 6) return ChapterContent.fromText('  ');
+        return ChapterContent.fromText('${c.name}正文');
+      });
+      await api.bookContent.saveToLocal(book.bookUrl, 4, '已缓存');
+      final progress = <String>[];
+      final res = await CacheBook(api).cacheRange(7, 0, onProgress: (d, t, i) => progress.add('$d/$t'));
+      expect(res.cached, [0, 3, 7]);
+      expect(res.skipped, [1, 2, 4]);
+      expect(res.failed.keys.toSet(), {5, 6});
+      expect(res.failed[6], '正文为空');
+      expect(started.contains(4), isFalse);
+      expect(progress.length, 5);
+      expect(progress.last, '5/5');
+      expect(await api.bookContent.readFromLocal(book.bookUrl, 3), '第4章正文');
+      expect(CacheBook.isRunning(book.bookUrl), isFalse);
+    });
+
+    test('a second task for the same book is refused while one runs; cancel stops early', () async {
+      final book = _webBook();
+      final gate = Completer<void>();
+      final api = ReadApi(book, chapters: _chapters(6), loader: (c) async {
+        await gate.future;
+        return ChapterContent.fromText('x${c.index}');
+      });
+      final first = CacheBook(api, concurrent: 1).cacheRange(0, 5, isCancelled: () => gate.isCompleted && api.bookContent.existsSync(book.bookUrl, 1));
+      await Future<void>.delayed(Duration.zero);
+      expect(CacheBook.isRunning(book.bookUrl), isTrue);
+      await expectLater(CacheBook(api).cacheRange(0, 1), throwsA(isA<StateError>().having((e) => e.message, 'message', '已有缓存任务正在进行中')));
+      gate.complete();
+      final res = await first;
+      expect(res.cancelled, isTrue);
+      expect(res.cached.length, lessThan(6));
+    });
+
+    test('local books have nothing to download', () async {
+      final book = Book(bookUrl: 'books/a.txt', origin: ReadApi.localOrigin);
+      final api = ReadApi(book, chapters: _chapters(3), loader: (c) async => throw StateError('must not be called'));
+      final res = await CacheBook(api).cacheRange(0, 2);
+      expect(res.cached, isEmpty);
+      expect(res.skipped, [0, 1, 2]);
     });
   });
 }

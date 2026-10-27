@@ -2,12 +2,14 @@
 
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:newread/models/back_ground.dart';
 import 'package:newread/read/api/calculate/calculate_hapter.dart';
 import 'package:newread/read/model/line.dart';
 import 'package:newread/read/model/mykey.dart';
 import 'package:newread/read/model/mypage.dart';
 import 'package:newread/read/model/page.dart';
 import 'package:newread/read/setting/read_layout_style.dart';
+import 'package:newread/read/util/content_painter.dart';
 import 'package:newread/read/util/chapter_content.dart';
 
 String _sampleText({int paragraphs = 40}) {
@@ -246,5 +248,95 @@ void main() {
     expect(CalculateChapter.textLengthOf(pages), 20);
     final empty = engine.layout(size: size, blocks: const []);
     expect(empty.length, 1);
+  });
+
+  test('ReadLayoutStyle.fromBackGround maps the stored theme', () {
+    final bg = BackGround(
+      fontSize: 20,
+      lineHeightN: 1.8,
+      letterSpacing: 0.5,
+      fontWeight: 700,
+      kong: 3,
+      paragraphSpacing: 12,
+      titlefontSize: 30,
+      titleAlign: 1,
+      titleTopMargin: 8,
+      titleBottomMargin: 16,
+      leftMargin: 14,
+      rightMargin: 15,
+      topMargin: 5,
+      topSafeDistance: 40,
+      bottomMargin: 6,
+      bottomSafeDistance: 20,
+      fen: 2,
+      fontFamily: 'Foo',
+    );
+    final s = ReadLayoutStyle.fromBackGround(bg, headerHeight: 10, footerHeight: 12);
+    expect(s.fontSize, 20);
+    expect(s.lineHeight, 1.8);
+    expect(s.fontWeight, FontWeight.w700);
+    expect(s.indent, 3);
+    expect(s.titleAlign, TextAlign.center);
+    expect(s.columns, 2);
+    expect(s.fontFamily, 'Foo');
+    expect(s.padding, const EdgeInsets.fromLTRB(14, 55, 15, 38));
+    // unset (zero) values fall back to sane defaults
+    final d = ReadLayoutStyle.fromBackGround(BackGround());
+    expect(d.fontSize, 18);
+    expect(d.lineHeight, 1.6);
+    expect(d.fontWeight, FontWeight.w400);
+    expect(d.columns, 1);
+    expect(d.signature, isNot(s.signature));
+  });
+
+  test('a long chapter lays out quickly', () {
+    final content = ChapterContent.fromText(_sampleText(paragraphs: 600));
+    final sw = Stopwatch()..start();
+    final pages = engine.layout(size: size, blocks: content.blocks, title: 'T');
+    sw.stop();
+    expect(pages.length, greaterThan(100));
+    expect(sw.elapsedMilliseconds, lessThan(20000));
+    _checkInvariants(pages, content, size, _style);
+  });
+
+  test('painter reproduces the measured lines, the extra line height of a page fills it, offsets map back', () {
+    final content = ChapterContent.fromText(_sampleText(paragraphs: 12));
+    final pages = engine.layout(size: size, blocks: content.blocks, title: '标题');
+    final width = engine.contentSize(size).width;
+    final area = engine.contentSize(size).height;
+    for (final p in pages) {
+      for (final c in p.contents) {
+        if (c.isImage) continue;
+        final isTitle = c.lines.first.paragraphIndex < 0;
+        final tp = ReadTextBuilder.painter(c, _style, width, color: const Color(0xFF000000));
+        // same number of lines, same height as the engine measured (title: block margins are extra)
+        expect(tp.computeLineMetrics().length, c.lines.length, reason: 'lines of "${c.text}"');
+        final margins = isTitle ? _style.titleTopMargin + _style.titleBottomMargin : 0;
+        expect(tp.height + margins, closeTo(c.height, 0.01));
+        expect(tp.plainText, c.text);
+        tp.dispose();
+      }
+      // a stretched page: contents drawn with the page's extra line height add up to the content area
+      if (p.lineheight > 0) {
+        var y = 0.0;
+        for (var i = 0; i < p.contents.length; i++) {
+          final c = p.contents[i];
+          final isTitle = c.lines.first.paragraphIndex < 0;
+          final tp = ReadTextBuilder.painter(c, _style, width, color: const Color(0xFF000000));
+          y += tp.height + (isTitle ? _style.titleTopMargin + _style.titleBottomMargin : p.lineheight * c.lines.length) + (i > 0 ? _style.paragraphSpacing : 0);
+          tp.dispose();
+        }
+        expect(y, closeTo(area, 0.01));
+      }
+    }
+    // offsets: indent has no source offset, the first character maps to the paragraph start
+    final c = pages.first.contents.firstWhere((c) => c.lines.first.paragraphIndex >= 0);
+    expect(ReadTextBuilder.sourceOffset(c, 0), -1);
+    expect(ReadTextBuilder.sourceOffset(c, 1), -1);
+    final first = c.lines.first.clines.first;
+    expect(ReadTextBuilder.sourceOffset(c, 2), first.start);
+    expect(ReadTextBuilder.flatOffset(c, first.start), 2);
+    expect(ReadTextBuilder.sourceRange(c, 0, 5), (start: first.start, end: first.start + 3));
+    expect(ReadTextBuilder.sourceRange(c, 0, 2), isNull);
   });
 }
