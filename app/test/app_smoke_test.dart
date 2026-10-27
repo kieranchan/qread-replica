@@ -7,6 +7,7 @@ import 'package:newread/common/common.dart';
 import 'package:newread/init/appinit.dart';
 import 'package:newread/init/wiring.dart';
 import 'package:newread/main.dart';
+import 'package:newread/pages/main_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -25,6 +26,8 @@ void main() {
     await tester.tap(find.byKey(const Key('privacy_agree')));
     await tester.pumpAndSettle();
 
+    await MainTabs.save(MainTabs.configured(), found: true, ding: true); // 订阅 is off by default, as in the original
+    await tester.pumpAndSettle();
     for (final tab in ['书架', '发现', '探索', '订阅', '我的']) {
       await tester.tap(find.byKey(Key('tab_$tab')));
       await tester.pump(const Duration(milliseconds: 500));
