@@ -192,6 +192,30 @@ void main() {
     expect(result, 'https://q.test/s.json');
   });
 
+  testWidgets('scanner: a photo from the library is analysed (url accepted, other text rejected)', (t) async {
+    final codes = <String>['plain text'];
+    final pick = MobileScannerPage.pickImagePath;
+    addTearDown(() => MobileScannerPage.pickImagePath = pick);
+    MobileScannerPage.pickImagePath = () async => '/tmp/qr.png';
+    MobileScannerPage.analyzeImage = (c, path) async => path == '/tmp/qr.png' ? codes : const [];
+    addTearDown(() => MobileScannerPage.analyzeImage = null);
+    Object? result = 'none';
+    await t.pumpWidget(app(Pusher(const MobileScannerPage(), (r) => result = r)));
+    await t.tap(find.byKey(const Key('push')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('scanner_pick')));
+    await t.pump();
+    await t.pump();
+    expect(find.text('检测到的二维码不是有效的URL: plain text'), findsOneWidget);
+    codes
+      ..clear()
+      ..add('https://q.test/rss.json');
+    await t.pump(const Duration(seconds: 3));
+    await t.tap(find.byKey(const Key('scanner_pick')));
+    await t.pumpAndSettle();
+    expect(result, 'https://q.test/rss.json');
+  });
+
   // last: the search page reads its history while building (see support.dart `act`)
   testWidgets('browser address bar: search page, words go to the search engine and into the history', (t) async {
     await t.runAsync(() => Chromemarks.load());
