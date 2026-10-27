@@ -96,8 +96,18 @@ class _BookListState extends State<BookList2> {
     }
   }
 
+  bool _loadRequested = false;
+
   bool _onScroll(ScrollNotification n) {
-    if (widget.onLoadMore != null && widget.hasMore && !widget.isLoading && n.metrics.extentAfter < 300) widget.onLoadMore!();
+    final more = widget.onLoadMore;
+    if (more != null && widget.hasMore && !widget.isLoading && !_loadRequested && n.metrics.extentAfter < 300) {
+      // scroll notifications can arrive during layout: ask for the next page after this frame
+      _loadRequested = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadRequested = false;
+        if (mounted) more();
+      });
+    }
     return false;
   }
 
@@ -236,7 +246,6 @@ class _BookListState extends State<BookList2> {
       final cols = ShelfPrefs.listColumns > 0 ? ShelfPrefs.listColumns : (w / (420 * scale)).floor().clamp(1, 4);
       if (cols == 1) {
         list = ListView.builder(
-          key: const PageStorageKey('book_list'),
           controller: widget.scrollController,
           padding: EdgeInsets.only(bottom: widget.bottom),
           physics: const AlwaysScrollableScrollPhysics(),

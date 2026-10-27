@@ -46,6 +46,32 @@ class EngineBookSearchService implements BookSearchService {
     return [for (final m in Sourcedata.enabledRaw) BookSource.fromJson(Map<String, dynamic>.from(m))];
   }
 
+  /// Engine books seen in search / explore / info results, keyed by origin + bookUrl. `models/book.dart` has no `variable`
+  /// field, so the `@put` variables a search rule stores (e.g. `{bid}` used by `@get:{bid}` in the toc url) would be lost by the
+  /// model round trip; the next engine call for the same book starts from the cached engine object instead.
+  /// TODO: persist `variable` with the shelf book (needs a field in models/book.dart, data area).
+  final Map<String, wb.Book> _engineBooks = {};
+
+  static String _key(String origin, String bookUrl) => '$origin\u0001$bookUrl';
+
+  Book _remember(wb.Book b) {
+    if (_engineBooks.length > 500) _engineBooks.clear();
+    _engineBooks[_key(b.origin, b.bookUrl)] = b;
+    return _model(b);
+  }
+
+  wb.Book _engineBook(Book b) {
+    final cached = _engineBooks[_key(b.origin, b.bookUrl)];
+    if (cached == null) return wb.Book.fromModel(b);
+    // shelf fields may have changed since the engine object was cached
+    cached
+      ..durChapterIndex = b.durChapterIndex
+      ..durChapterTitle = b.durChapterTitle.isEmpty ? cached.durChapterTitle : b.durChapterTitle
+      ..reverseCatalog = b.reverseCatalog;
+    if (b.tocUrl.isNotEmpty) cached.tocUrl = b.tocUrl;
+    return cached;
+  }
+
   static Book _model(wb.Book b) => b.toModel()..bookgroup = '';
 
   /// Copies the shelf-only fields of [from] onto the fresh engine result [to].
@@ -65,7 +91,7 @@ class EngineBookSearchService implements BookSearchService {
 
   Stream<List<Book>> _searchMany(List<BookSource> list, String key, bool Function(Book b) keep) {
     return SourceApi.searchAll(list, key, concurrency: concurrency, onlyEnabled: false)
-        .map((r) => [for (final s in r.books) _model(s.toBook())].where(keep).toList());
+        .map((r) => [for (final s in r.books) _remember(s.toBook())].where(keep).toList());
   }
 
   @override
@@ -80,22 +106,22 @@ class EngineBookSearchService implements BookSearchService {
   @override
   Future<List<Book>> explore(Source source, String url, int page) async {
     final list = await SourceApi.explore(_engineSource(source), url, page: page);
-    return [for (final s in list) _model(s.toBook())];
+    return [for (final s in list) _remember(s.toBook())];
   }
 
   @override
   Future<Book> bookInfo(Book book) async {
     final src = _sourceForBook(book);
-    final eb = wb.Book.fromModel(book);
-    final r = await SourceApi.bookInfo(src, eb);
-    return _keepShelfFields(book, _model(r));
+    final r = await SourceApi.bookInfo(src, _engineBook(book));
+    return _keepShelfFields(book, _remember(r));
   }
 
   @override
   Future<List<BookChapter>> chapters(Book book) async {
     final src = _sourceForBook(book);
-    var eb = wb.Book.fromModel(book);
-    if (eb.tocUrl.isEmpty) eb = await SourceApi.bookInfo(src, eb);
+    var eb = _engineBook(book);
+    if (eb.tocUrl.isEmpty || eb.tocUrl.contains('@get:')) eb = await SourceApi.bookInfo(src, eb);
+    _engineBooks[_key(eb.origin, eb.bookUrl)] = eb;
     final list = await SourceApi.chapters(src, eb);
     return [for (final c in list) c.toModel()];
   }
@@ -103,7 +129,7 @@ class EngineBookSearchService implements BookSearchService {
   @override
   Future<String> content(Book book, BookChapter chapter) {
     final src = _sourceForBook(book);
-    return SourceApi.content(src, wb.Book.fromModel(book), wb.BookChapter.fromModel(chapter, bookUrl: book.bookUrl));
+    return SourceApi.content(src, _engineBook(book), wb.BookChapter.fromModel(chapter, bookUrl: book.bookUrl));
   }
 
   @override
