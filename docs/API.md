@@ -87,9 +87,10 @@ Item names seen with `getItemJson`/`setItemJsonFile`: `tts_engines`, `exploratio
 ### Result codes and the sync flow [code unless marked]
 * `code == 0` success, `code == -5` "nothing stored" (the getters then return `""`), any other code is a failure: the cloud-sync flags
   `0x1f94/0x1f98` are switched off, a toast shows `errorMsg`, and the update-url getters return `"-1"`.
-* Bookshelf sync (`0xe6766c`): `result = get<Kind>Updateurl(etag = last known etag)`; the sync proceeds only when `result` is neither `""` nor
-  `"-1"`, then it fetches the list (`getBooks?st=1`, a JSON string of a book list keyed by `bookUrl`), merges by `phone_book`/timestamps and
-  uploads. So the server answers `data = ""` when the client's etag is current and a non-empty value (the server etag) when newer data exists **[infer]**.
+* Bookshelf sync (`0xe6766c`): `result = get<Kind>Updateurl(etag = last known etag)`; on the merge branch it fetches the list
+  (`getBooks?st=1`, a JSON string of a book list keyed by `bookUrl`), merges by `phone_book`/timestamps and uploads. Read with the Dart bool encoding (`true` = NULL+0x20, so `tbz w0,#4` jumps on `true`), the merge branch is taken when the
+  result is `""` or `"-1"`; any other value skips it and is stored in static `0x1f4c`. So the server answers **the etag (non-empty) when
+  the client is current and `""` when newer data exists** (`-5` = nothing stored also yields `""`). Verified twice (data agent and lead).
 * Error text for an expired token is `NEED_LOGIN` (`0xe1f6c` maps it to `登陆已过期`) **[infer]**.
 
 ### Session state [code]

@@ -274,7 +274,8 @@ export function createUserApi(svc, cfg, limiter = new RateLimiter()) {
       const { user } = cloud(c);
       const b = svc.getBlob(user.id, L.kind);
       if (!b) return noData();
-      return ok(String(c.p.etag ?? '') === b.etag ? '' : b.etag); // non-empty = newer data exists
+      // as the app reads it (original 0xe6766c): the etag when the client is current, '' when newer data exists -> merge
+      return ok(String(c.p.etag ?? '') === b.etag ? b.etag : '');
     };
     h[L.list] = (c) => {
       const { user } = cloud(c);

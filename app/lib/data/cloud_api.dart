@@ -2,7 +2,7 @@
 // fake and the app plugs in `UserApi` (api/userapi.dart, docs/API.md section 1 "Cloud sync").
 //
 // Result conventions (identical to `UserApi`): [etag] / [list] / [getItemJson] / [getItemMd5] return `''` when the server stores
-// nothing; [updateUrl] returns `''` when the client's etag is current, the server etag when newer data exists and `'-1'` on
+// nothing; [updateUrl] returns the server etag when the client's etag is current, `''` when newer data exists (or nothing is stored) and `'-1'` on
 // failure (the sync switches are turned off by `UserApi` itself in that case). Real failures are thrown.
 import '../api/userapi.dart';
 

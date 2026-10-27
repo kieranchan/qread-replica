@@ -62,14 +62,15 @@ void main() {
 
     final again = await BookSelfN.syncCloud(api: cloud);
     expect(again!.nothingToDo, isTrue);
-    expect((cloud.uploads, cloud.listCalls), (1, 0));
+    // the first sync listed the (empty) cloud once, as the original does when the update-url answer is ''; the second one is current
+    expect((cloud.uploads, cloud.listCalls), (1, 1));
 
     // a local change is pushed without downloading anything
     await BookSelfN.setGroup('u1', 'x');
     final third = await BookSelfN.syncCloud(api: cloud);
     expect((third!.pushed, third.pulled), (true, false));
     expect(cloud.books().first['bookgroup'], 'x');
-    expect((cloud.uploads, cloud.listCalls), (2, 0));
+    expect((cloud.uploads, cloud.listCalls), (2, 1));
   });
 
   test('a second device pulls the shelf; merging identical data does not upload again', () async {

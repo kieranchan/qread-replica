@@ -7,7 +7,8 @@ import 'package:newread/data/cloud_api.dart';
 
 String md5Of(String s) => crypto.md5.convert(utf8.encode(s)).toString();
 /// In-memory stand-in for the owner's server (docs/API.md "Cloud sync"): etag = md5 of the stored list,
-/// update-url answers `''` when the client's etag is current and the server etag when newer data exists.
+/// update-url answers like the original expects: the server etag when the client's etag is current, `''` when newer data exists
+/// or nothing is stored, `'-1'` on failure.
 class FakeCloud implements CloudApi {
   final Map<CloudKind, String> lists = {};
   final Map<String, String> items = {};
@@ -35,7 +36,7 @@ class FakeCloud implements CloudApi {
     if (failUpdate) return '-1';
     final e = _etag(kind);
     if (e.isEmpty) return '';
-    return etag == e ? '' : e;
+    return etag == e ? e : '';
   }
 
   @override

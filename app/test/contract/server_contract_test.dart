@@ -143,8 +143,8 @@ void main() {
     await UserApi.setItemJsonFile('books', books);
     final etag = await UserApi.cloudEtag(CloudKind.books);
     expect(etag, md5Hex(books));
-    expect(await UserApi.cloudUpdateUrl(CloudKind.books, etag), '', reason: 'client is current');
-    expect(await UserApi.cloudUpdateUrl(CloudKind.books, 'stale'), etag, reason: 'newer data exists');
+    expect(await UserApi.cloudUpdateUrl(CloudKind.books, etag), etag, reason: 'client is current: the server etag');
+    expect(await UserApi.cloudUpdateUrl(CloudKind.books, 'stale'), '', reason: 'newer data exists: empty = merge');
     expect(await UserApi.cloudList(CloudKind.books), books);
     for (final k in CloudKind.values) {
       expect(await UserApi.cloudUpdateUrl(k, 'x'), anyOf('', isNotEmpty));

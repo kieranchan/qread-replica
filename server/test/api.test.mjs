@@ -176,8 +176,8 @@ test('cloud sync: items, md5, lists and etag/update-url flow', async () => {
   const etag = (await post('/getEtag', t)).json.data;
   assert.equal(etag, md5(books));
   assert.equal((await post('/getBooks', t)).json.data, books);
-  assert.equal((await post('/getBookUpdateurl', { ...t, etag })).json.data, ''); // up to date
-  assert.equal((await post('/getBookUpdateurl', { ...t, etag: 'old' })).json.data, etag); // newer exists
+  assert.equal((await post('/getBookUpdateurl', { ...t, etag })).json.data, etag); // up to date: the etag
+  assert.equal((await post('/getBookUpdateurl', { ...t, etag: 'old' })).json.data, ''); // newer data: '' -> merge
   // item names are validated
   assert.notEqual((await post('/getItemJson', { ...t, item: '../etc/passwd' })).json.code, 0);
   // data of one user is not visible to another

@@ -219,7 +219,8 @@ abstract class UserApi {
     return '${r['data'] ?? ''}';
   }
 
-  /// '' = nothing new / nothing stored, '-1' = failure, otherwise the server etag of newer data.
+  /// As the original reads it (0xe6766c): '' = the cloud has newer data (or nothing stored) -> merge, '-1' = failure, any other
+  /// value = the client's etag is current (the server etag).
   static Future<String> cloudUpdateUrl(CloudKind k, String etag) async {
     final r = await _call(k.updateCall, params: {'etag': etag});
     final c = _code(r);

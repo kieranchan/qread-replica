@@ -5,9 +5,11 @@
 // The original's bookshelf flow (0xe6766c): switch check -> `getBookUpdateurl(etag)` -> `更新书架` -> list -> merge -> upload ->
 // status check (`获取云端信息失败` / `云端书架同步失败`).
 //
-// Replica flow (the owner's server answers `''` = current, the server etag = newer data, `'-1'` = failure):
+// Update-url result, as the original reads it (0xe6766c: `== "-1"` or `== ""` enters the 更新书架 merge branch, any other value
+// skips it and is remembered in static 0x1f4c): `'-1'` = failure, `''` = the cloud has newer data or nothing yet, any other value =
+// the client's etag is current (the value is the server etag). The owner's server answers exactly that.
 //   1. `updateUrl(kind, lastEtag)`; `'-1'` -> [CloudSyncException] `获取云端信息失败`
-//   2. newer data (non-empty) -> download the list and let the caller merge it into the local list
+//   2. `''` -> download the list (if any) and let the caller merge it into the local list
 //   3. when the local list differs from what was last synchronised (or the cloud was empty / never synced) -> upload it
 //   4. store the cloud etag (prefs [etagKey]) and the md5 of the synchronised local text for the next dirty check
 import 'dart:convert';
@@ -123,12 +125,13 @@ abstract class CloudSync {
 
     var pulled = false;
     var localChanged = false;
-    var cloudEtag = upd.isNotEmpty ? upd : lastEtag;
-    if (upd.isNotEmpty) {
+    var cloudEtag = upd;
+    if (upd.isEmpty) {
       final text = await api.list(kind);
       if (text.isNotEmpty) {
         localChanged = await mergeRemote(text);
         pulled = true;
+        cloudEtag = await api.etag(kind);
       }
     }
 
