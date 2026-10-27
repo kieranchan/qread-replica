@@ -64,6 +64,13 @@ void main() {
     await binding.takeScreenshot('00_privacy');
     await tester.tap(find.byKey(const Key('privacy_agree')));
     await tester.pumpAndSettle();
+    // then the 沉浸光感 choice of the original (asked once)
+    await pumpUntil(tester, find.byKey(const Key('immersive_dialog')));
+    await binding.takeScreenshot('00b_immersive_light');
+    await tester.tap(find.byKey(const Key('immersive_2')));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byKey(const Key('immersive_ok')));
+    await tester.pumpAndSettle();
     await binding.takeScreenshot('00_shelf_empty');
     await tester.tap(find.byKey(const Key('tab_我的')));
     await tester.pumpAndSettle();
@@ -189,6 +196,9 @@ void main() {
     await softUntil(tester, find.text('星河旅人'), 'book on the shelf');
     await binding.takeScreenshot('16_shelf_with_book');
 
+    // 订阅 is hidden by default (as in the original); switch it on like the 底栏标签配置 sheet does
+    await tester.runAsync(() => MainTabs.save(MainTabs.configured(), found: true, ding: true));
+    await pumpFor(tester, const Duration(seconds: 1));
     for (final (tab, shot) in [('发现', '17_tab_discovery'), ('探索', '18_tab_explore'), ('订阅', '19_tab_rss')]) {
       await tester.tap(find.byKey(Key('tab_$tab')));
       await pumpFor(tester, const Duration(seconds: 3));
