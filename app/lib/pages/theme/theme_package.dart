@@ -15,8 +15,10 @@ import 'package:path/path.dart' as p;
 
 import '../../common/app_dirs.dart';
 import '../../data/fonts.dart';
+import '../../data/ground.dart';
 import '../../data/list_store.dart';
 import '../../data/theme.dart';
+import '../../models/back_ground.dart';
 import '../../models/font.dart';
 import '../../models/theme.dart';
 import '../../theme/theme_provider.dart';
@@ -35,8 +37,8 @@ abstract class ThemePackage {
   static String _norm(String name) => name.replaceAll('\\', '/');
 
   /// Imports a package. [expectLight] (null = any) is the mode of the manager tab the import was started from. Returns the
-  /// installed theme (fresh id).
-  static Future<ThemeModel> importBytes(List<int> bytes, {bool? expectLight}) async {
+  /// installed theme (fresh id unless [id] is given: plaza downloads keep `plaza_<id>` so 更新主题 replaces them in place).
+  static Future<ThemeModel> importBytes(List<int> bytes, {bool? expectLight, String? id, String? version}) async {
     Archive archive;
     try {
       archive = ZipDecoder().decodeBytes(bytes);
@@ -106,7 +108,8 @@ abstract class ThemePackage {
       await Fonts.add(Font(family: family, path: name));
     }
 
-    theme.id = newId();
+    theme.id = id ?? newId();
+    if (version != null && version.isNotEmpty) theme.version = version;
     final now = DateTime.now().millisecondsSinceEpoch;
     theme.createdAt ??= now;
     theme.updatedAt = now;
@@ -162,6 +165,46 @@ abstract class ThemePackage {
     final f = File(p.join(d.path, '${safe.isEmpty ? '主题' : safe}.qtheme'));
     await f.writeAsBytes(await exportBytes(theme), flush: true);
     return f;
+  }
+
+  /// 内置排版方案 of a plaza theme (layout file, 0x103e31c): a JSON list of reading layouts ([BackGround] maps, or `{data:[...]}`).
+  /// Background images embedded as data urls (`…base64;…` / `…base64,…`) are written to `<root>/images` (`正在上传背景图`); layouts
+  /// are added to `Ground` with fresh numbers. Returns the number imported. TODO(asm 0x103e31c): the original also downloads fonts
+  /// named by the layout (`尝试导入字体`, `/fonts/`); the replica keeps the font name and lets the reader fall back.
+  static Future<int> importLayouts(String text) async {
+    Object? v;
+    try {
+      v = jsonDecode(text);
+    } catch (_) {
+      throw const ThemePackageException('排版文件格式错误');
+    }
+    if (v is Map && v['data'] is List) v = v['data'];
+    if (v is Map) v = [v];
+    if (v is! List) throw const ThemePackageException('排版文件格式错误');
+    var n = 0;
+    for (final e in v) {
+      if (e is! Map) continue;
+      final m = Map<String, dynamic>.from(e);
+      for (final k in ['backgroundimage', 'backgroundimage2', 'backgroundimage3']) {
+        final s = '${m[k] ?? ''}';
+        final i = s.indexOf('base64');
+        if (i < 0) continue;
+        try {
+          final data = base64Decode(s.substring(i + 7).trim());
+          final name = '${crypto.md5.convert(data)}.jpg';
+          final d = await AppDirs.ensure('images');
+          final out = File(p.join(d.path, name));
+          if (!out.existsSync()) await out.writeAsBytes(data, flush: true);
+          m[k] = out.path;
+        } catch (_) {
+          m[k] = '';
+        }
+      }
+      m['name'] = 0;
+      await Ground.add(BackGround.fromJson(m));
+      n++;
+    }
+    return n;
   }
 
   /// Copies an image the user picked into `<root>/<dir>` under its md5 name; returns the stored relative path.
