@@ -20,6 +20,7 @@ import '../read/api/read_storage_root.dart';
 import '../storage/storage.dart';
 import '../theme/extras_init.dart';
 import '../util/legado/js_engines.dart';
+import 'glue_routes.dart';
 import 'reader_ai_adapter.dart';
 
 typedef RouteTable = Future<bool> Function(BuildContext context, String name, {Object? arguments});
@@ -41,7 +42,13 @@ abstract class Wiring {
   }
 
   /// Area route tables tried in order by `Nav.openNamed`; each returns true when it handled the name.
-  static final List<RouteTable> routeTables = [ExtrasRoutes.open, _readerRoutes, _shelfRoutes, SourcesArea.openSourcesRoute];
+  static final List<RouteTable> routeTables = [
+    ExtrasRoutes.open,
+    _readerRoutes,
+    _shelfRoutes,
+    SourcesArea.openSourcesRoute,
+    GlueRoutes.open,
+  ];
 
   /// Runs once after `AppInit.init()`.
   static Future<void> init() async {
