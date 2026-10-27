@@ -2,45 +2,47 @@
 
 Package name `newread`, like the original, so `lib/` paths mirror `package:newread/...` of the decompiled app
 (`analysis/skeleton/`). Bundle id `com.kieranchan.qreadreplica.newread`, display name 轻悦复刻, iOS 15+.
+Account / membership / cloud calls go to the owner's server (`../server`, live at `https://qread.forfine.me/`; override with
+`--dart-define=QREAD_BASE_URL=http://127.0.0.1:8920/`). Porting rules and the area map: `../docs/PORTING.md`.
 
-## Phase 1 status (account + membership)
-Implemented against the owner's server (`../server`, live at `https://qread.forfine.me/`; override with
-`--dart-define=QREAD_BASE_URL=http://127.0.0.1:8920/`):
+## What is in the app (status 2026-10-28)
+Five tabs in the original's default order (`bottomBarTabs`): 书架 · 发现 · 探索 · 订阅 · 我的, first-launch privacy dialog,
+"继续阅读" prompt, theme-driven tab bar.
 
-| File | What |
-| --- | --- |
-| `lib/api/userapi.dart` | every account / membership / cloud-sync call of the recovered contract (`docs/API.md`): login, register, getEmailCode, forgetPassword, getUserInfo, logout, cleanuser, updateNickname, updateAvatar, changePassword, devices, canOpenCloud, paynew/redeem, the five synced lists (etag / update-url / list), getItemJson / getItemMd5 / setItemJsonFile |
-| `lib/qread/http.dart` | POST helper (Dio, JSON body, multipart for files) |
-| `lib/data/user.dart` | `UserSession`: the statics (token, VIP flag, sync switches), prefs persistence under the original keys, `apply` / `restore` / `clear` / `refresh`, the "non-members get the cloud switches forced off" rule |
-| `lib/models/{userinfo,logindevice}.dart` | `Userinfo` (original slot order: JSON `id` is the session token, `vip` the membership text), `LoginDevice`, `Autodevice` |
-| `lib/storage/storage.dart`, `lib/common/common.dart`, `lib/init/appinit.dart` | prefs wrapper, API base / device id, start-up |
-| `lib/pages/` | `login_page`, `register_page` (the 6-digit code is an admin invite code), `forgot_password_page`, `me_page` (会员中心 entry, 立即开通), `user/user_setting_page`, `user/user_edit_page`, `user/cloud_setting_page` (member-only switches), `web/nwebview.dart` (opens `<base>vip?tockenid=`), `main_page` shell |
-| `lib/util/vip.dart` | `Vip.require()` — the one-line member gate (`此功能为会员功能`) |
+| Area | Where | What |
+| --- | --- | --- |
+| Account + membership | `api/userapi.dart`, `data/user.dart`, `pages/{login,register,forgot_password}_page.dart`, `pages/user/`, `util/vip.dart` | login/register (invite code), 会员中心 web view, member gates (`Vip.require()`), cloud switches, devices, self-check |
+| Data layer | `storage/`, `data/`, `common/`, `init/appinit.dart`, `models/` | prefs as text + file store `<root>/item/<md5>.txt`, every list manager, three-way cloud sync |
+| Book-source engine | `util/webbook/`, `util/legado/`, `util/html/`, `util/http.dart`, `api/sourceapi.dart`, `api/rssapi.dart` | Legado rules (CSS/jsoup, XPath, JSONPath, regex, JS via JavaScriptCore on iOS / Dart interpreter on the host), search, explore, info, toc, content, RSS, debugger |
+| Reading core | `read/`, `util/epub/`, `util/image/`, `util/cahce/` | TXT (charset + TOC rules) / EPUB / MOBI import, layout + paging, per-book stores, progress, history, bookmarks, cache |
+| Reader UI | `pages/read/`, `pages/{txtrule,replace,highlight,image,video}/`, `widget/{read,pageflip}/` | paging modes, menus, settings, selection → highlight / note, listening (system TTS), AI chat sheet, comic / audio views, rule pages |
+| Shelf / search / discovery | `pages/bookshelf_page.dart`, `pages/discovery_page*.dart`, `pages/{book,search,history,exploration}/`, `widget/` | shelf (groups, grid/list, import, batch edit, cloud sync), detail, catalog, change source, downloads, multi-source search, discovery, 探索 templates |
+| Sources / RSS / web | `pages/source/`, `pages/rss*`, `pages/web/`, `pages/scanner/`, `qread/` | source manager + editors + debugger (+ local debug server :5858), 订阅 tab, in-app browser, binding to the user's own 轻阅读 backend |
+| Extras | `theme/`, `pages/{theme,setting,tts,webdav,fonts}/`, `ai/`, `util/audio/`, `data/cloud/`, `pages/me_page.dart` | themes + theme plaza, fonts, backgrounds, backup/restore (zip, WebDAV), AI models (OpenAI-compatible), HTTP TTS engines, WebDAV, statistics, Wi-Fi transfer (:5757) |
+| Lead glue | `main.dart`, `init/wiring.dart`, `init/glue_routes.dart`, `init/reader_ai_adapter.dart`, `common/nav.dart`, `pages/main_page.dart` | `Nav` hooks and route tables between the areas, tabs, start-up |
 
-Deviations from the original, on purpose: the 会员中心 page is a standard WebView (the original uses WebF) because the
-owner's page is plain HTML; `appid` falls back to a stored random id when the device plugin has none; `UserSession` also persists the vip text
-(`vipText`) for offline display. Everything else in the original (book shelf, reader, sources, themes, TTS, AI, ...) is Phase 2.
+Not available in this build (pages keep the original strings and say so): 时光源 execution, sherpa-onnx local TTS, Baidu/Weiyun
+drives, in-app video playback, camera QR scanning (manual input instead), app update check, 沉浸光感 effects.
+Approximations are marked `TODO(asm 0x…)` in the code.
 
-## Tests (`flutter test`, 18)
-* `test/session_test.dart` — Userinfo parsing, apply/restore/clear, the membership rule on the cloud switches.
-* `test/pages_test.dart` — 「我的」 for signed-out / non-member / member, member-only cloud switch, login validation.
-* `test/contract/server_contract_test.dart` — spawns the real `../server` with a temp database and drives `UserApi` through
-  register → login → non-member gates → activation code → cloud round trips → profile → password change → logout. Skipped when
-  `node` (>= 24) or `../server` is missing.
-
+## Tests
 ```powershell
 . ..\env.ps1            # flutter on PATH, PUB_CACHE inside qread
-flutter analyze; flutter test
+flutter analyze; flutter test     # 434 tests, about 1 minute
 ```
+* Per area: `test/{data,storage,util,read,reader_ui,shelf,sources,extras}/`; the engine runs against a fake site on 127.0.0.1.
+* `test/app_smoke_test.dart` starts the wired app and opens every tab; `test/route_coverage_test.dart` fails when a page opens a
+  route name no table handles; `test/contract/server_contract_test.dart` drives `UserApi` against the real `../server`.
+* `test/reader_ui/rule_pages_test.dart` has failed once in a full run and passed on rerun (timing-sensitive).
 
-## Self-check and UI tests without a phone
-* `lib/pages/self_check_page.dart` (「诊断自检」 on the me page): connectivity, account, member gate, device list and the cloud
-  round trip; `上报到服务器` posts the results to `diag`, the owner reads them on the server with `qread-admin list-diag`.
-* `integration_test/app_flow_test.dart` + `test_driver/`: the whole flow (signed out → login → gated switch → activation code →
-  member → self-check → 会员中心 web view) on an iOS Simulator. `.github/workflows/ios-ui-test.yml` starts the real server on the
-  macOS runner, runs it with `flutter drive` and uploads a screenshot of every step (`ui-screenshots` artifact, 14 days).
-  First green run: 4.5 min, simulator iPhone18,1 (1206×2622).
+## UI test on the iOS Simulator (no phone needed)
+`integration_test/app_flow_test.dart` + `test_driver/`, run by `.github/workflows/ios-ui-test.yml` against the real server started
+on the macOS runner: privacy → signed out → login → gated switch → activation code → member → self-check → 会员中心, then books on
+a demo site served inside the test (`integration_test/demo_site.dart`, text written for the test): import source → search →
+detail → add to shelf → reader (page turn, menus) → shelf → 发现 / 探索 / 订阅. Screenshots of every step are the
+`ui-screenshots` artifact (14 days).
 
 ## iOS
-No Mac here: `.github/workflows/ios-unsigned.yml` (repo root) builds `flutter build ios --release --no-codesign` on a macOS
-runner and uploads `newread-unsigned.ipa`; install with Sideloadly. The repository is the private `kieranchan/qread-replica` (root = `qread/`, only `app/`, `server/`, `docs/`, the workflow). Windows desktop is not buildable locally (Visual Studio's desktop workload is not installed) and is not needed.
+No Mac here: `.github/workflows/ios-unsigned.yml` builds `flutter build ios --release --no-codesign` on a macOS runner (Xcode 26.3)
+and uploads `newread-unsigned.ipa`; install with Sideloadly. Repository: private `kieranchan/qread-replica` (root = `qread/`).
+Windows desktop is not buildable locally and is not needed.

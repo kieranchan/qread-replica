@@ -65,6 +65,10 @@ a simulator UI test with screenshots (`ios-ui-test.yml`, green) and a root `.git
 parsing and paging) → `widget/` → `pages/` (bookshelf, search, book detail,
 reader, sources, rss, settings, themes, tts, webdav, user) → extras (`ai/`,
 `desktop_lyric`, video, scanner).
+**Status 2026-10-28:** first full pass merged and running on the iOS Simulator (CI screenshots): data layer, book-source engine,
+reading core, reader UI, shelf/search/discovery/探索, sources/订阅/browser, themes/settings/AI/TTS/WebDAV, five tabs wired
+(`app/README.md`). Next: compare page by page with the original (owner's notes on the screenshots), replace the `TODO(asm …)`
+approximations, function-coverage diff below.
 Every file is rebuilt from its blutter asm. The rebuild must preserve names,
 literals, control flow and widget-tree shape. The one intentional content
 change is the in-app agreement (`pages/setting/user_ys.dart`): the replica uses
