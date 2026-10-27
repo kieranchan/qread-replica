@@ -5,13 +5,9 @@
 //                                                            book / RSS sources, exploration templates; detected by their fields
 //   qread_import                                           -> bind the own reading backend first (its shelf API is not ported)
 //   viewlog                                                -> the in-app message log
-import 'dart:convert';
-
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
-import '../data/exploration.dart';
-import '../data/highlight.dart';
 import '../data/replace.dart';
 import '../data/rss.dart';
 import '../data/source.dart';
@@ -65,8 +61,8 @@ abstract class GlueRoutes {
     return false;
   }
 
-  /// 添加配置 (0xf771c8 shows `导入成功` / `导入失败:`): reads the text from a file, a link or a scanned code and imports it into the
-  /// list its fields belong to. TODO(asm 0xf771c8): the original's type detection is not recovered; this one goes by field names.
+  /// 添加配置 (shelf menu 0xf75494: file `json`, link, or scanned code — an `http` code is downloaded): imports the text into the
+  /// list it belongs to ([importText]).
   static Future<void> importConfig(BuildContext context, String type) async {
     String? text;
     try {
@@ -96,21 +92,19 @@ abstract class GlueRoutes {
     return r.data ?? '';
   }
 
-  /// Imports [text] into the list its entries belong to; returns the number of imported entries. Throws [FormatException] when the
-  /// text is not a known configuration.
+  /// The original's importer (0xe6af58) decides by substrings of the raw text, in this order:
+  ///   `bookSourceUrl` and `bookSourceName` -> book sources; `sourceUrl"` or `sourceUrl'` -> RSS sources;
+  ///   `isRegex"` or `isRegex'` -> replace rules; `name` and `html` -> TTS engines; `name` and `rule` -> TXT TOC rules;
+  ///   anything else throws `未知的文件格式`.
+  /// Returns the number of imported entries.
   static Future<int> importText(String text) async {
-    final v = jsonDecode(text.trim());
-    final first = v is List ? (v.isEmpty ? null : v.first) : v;
-    if (first is! Map) throw const FormatException('无法识别的配置');
-    bool has(String k) => first.containsKey(k);
-    if (has('bookSourceUrl')) return (await Sources.importJson(text)).added;
-    if (has('sourceUrl') && (has('sourceName') || has('ruleArticles'))) return (await RssSources.importJson(text)).added;
-    if (has('pattern') && has('replacement')) return Replaces.importJson(text);
-    if (has('pattern') && (has('dayColor') || has('nightColor') || has('dayBgColor'))) return Highlights.importJson(text);
-    if (has('rule') && has('name')) return Txtrule.importJson(text);
-    if (has('tp') || has('engineId') || has('narrationEngineId')) return Tts.importJson(text);
-    if (has('components')) return Exploration.importJson(text);
-    throw const FormatException('无法识别的配置');
+    bool has(String s) => text.contains(s);
+    if (has('bookSourceUrl') && has('bookSourceName')) return (await Sources.importJson(text)).added;
+    if (has('sourceUrl"') || has("sourceUrl'")) return (await RssSources.importJson(text)).added;
+    if (has('isRegex"') || has("isRegex'")) return Replaces.importJson(text);
+    if (has('name') && has('html')) return Tts.importJson(text);
+    if (has('name') && has('rule')) return Txtrule.importJson(text);
+    throw const FormatException('未知的文件格式');
   }
 }
 
