@@ -36,7 +36,7 @@ void main() {
     await tester.tap(find.byKey(const Key('privacy_agree')));
     await tester.pumpAndSettle();
     await binding.takeScreenshot('00_shelf_empty');
-    await tester.tap(find.byKey(const Key('tab_4')));
+    await tester.tap(find.byKey(const Key('tab_我的')));
     await tester.pumpAndSettle();
     expect(find.text('登录同步阅读数据'), findsOneWidget);
     await binding.takeScreenshot('01_me_signed_out');

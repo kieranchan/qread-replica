@@ -32,12 +32,21 @@ void main() {
     expect(find.byKey(const Key('privacy_dialog')), findsNothing);
     expect(Storage.getBool(MainPage.privacyKey), isTrue);
 
-    for (final label in ['书架', '发现', '订阅', '探索', '我的']) {
-      expect(find.descendant(of: find.byType(NavigationBar), matching: find.text(label)), findsOneWidget);
-    }
-    await tester.tap(find.byKey(const Key('tab_2')));
+    final labels = tester.widgetList<NavigationDestination>(find.byType(NavigationDestination)).map((d) => d.label).toList();
+    expect(labels, ['书架', '发现', '探索', '订阅', '我的']);
+    await tester.tap(find.byKey(const Key('tab_订阅')));
     await tester.pumpAndSettle();
-    expect(Common.index.value, 2);
+    expect(Common.index.value, 3);
+  });
+
+  testWidgets('bottomBarTabs order and the found/ding switches', (tester) async {
+    await Storage.setString(MainPage.privacyKey, 'true');
+    await Storage.setString('bottomBarTabs', '["我的","书架","探索","发现","订阅"]');
+    await Storage.setBool('ding', false);
+    await tester.pumpWidget(const GetMaterialApp(home: MainPage()));
+    await tester.pumpAndSettle();
+    final labels = tester.widgetList<NavigationDestination>(find.byType(NavigationDestination)).map((d) => d.label).toList();
+    expect(labels, ['我的', '书架', '探索', '发现']);
   });
 
   testWidgets('no dialog once agreed', (tester) async {

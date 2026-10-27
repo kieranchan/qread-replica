@@ -4,14 +4,18 @@ import 'package:flutter/widgets.dart';
 
 import '../common/app_dirs.dart';
 import '../common/nav.dart';
-import '../data/bookself.dart';
+import '../pages/book/shelf_routes.dart';
+import '../pages/bookshelf_page.dart';
+import '../pages/discovery_page.dart';
+import '../pages/discovery_page_new.dart';
+import '../pages/exploration/exploration_page.dart';
 import '../pages/main_page.dart';
 import '../pages/read/read_page.dart';
 import '../pages/read/reader_ai.dart';
 import '../pages/read/reader_routes.dart';
 import '../pages/setting/extras_routes.dart';
 import '../read/api/read_storage_root.dart';
-import '../read/api/readapi.dart';
+import '../storage/storage.dart';
 import '../theme/extras_init.dart';
 import '../util/legado/js_engines.dart';
 import 'reader_ai_adapter.dart';
@@ -28,8 +32,14 @@ abstract class Wiring {
     return true;
   }
 
+  static Future<bool> _shelfRoutes(BuildContext context, String name, {Object? arguments}) async {
+    if (!ShelfRoutes.handles(name)) return false;
+    await ShelfRoutes.push(context, name, arguments);
+    return true;
+  }
+
   /// Area route tables tried in order by `Nav.openNamed`; each returns true when it handled the name.
-  static final List<RouteTable> routeTables = [ExtrasRoutes.open, _readerRoutes];
+  static final List<RouteTable> routeTables = [ExtrasRoutes.open, _readerRoutes, _shelfRoutes];
 
   /// Runs once after `AppInit.init()`.
   static Future<void> init() async {
@@ -37,13 +47,22 @@ abstract class Wiring {
     _done = true;
     JsEngines.install();
 
-    // reader: per-book stores live under the app root; progress goes back into the shelf; the AI chat uses the AI module
+    // reader: per-book stores live under the app root; the AI chat uses the AI module
     if (!ReadStorageRoot.isSet) ReadStorageRoot.dir = AppDirs.root;
-    ReadApi.onProgress = (book) => BookSelfN.updateProgress(book.bookUrl,
-        index: book.durChapterIndex, pos: book.durChapterPos, title: book.durChapterTitle, readchapter: book.readchapter);
     ReaderAi.instance = ReaderAiAdapter();
 
+    // shelf: loads the shelf and routes reader progress into it (ReadApi.onProgress)
+    await ShelfRoutes.init();
     await ExtrasInit.init();
+
+    MainTabs.builders.addAll({
+      '书架': (_) => const BookshelfPage(),
+      '发现': (_) => Storage.getInt('discoveryStyle') == 0 ? const DiscoveryPageNew() : const DiscoveryPage(),
+      '探索': (_) => const ExplorationPage(),
+    });
+
+    Nav.openBook = (context, book) => ShelfRoutes.push(context, 'book_detail_page', book);
+    Nav.openSearch = (context, {key}) => ShelfRoutes.push(context, 'search_book_page', key);
 
     Nav.openReader = (context, book, {chapterIndex, chapters}) async {
       await MainPage.stampReading();

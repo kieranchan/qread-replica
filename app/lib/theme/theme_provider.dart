@@ -239,8 +239,8 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// not certain; `bookimages2` (prefs string written by main_page) is the best candidate.
   static const String defaultCoverKey = 'bookimages2';
 
-  /// Tab ids in bottom-bar order (`我的` last), the index of the tab icon lists.
-  static const List<String> tabNames = ['书架', '发现', '订阅', '探索', '我的'];
+  /// Tab ids in the default bottom-bar order (`bottomBarTabs` default, 0xf62c0c), the index of the tab icon lists.
+  static const List<String> tabNames = ['书架', '发现', '探索', '订阅', '我的'];
 
   /// 0 = follow system, 1 = light, 2 = dark [infer from the three icons of the me page action].
   int mode = 0;

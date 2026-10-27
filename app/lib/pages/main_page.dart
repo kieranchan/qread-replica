@@ -1,9 +1,10 @@
-// pages/main_page.dart — the tab shell of the original (`_MainPageState`, 0x190 bytes): 书架 · 发现 · 订阅 · 探索 · 我的, tab icons
-// and colours from the applied theme (ThemeProvider), and the start-up prompts of the original:
+// pages/main_page.dart — the tab shell of the original (`_MainPageState`, 0x190 bytes): 书架 · 发现 · 探索 · 订阅 · 我的 by default
+// (see [MainTabs]), tab icons and colours from the applied theme (ThemeProvider), and the start-up prompts of the original:
 //   * privacy agreement on first launch (`privacy_agreement_agreed` = "true", dialog 0x8eb3b0, check 0x10bd05c)
 //   * "continue reading" when the last reading ended less than 5 minutes ago (`last_open_time`, 0x10bdd44 / dialog 0x8eb8ec)
 // Not ported: the update check (发现新版本: no update service for the replica), the 沉浸光感 effect picker (no shader effects),
 // app links (`linkinit`) and the TTS shared-resource migration.
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -16,9 +17,32 @@ import '../storage/storage.dart';
 import '../theme/theme_provider.dart';
 import 'me_page.dart';
 
-/// Page builders of the first four tabs, set by `init/wiring.dart` once the areas are merged (index = tab).
+/// The tabs: page builders by tab name (set by `init/wiring.dart`), order and visibility as the original's `bottomBarTabs`
+/// (0xf62c0c: prefs JSON list, default 书架 发现 探索 订阅 我的; 发现 hidden when prefs `found` is false, 订阅 when `ding` is false).
 class MainTabs {
-  static final List<WidgetBuilder?> builders = List<WidgetBuilder?>.filled(4, null);
+  static const defaultOrder = ['书架', '发现', '探索', '订阅', '我的'];
+  static final Map<String, WidgetBuilder> builders = {};
+
+  static List<String> order() {
+    var list = defaultOrder;
+    final raw = Storage.getString('bottomBarTabs');
+    if (raw.isNotEmpty) {
+      try {
+        final v = jsonDecode(raw);
+        if (v is List) {
+          final names = [for (final e in v) '$e'].where(defaultOrder.contains).toList();
+          for (final n in defaultOrder) {
+            if (!names.contains(n)) names.add(n);
+          }
+          list = names;
+        }
+      } catch (_) {}
+    }
+    return [
+      for (final n in list)
+        if (!(n == '发现' && !Storage.getBool('found', true)) && !(n == '订阅' && !Storage.getBool('ding', true))) n,
+    ];
+  }
 }
 
 class MainPage extends StatefulWidget {
@@ -38,7 +62,8 @@ class MainPage extends StatefulWidget {
 }
 
 class _MainPageState extends State<MainPage> {
-  final List<Widget?> _pages = List<Widget?>.filled(5, null);
+  final List<String> _tabs = MainTabs.order();
+  late final List<Widget?> _pages = List<Widget?>.filled(_tabs.length, null);
 
   @override
   void initState() {
@@ -127,37 +152,39 @@ class _MainPageState extends State<MainPage> {
     if (go == true && mounted) await Nav.openReader(context, book);
   }
 
-  Widget _page(int i) {
-    if (i == 4) return const MePage();
-    final b = MainTabs.builders[i];
+  Widget _page(String name) {
+    if (name == '我的') return const MePage();
+    final b = MainTabs.builders[name];
     if (b != null) return Builder(builder: b);
-    return Center(child: Text('${ThemeProvider.tabNames[i]}（待移植）'));
+    return Center(child: Text('$name（待移植）'));
   }
 
-  static const _defaultIcons = [
-    (Icons.menu_book_outlined, Icons.menu_book),
-    (Icons.explore_outlined, Icons.explore),
-    (Icons.rss_feed_outlined, Icons.rss_feed),
-    (Icons.travel_explore_outlined, Icons.travel_explore),
-    (Icons.person_outline, Icons.person),
-  ];
+  // SF Symbols of the original (book, magnifyingglass.circle, safari, bookmark, person; `.fill` when selected) as Material icons
+  static const _defaultIcons = {
+    '书架': (Icons.book_outlined, Icons.book),
+    '发现': (Icons.saved_search_outlined, Icons.saved_search),
+    '探索': (Icons.explore_outlined, Icons.explore),
+    '订阅': (Icons.bookmark_border, Icons.bookmark),
+    '我的': (Icons.person_outline, Icons.person),
+  };
 
-  Widget _icon(ThemeProvider tp, int i, bool selected) {
-    final file = tp.tabIcon(i, selected: selected);
+  Widget _icon(ThemeProvider tp, String name, bool selected) {
+    final icons = _defaultIcons[name]!;
+    final file = tp.tabIcon(ThemeProvider.tabNames.indexOf(name), selected: selected);
     if (file.isNotEmpty) {
       final f = File(file);
-      if (f.existsSync()) return Image.file(f, width: 24, height: 24, errorBuilder: (_, _, _) => Icon(_defaultIcons[i].$1));
+      if (f.existsSync()) return Image.file(f, width: 24, height: 24, errorBuilder: (_, _, _) => Icon(icons.$1));
     }
-    return Icon(selected ? _defaultIcons[i].$2 : _defaultIcons[i].$1);
+    return Icon(selected ? icons.$2 : icons.$1);
   }
 
   @override
   Widget build(BuildContext context) {
     final tp = ThemeProvider.instance;
-    final index = Common.index.value.clamp(0, 4);
-    _pages[index] ??= _page(index); // tabs are built on first visit and then kept alive
+    final index = Common.index.value.clamp(0, _tabs.length - 1);
+    _pages[index] ??= _page(_tabs[index]); // tabs are built on first visit and then kept alive
     return Scaffold(
-      body: IndexedStack(index: index, children: [for (var i = 0; i < 5; i++) _pages[i] ?? const SizedBox.shrink()]),
+      body: IndexedStack(index: index, children: [for (final p in _pages) p ?? const SizedBox.shrink()]),
       bottomNavigationBar: ValueListenableBuilder<bool>(
         valueListenable: MainPage.showBottom,
         builder: (context, show, _) => !show
@@ -175,12 +202,12 @@ class _MainPageState extends State<MainPage> {
                           : NavigationDestinationLabelBehavior.alwaysHide),
                   onDestinationSelected: (i) => Common.index.value = i,
                   destinations: [
-                    for (var i = 0; i < 5; i++)
+                    for (final name in _tabs)
                       NavigationDestination(
-                        key: Key('tab_$i'),
-                        icon: _icon(tp, i, false),
-                        selectedIcon: _icon(tp, i, true),
-                        label: ThemeProvider.tabNames[i],
+                        key: Key('tab_$name'),
+                        icon: _icon(tp, name, false),
+                        selectedIcon: _icon(tp, name, true),
+                        label: name,
                       ),
                   ],
                 ),
