@@ -17,6 +17,7 @@ const HELP = `qread admin
   make-codes vip <days> [--count N] [--note T] [--valid-days D]      activation codes (QR-XXXX-XXXX-XXXX)
   make-codes invite [--count N] [--valid-days D] [--days N]          6-digit registration codes (optionally with free days)
   list-users | list-codes [--unused]
+  list-diag [--limit N] [--full]       self-check reports sent by the app (failures are always shown)
   add-category <name>
   add-theme --name N [--category C] [--zip F] [--layout F] [--image F] [--author A] [--mode day|night] [--version V] [--desc T] [--id ID]
   set-static <down|qq> <file.json>
@@ -103,6 +104,16 @@ export function run(argv, { cfg = loadConfig(), out = console.log } = {}) {
           out(`${c.id}\t${c.kind}\t${c.days}d\t${c.note}\tcreated:${fmtDate(c.created_at)}\t${c.valid_until ? 'valid-until:' + fmtDate(c.valid_until) : ''}\t${c.used_at ? 'used by ' + c.used_by + ' on ' + fmtDate(c.used_at) : 'unused'}`);
         }
         break;
+      case 'list-diag': {
+        const rows = db.prepare('SELECT d.id, d.at, d.appid, d.body, u.username FROM diag_reports d JOIN users u ON u.id = d.user_id ORDER BY d.id DESC LIMIT ?').all(Number(opt.limit ?? 5));
+        for (const r of rows) {
+          const b = JSON.parse(r.body);
+          const bad = b.results.filter((x) => !x.ok);
+          out(`#${r.id} ${new Date(r.at).toISOString()} ${r.username} ${b.platform}/${b.model} ${b.app} ok:${b.results.length - bad.length} fail:${bad.length}`);
+          for (const x of opt.full ? b.results : bad) out(`    ${x.ok ? 'ok  ' : 'FAIL'} ${x.name} ${x.detail}`);
+        }
+        break;
+      }
       case 'add-category': {
         const r = db.prepare('INSERT OR IGNORE INTO categories(name) VALUES (?)').run(a[0]);
         out(`category ${a[0]} id=${r.changes ? r.lastInsertRowid : db.prepare('SELECT id FROM categories WHERE name = ?').get(a[0]).id}`);

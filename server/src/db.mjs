@@ -94,6 +94,13 @@ CREATE TABLE IF NOT EXISTS themes (
   updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS diag_reports (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  appid TEXT NOT NULL DEFAULT '',
+  at INTEGER NOT NULL,
+  body TEXT NOT NULL              -- JSON {app, platform, model, results:[{name, ok, detail}]} sent by the app's self-check page
+);
 `;
 
 export function openDb(dbPath) {

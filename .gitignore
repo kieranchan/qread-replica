@@ -17,3 +17,6 @@
 # deployment target (VM address) stays local
 /server/deploy/target.env
 
+
+# downloaded CI artifacts
+/artifacts/

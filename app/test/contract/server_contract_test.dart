@@ -9,6 +9,7 @@ import 'package:newread/api/userapi.dart';
 import 'package:newread/common/common.dart';
 import 'package:newread/data/user.dart';
 import 'package:newread/storage/storage.dart';
+import 'package:newread/util/self_check.dart';
 import 'package:newread/util/toast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -37,7 +38,7 @@ void main() {
   late String base;
 
   String admin(List<String> args) {
-    final r = Process.runSync('node', ['--disable-warning=ExperimentalWarning', 'src/admin.mjs', ...args], workingDirectory: '../server', environment: env);
+    final r = Process.runSync('node', ['--disable-warning=ExperimentalWarning', 'src/admin.mjs', ...args], workingDirectory: '../server', environment: env, stdoutEncoding: utf8, stderrEncoding: utf8);
     expect(r.exitCode, 0, reason: '${r.stderr}');
     return (r.stdout as String).trim();
   }
@@ -162,6 +163,17 @@ void main() {
     expect(devices.first.platform, isNotEmpty);
     await UserApi.cleanUser();
     expect(await UserApi.cloudList(CloudKind.books), '');
+  }, skip: skip);
+
+  test('self-check passes for a member (incl. cloud round trip) and the report reaches the server', () async {
+    final results = await SelfCheck.run();
+    expect(results.where((r) => !r.ok), isEmpty, reason: results.map((r) => '${r.name}: ${r.detail}').join(' | '));
+    expect(results.map((r) => r.name), containsAll(['服务器连通', '账号信息 getUserInfo', '会员门槛 canOpenCloud', '云端读写 selfcheck']));
+    final rep = await UserApi.diag(results);
+    expect(rep['fail'], 0);
+    expect(rep['ok'], results.length);
+    // the admin CLI sees it
+    expect(admin(['list-diag', '--limit', '1', '--full']), contains('云端读写 selfcheck'));
   }, skip: skip);
 
   test('password change ends the session: the old token is rejected with 登陆已过期', () async {

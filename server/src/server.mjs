@@ -77,7 +77,7 @@ export function createApp(overrides = {}) {
       // ---- static / pages ----
       if (req.method === 'GET' || req.method === 'HEAD') {
         if (pathname === '/healthz') return send(res, 200, { ok: true, users: db.prepare('SELECT COUNT(*) AS n FROM users').get().n, uptime: Math.round((Date.now() - startedAt) / 1000) });
-        if (pathname === '/vip') {
+        if (pathname === '/vip' || pathname === '/') {
           return send(res, 200, VIP_HTML, { 'Content-Type': 'text/html; charset=utf-8', 'Referrer-Policy': 'no-referrer',
             'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'" });
         }

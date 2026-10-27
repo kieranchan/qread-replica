@@ -177,6 +177,25 @@ export function createUserApi(svc, cfg, limiter = new RateLimiter()) {
     return row ? ok() : noData();
   };
 
+  // ---------------- diagnostics ----------------
+  // The app's self-check page posts its results here so they can be read on the server (admin `list-diag`, journal) without
+  // touching the phone.
+  h.diag = (c) => {
+    const { user } = auth(c);
+    if (!limiter.allow(`diag:${user.id}`, 30, 60 * MIN, c.now)) throw new ApiError(CODE.ERR, '上报过于频繁');
+    const results = (Array.isArray(c.p.results) ? c.p.results : []).slice(0, 100).map((r) => ({
+      name: String(r?.name ?? '').slice(0, 80),
+      ok: r?.ok === true,
+      detail: String(r?.detail ?? '').slice(0, 300),
+    }));
+    const body = JSON.stringify({ app: String(c.p.app ?? '').slice(0, 60), platform: String(c.p.platform ?? '').slice(0, 32), model: String(c.p.model ?? '').slice(0, 64), results });
+    const r = svc.db.prepare('INSERT INTO diag_reports(user_id, appid, at, body) VALUES (?,?,?,?)').run(user.id, String(c.p.appid ?? '').slice(0, 128), c.now, body);
+    svc.db.prepare('DELETE FROM diag_reports WHERE user_id = ? AND id NOT IN (SELECT id FROM diag_reports WHERE user_id = ? ORDER BY id DESC LIMIT 200)').run(user.id, user.id);
+    const okN = results.filter((x) => x.ok).length;
+    if (cfg.log) console.log(JSON.stringify({ diag: { user: user.username, appid: c.p.appid, ok: okN, fail: results.length - okN } }));
+    return ok({ id: Number(r.lastInsertRowid), ok: okN, fail: results.length - okN });
+  };
+
   // ---------------- devices ----------------
   h.getloginDevice = (c) => {
     const { user } = auth(c);

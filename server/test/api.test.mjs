@@ -267,6 +267,15 @@ test('theme plaza contract', async () => {
   void out;
 });
 
+test('the site root is the same page, with a browser login form (no token needed)', async () => {
+  const r = await fetch(base + '/');
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('content-type'), /text\/html/);
+  const html = await r.text();
+  assert.ok(html.includes('id="loginBox"') && html.includes('会员中心'));
+  assert.ok(!html.includes('unsupported endpoint'));
+});
+
 test('会员中心 page is served with a strict CSP and no inline script', async () => {
   const r = await fetch(base + '/vip?tockenid=abc');
   assert.equal(r.status, 200);
@@ -311,6 +320,16 @@ test('free accounts are limited to 2 backup devices when cloud is open to everyo
   assert.equal((await P('/removeAutoDevice', { tockenid: logins[0], appid: 'd1' })).code, 0);
   assert.equal((await P('/openAuto', { tockenid: logins[2], appid: 'd3', st: 0 })).code, 0);
   await open.close();
+});
+
+test('diagnostics: the app can report self-check results (stored for `admin list-diag`)', async () => {
+  const u = await newUser('diaguser');
+  const rep = await post('/diag', { tockenid: u.token, appid: 'dev-1', app: 'newread 1.0.0', platform: 'ios', model: 'iPhone', results: [{ name: 'login', ok: true, detail: 'ok' }, { name: 'cloud', ok: false, detail: 'code -3' }] });
+  assert.equal(rep.json.code, 0);
+  assert.deepEqual([rep.json.data.ok, rep.json.data.fail], [1, 1]);
+  assert.equal((await post('/diag', { results: [] })).json.code, -2); // token required
+  const row = app.db.prepare('SELECT body FROM diag_reports ORDER BY id DESC LIMIT 1').get();
+  assert.equal(JSON.parse(row.body).results[1].name, 'cloud');
 });
 
 test('admin CLI: users, grants, codes', () => {

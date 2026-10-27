@@ -10,6 +10,7 @@ import '../data/user.dart';
 import '../models/logindevice.dart';
 import '../models/userinfo.dart';
 import '../qread/http.dart';
+import '../util/self_check.dart';
 import '../util/toast.dart';
 
 class ApiException implements Exception {
@@ -169,6 +170,19 @@ abstract class UserApi {
 
   static Future<void> removeAutoDevice(int kind, String appid) async {
     _ok(await _call(kind == 2 ? 'removeAuto2Device' : 'removeAutoDevice', params: {'appid': appid}, withAppid: false));
+  }
+
+  // ---------------------------------------------------------------- diagnostics
+
+  /// Not in the original: sends the self-check results to the owner's server (`diag`) so a device can be diagnosed remotely.
+  static Future<Map<String, dynamic>> diag(List<CheckResult> results) async {
+    final r = _ok(await _call('diag', withAppid: true, params: {
+      'app': SelfCheck.appVersion,
+      'platform': Common.platform,
+      'model': Common.deviceModel,
+      'results': [for (final x in results) x.toJson()],
+    }), '上报失败');
+    return Map<String, dynamic>.from(r['data'] as Map);
   }
 
   // ---------------------------------------------------------------- membership

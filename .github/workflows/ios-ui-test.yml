@@ -1,0 +1,101 @@
+name: ios-ui-test
+
+# Drives the real app on an iOS Simulator against the real server (started on the runner) and uploads screenshots of every
+# step, so the UI can be checked without a phone. Flow: signed out -> login -> member-only switch gated -> activation code ->
+# member -> self-check (cloud round trip, report) -> 会员中心 web page. See app/integration_test/app_flow_test.dart.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['app/**', 'server/**', '.github/workflows/ios-ui-test.yml']
+
+jobs:
+  ui:
+    runs-on: macos-15
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.9
+          channel: stable
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Select Xcode 26.3
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.3.app
+          xcodebuild -version
+
+      - name: Boot an iPhone simulator
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          best = None
+          for rt, devs in json.load(sys.stdin)['devices'].items():
+              if 'iOS' not in rt:
+                  continue
+              ver = tuple(int(x) for x in rt.split('iOS-')[-1].split('-') if x.isdigit())
+              for d in devs:
+                  if 'iPhone' in d['name'] and d.get('isAvailable', True) and (best is None or ver > best[0]):
+                      best = (ver, d['udid'], d['name'])
+          print(best[1])
+          ")
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl list devices | grep "$UDID"
+
+      - name: Start the server and prepare a test account (ephemeral, masked)
+        run: |
+          export QREAD_PORT=8920 QREAD_HOST=127.0.0.1 QREAD_DATA_DIR="$RUNNER_TEMP/qdata" QREAD_BASE_URL=http://127.0.0.1:8920
+          (cd server && nohup node src/server.mjs > "$RUNNER_TEMP/server.log" 2>&1 &)
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8920/healthz >/dev/null 2>&1 && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8920/healthz
+          PASS="Ui-$(openssl rand -hex 8)"
+          echo "::add-mask::$PASS"
+          (cd server && node src/admin.mjs create-user uitest uitest@example.com --password "$PASS" > /dev/null)
+          VIP=$(cd server && node src/admin.mjs make-codes vip 30)
+          echo "::add-mask::$VIP"
+          echo "QREAD_TEST_PASS=$PASS" >> "$GITHUB_ENV"
+          echo "QREAD_TEST_VIPCODE=$VIP" >> "$GITHUB_ENV"
+          echo "QREAD_DATA_DIR=$QREAD_DATA_DIR" >> "$GITHUB_ENV"
+          echo "RUNNER_SERVER_LOG=$RUNNER_TEMP/server.log" >> "$GITHUB_ENV"
+
+      - run: flutter pub get
+        working-directory: app
+
+      - name: Run the UI flow on the simulator
+        working-directory: app
+        run: |
+          flutter drive \
+            --driver=test_driver/integration_test.dart \
+            --target=integration_test/app_flow_test.dart \
+            -d "$SIM_UDID" \
+            --dart-define=QREAD_BASE_URL=http://127.0.0.1:8920/ \
+            --dart-define=QREAD_TEST_USER=uitest \
+            --dart-define=QREAD_TEST_PASS="$QREAD_TEST_PASS" \
+            --dart-define=QREAD_TEST_VIPCODE="$QREAD_TEST_VIPCODE"
+
+      - name: Server saw the app (login, redeem, self-check report, member-center web view)
+        run: |
+          cat "$RUNNER_SERVER_LOG" | tail -40
+          for p in login paynew getUserInfo diag vip; do
+            grep -q "\"p\":\"/$p\"" "$RUNNER_SERVER_LOG" && echo "seen /$p" || { echo "MISSING /$p"; MISSING=1; }
+          done
+          [ -z "${MISSING:-}" ]
+          (cd server && node src/admin.mjs list-diag --limit 1)
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-screenshots
+          path: |
+            app/screenshots
+            ${{ runner.temp }}/server.log
+          retention-days: 14
+          if-no-files-found: warn

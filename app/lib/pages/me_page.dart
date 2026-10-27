@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import '../common/common.dart';
 import '../data/user.dart';
 import 'login_page.dart';
+import 'self_check_page.dart';
 import 'user/cloud_setting_page.dart';
 import 'user/user_setting_page.dart';
 import 'web/nwebview.dart';
@@ -50,9 +51,17 @@ class MePage extends StatelessWidget {
                 onTap: openMemberCenter,
               ),
             ListTile(
+              key: const Key('me_cloud'),
               leading: const Icon(Icons.cloud_outlined),
               title: const Text('云端设置'),
               onTap: () => logged ? Get.to(() => const CloudSettingPage()) : Get.to(() => const LoginPage()),
+            ),
+            ListTile(
+              key: const Key('me_self_check'),
+              leading: const Icon(Icons.health_and_safety_outlined),
+              title: const Text('诊断自检'),
+              subtitle: const Text('检查服务器连接、会员状态与云端读写'),
+              onTap: () => Get.to(() => const SelfCheckPage()),
             ),
           ]),
         );

@@ -47,6 +47,15 @@ abstract class QHttp {
     }
   }
 
+  /// GET returning JSON (health check).
+  static Future<Map<String, dynamic>> get(String url) async {
+    try {
+      return _decode(await dio.get<dynamic>(url, options: Options(receiveTimeout: const Duration(seconds: 10))));
+    } on DioException catch (e) {
+      throw QHttpException('网络错误: ${e.message ?? e.type.name}');
+    }
+  }
+
   /// multipart/form-data with one file part named [field]; [query] carries token and parameters (as `setItemJsonFile?tockenid=…`).
   static Future<Map<String, dynamic>> postFile(
     String url,
