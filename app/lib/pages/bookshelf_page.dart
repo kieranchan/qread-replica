@@ -38,6 +38,7 @@ import '../widget/book/booklist.dart';
 import '../widget/book/grouplist.dart';
 import '../widget/book/shelf_prefs.dart';
 import '../widget/book/toc_cache.dart';
+import '../widget/book/url_save_book.dart';
 import '../widget/book_page.dart';
 import '../widget/image/cached_cover_image.dart';
 import '../widget/ui/q_popup_menu_button.dart';
@@ -291,10 +292,10 @@ class BookshelfPageState extends BookApiPage<BookshelfPage> with AutomaticKeepAl
     );
     ctl.dispose();
     if (url == null || !mounted) return;
-    // TODO(asm 0xf7701c): the original asks the bound 轻阅读 backend (`urlsaveBook`); the replica matches the url against the
-    // sources' `bookUrlPattern` in the engine area later and opens the detail page with the source whose url prefix fits.
-    final src = Sourcedata.sources.where((s) => s.bookSourceUrl.isNotEmpty && url.startsWith(s.bookSourceUrl)).firstOrNull;
-    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => BookDetailPage(book: Book(bookUrl: url, origin: src?.bookSourceUrl ?? ''))));
+    // 0xf7701c → urlsaveBook (0xe69f74 / 0xe6a130): the first enabled local source whose bookUrlPattern matches opens the detail page
+    await urlSaveBook(context, url, (bookUrl, origin) async {
+      await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => BookDetailPage(book: Book(bookUrl: bookUrl, origin: origin))));
+    });
   }
 
   /// 0xf7713c / 0xf771c8: 「进度导入」 — a JSON list of books whose reading progress overwrites the shelf's (matched by bookUrl, then
