@@ -17,31 +17,53 @@ import '../storage/storage.dart';
 import '../theme/theme_provider.dart';
 import 'me_page.dart';
 
-/// The tabs: page builders by tab name (set by `init/wiring.dart`), order and visibility as the original's `bottomBarTabs`
-/// (0xf62c0c: prefs JSON list, default 书架 发现 探索 订阅 我的; 发现 hidden when prefs `found` is false, 订阅 when `ding` is false).
+/// The tabs: page builders by tab name (set by `init/wiring.dart`), order and visibility as the original:
+///  * order: prefs `bottomBarTabs`, a JSON list of tab names (read 0xf62c0c, written by the 底栏标签配置 sheet 0x101e764),
+///    default 书架 发现 探索 订阅 我的;
+///  * 发现 is shown when `toBool(getString("found") or "true")` (0x51391c: default on), 订阅 when `toBool(getString("ding"))`
+///    (0x5138e0: no default, so it is hidden until switched on); 书架 and 我的 are always shown.
+/// Whoever changes these prefs calls [changed] so the tab bar rebuilds.
 class MainTabs {
   static const defaultOrder = ['书架', '发现', '探索', '订阅', '我的'];
+  static const orderKey = 'bottomBarTabs';
+  static const foundKey = 'found';
+  static const dingKey = 'ding';
   static final Map<String, WidgetBuilder> builders = {};
+  static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
-  static List<String> order() {
-    var list = defaultOrder;
-    final raw = Storage.getString('bottomBarTabs');
-    if (raw.isNotEmpty) {
-      try {
-        final v = jsonDecode(raw);
-        if (v is List) {
-          final names = [for (final e in v) '$e'].where(defaultOrder.contains).toList();
-          for (final n in defaultOrder) {
-            if (!names.contains(n)) names.add(n);
-          }
-          list = names;
-        }
-      } catch (_) {}
+  static void changed() => revision.value++;
+
+  /// Every tab in the configured order (hidden ones included).
+  static List<String> configured() {
+    final raw = Storage.getString(orderKey);
+    if (raw.isEmpty) return defaultOrder;
+    try {
+      final v = jsonDecode(raw);
+      if (v is! List) return defaultOrder;
+      final names = [for (final e in v) '$e'].where(defaultOrder.contains).toSet().toList();
+      for (final n in defaultOrder) {
+        if (!names.contains(n)) names.add(n);
+      }
+      return names;
+    } catch (_) {
+      return defaultOrder;
     }
-    return [
-      for (final n in list)
-        if (!(n == '发现' && !Storage.getBool('found', true)) && !(n == '订阅' && !Storage.getBool('ding', true))) n,
-    ];
+  }
+
+  static bool visible(String name) => switch (name) {
+        '发现' => Storage.getBool(foundKey, true),
+        '订阅' => Storage.getBool(dingKey, false),
+        _ => true,
+      };
+
+  /// The tabs shown, in order.
+  static List<String> order() => [for (final n in configured()) if (visible(n)) n];
+
+  static Future<void> save(List<String> order, {required bool found, required bool ding}) async {
+    await Storage.setString(orderKey, jsonEncode(order));
+    await Storage.setBool(foundKey, found);
+    await Storage.setBool(dingKey, ding);
+    changed();
   }
 }
 
@@ -62,24 +84,39 @@ class MainPage extends StatefulWidget {
 }
 
 class _MainPageState extends State<MainPage> {
-  final List<String> _tabs = MainTabs.order();
-  late final List<Widget?> _pages = List<Widget?>.filled(_tabs.length, null);
+  List<String> _tabs = MainTabs.order();
+
+  /// Built tab pages by name (built on first visit, then kept alive).
+  final Map<String, Widget> _pages = {};
 
   @override
   void initState() {
     super.initState();
     Common.index.addListener(_onIndex);
+    MainTabs.revision.addListener(_onTabsChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _startup());
   }
 
   @override
   void dispose() {
     Common.index.removeListener(_onIndex);
+    MainTabs.revision.removeListener(_onTabsChanged);
     super.dispose();
   }
 
   void _onIndex() {
     if (mounted) setState(() {});
+  }
+
+  /// The tab editor changed order / visibility: keep the current tab selected when it is still shown.
+  void _onTabsChanged() {
+    if (!mounted) return;
+    final current = _tabs[Common.index.value.clamp(0, _tabs.length - 1)];
+    setState(() {
+      _tabs = MainTabs.order();
+      final i = _tabs.indexOf(current);
+      Common.index.value = i < 0 ? 0 : i;
+    });
   }
 
   Future<void> _startup() async {
@@ -182,9 +219,12 @@ class _MainPageState extends State<MainPage> {
   Widget build(BuildContext context) {
     final tp = ThemeProvider.instance;
     final index = Common.index.value.clamp(0, _tabs.length - 1);
-    _pages[index] ??= _page(_tabs[index]); // tabs are built on first visit and then kept alive
+    _pages.putIfAbsent(_tabs[index], () => _page(_tabs[index])); // tabs are built on first visit and then kept alive
     return Scaffold(
-      body: IndexedStack(index: index, children: [for (final p in _pages) p ?? const SizedBox.shrink()]),
+      body: IndexedStack(
+        index: index,
+        children: [for (final t in _tabs) KeyedSubtree(key: ValueKey('page_$t'), child: _pages[t] ?? const SizedBox.shrink())],
+      ),
       bottomNavigationBar: ValueListenableBuilder<bool>(
         valueListenable: MainPage.showBottom,
         builder: (context, show, _) => !show
