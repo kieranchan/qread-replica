@@ -89,9 +89,11 @@ abstract class AiRead {
   static List<RoleLine> heuristic(Map<String, String> lines) {
     final out = <RoleLine>[];
     for (final e in lines.entries) {
+      var prev = 0;
       for (final m in _quote.allMatches(e.value)) {
-        final before = e.value.substring(0, m.start);
-        final sm = _speakerColon.firstMatch(before) ?? _speakerVerb.firstMatch(before);
+        final before = e.value.substring(prev, m.start);
+        prev = m.end;
+        final sm = _speakerVerb.firstMatch(before) ?? _speakerColon.firstMatch(before);
         var name = sm?.group(1) ?? '';
         if (name.length > 6) name = name.substring(name.length - 6);
         out.add(RoleLine(id: e.key, ispb: false, str: m.group(1)!, name: name));
