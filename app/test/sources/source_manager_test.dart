@@ -35,7 +35,8 @@ Future<void> importFixture(WidgetTester t) async {
   expect(find.text('新增'), findsNWidgets(3)); // the entry without url is dropped
   expect(find.text('全选 (3/3)'), findsOneWidget);
   await act(t, () => t.tap(find.byKey(const Key('import_ok'))));
-  await idleUntil(t, () => Sourcedata.raw.length == 3 && find.text('书源管理').evaluate().isNotEmpty);
+  await idleUntil(t, () => Toast.log.isNotEmpty && find.text('书源管理').evaluate().isNotEmpty);
+  expect(Sourcedata.raw.length, 3);
   await idle(t);
 }
 
@@ -117,7 +118,8 @@ void main() {
     await t.pumpAndSettle();
     await t.enterText(find.byKey(const Key('group_input')), '收藏');
     await act(t, () => t.tap(find.byKey(const Key('group_ok'))));
-    await idleUntil(t, () => '${Sourcedata.byUrl('https://b.example.com')!['bookSourceGroup']}' == '收藏');
+    await idleUntil(t, () => Toast.log.contains('操作成功'));
+    expect(Sourcedata.byUrl('https://b.example.com')!['bookSourceGroup'], '收藏');
     expect(Sourcedata.byUrl('https://a.example.com')!['bookSourceGroup'], '玄幻,精品,收藏');
 
     // export the selection
@@ -138,7 +140,8 @@ void main() {
     await t.pumpAndSettle();
     await act(t, () => t.tap(find.text('置顶').last));
     await confirm(t);
-    await idleUntil(t, () => Sourcedata.raw.first['bookSourceUrl'] == 'https://sg.example.com');
+    await idleUntil(t, () => Toast.log.contains('置顶成功'));
+    expect(Sourcedata.raw.first['bookSourceUrl'], 'https://sg.example.com');
     expect(Toast.log, contains('置顶成功'));
 
     // invert the selection to just one, delete it
@@ -148,7 +151,8 @@ void main() {
     await t.pump();
     await act(t, () => t.tap(find.byKey(const Key('delete_selected'))));
     await confirm(t);
-    await idleUntil(t, () => Sourcedata.raw.length == 2);
+    await idleUntil(t, () => Toast.log.contains('删除成功'));
+    expect(Sourcedata.raw.length, 2);
     expect(Sourcedata.byUrl('https://a.example.com'), isNull);
     expect(Toast.log, contains('删除成功'));
   });
@@ -164,7 +168,8 @@ void main() {
     await idleUntil(t, () => find.byKey(const Key('import_ok')).evaluate().isNotEmpty);
     expect(find.text('新增'), findsNWidgets(2));
     await act(t, () => t.tap(find.byKey(const Key('import_ok'))));
-    await idleUntil(t, () => Sourcedata.raw.length == 1);
+    await idleUntil(t, () => Toast.log.isNotEmpty);
+    expect(Sourcedata.raw.length, 1);
     // both sources of the file share the fake site's url: the second one updates the first
     expect(Toast.log, contains('轻悦时光新增1条书源，更新1条书源'));
     await idle(t);

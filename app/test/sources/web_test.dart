@@ -133,10 +133,12 @@ void main() {
     expect(c.loads, ['https://www.bing.com/']);
     // star: already a bookmark -> removed, again -> added
     await act(t, () => t.tap(find.byKey(const Key('chrome_star'))));
-    await idleUntil(t, () => !Chromemarks.contains('https://www.bing.com/'));
+    await idleUntil(t, () => Toast.log.contains('已从收藏夹移除'));
+    expect(Chromemarks.contains('https://www.bing.com/'), isFalse);
     expect(Toast.log, contains('已从收藏夹移除'));
     await act(t, () => t.tap(find.byKey(const Key('chrome_star'))));
-    await idleUntil(t, () => Chromemarks.contains('https://www.bing.com/'));
+    await idleUntil(t, () => Toast.log.contains('已添加到收藏夹'));
+    expect(Chromemarks.contains('https://www.bing.com/'), isTrue);
     expect(Toast.log, contains('已添加到收藏夹'));
     // menu -> UA设置 -> iPhone
     await act(t, () => t.tap(find.byKey(const Key('chrome_menu'))));

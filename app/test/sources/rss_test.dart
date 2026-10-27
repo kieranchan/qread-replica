@@ -185,7 +185,8 @@ void main() {
     await idleUntil(t, () => find.byKey(const Key('rss_import_ok')).evaluate().isNotEmpty);
     expect(find.text('新增'), findsNWidgets(3));
     await act(t, () => t.tap(find.byKey(const Key('rss_import_ok'))));
-    await idleUntil(t, () => Rssdata.raw.length == 3);
+    await idleUntil(t, () => Toast.log.isNotEmpty);
+    expect(Rssdata.raw.length, 3);
     expect(Toast.log, contains('轻悦时光新增3条订阅源，更新0条订阅源'));
     expect(Rssdata.byUrl('https://news.example.com')!['vendorExtra'], 'keep');
   });

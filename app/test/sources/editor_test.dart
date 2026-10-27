@@ -131,7 +131,7 @@ void main() {
     await t.enterText(find.byKey(const Key('sg_bookSourceName')), '我的时光源');
     await t.enterText(find.byKey(const Key('sg_bookSourceUrl')), 'https://my.sg');
     await act(t, () => t.tap(find.byKey(const Key('sg_save'))));
-    await idleUntil(t, () => Sourcedata.byUrl('https://my.sg') != null || Toast.log.isNotEmpty);
+    await idleUntil(t, () => Toast.log.isNotEmpty);
     expect(Toast.log, contains('保存成功'));
     final m = Sourcedata.byUrl('https://my.sg')!;
     expect(m['html'], defaultSgHtml);
