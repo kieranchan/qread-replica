@@ -313,7 +313,9 @@ void main() {
         expect(tp.computeLineMetrics().length, c.lines.length, reason: 'lines of "${c.text}"');
         final margins = isTitle ? _style.titleTopMargin + _style.titleBottomMargin : 0;
         expect(tp.height + margins, closeTo(c.height, 0.01));
-        expect(tp.plainText, c.text);
+        // the indent is drawn as invisible ideographs of the same width (justify would spread U+3000), same length
+        final indent = [for (final l in c.lines) for (final r in l.clines) r.prefix].join();
+        expect(tp.plainText, c.text.replaceFirst(indent, '中' * indent.length));
         tp.dispose();
       }
       // a stretched page: contents drawn with the page's extra line height add up to the content area

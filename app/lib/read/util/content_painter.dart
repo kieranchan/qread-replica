@@ -41,8 +41,14 @@ abstract class ReadTextBuilder {
         if (tokens.contains(CLineStyle.underline) || tokens.contains(CLineStyle.link)) TextDecoration.underline,
         if (tokens.contains(CLineStyle.strike)) TextDecoration.lineThrough,
       ];
+      if (r.prefix.isNotEmpty) {
+        // The first-line indent is measured as U+3000 but drawn as invisible ideographs of the same width: with TextAlign.justify
+        // a line holding U+3000 gets its free space spread over the whole line (the indent vanished and the characters spread).
+        // Same length, so the offset mapping below is unchanged.
+        children.add(TextSpan(text: '中' * r.prefix.length, style: s.copyWith(color: const Color(0x00000000))));
+      }
       children.add(TextSpan(
-        text: r.text,
+        text: r.str,
         style: s.copyWith(
           color: tokens.contains(CLineStyle.link) ? (linkColor ?? color) : color,
           decoration: decorations.isEmpty ? null : TextDecoration.combine(decorations),
