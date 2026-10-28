@@ -35,26 +35,41 @@ void main() {
       expect(Setting.modelById('zzz'), isNull);
     });
 
-    test('legacy single-model keys migrate into legacy_default / legacy_purify and are dropped on save', () async {
+    test('legacy single-model keys migrate into legacy_role / legacy_purify (0x2a54c8) and are dropped on save', () async {
       await Storage.setString('aiUrl', 'https://old/v1');
       await Storage.setString('aiKey', 'K');
       await Storage.setString('aiModel', 'gpt');
       await Storage.setString('purifyUrl', 'https://p/v1');
       await Storage.setString('purifyKey', 'PK');
       await Storage.setString('purifyModel', 'pm');
-      await Storage.setInt('purifyConcurrent', 3);
+      await Storage.setString('purifyConcurrent', 'true');
       final list = Setting.getAiModels();
-      expect(list.map((m) => m.id), ['legacy_default', 'legacy_purify']);
-      expect(list.first.name, '默认模型');
+      expect(list.map((m) => m.id), ['legacy_role', 'legacy_purify']);
+      expect(list.first.name, '多角色分析模型');
       expect(list.last.name, '正文净化模型');
-      expect(list.last.concurrent, 3);
-      expect(list.first.isPurify, isFalse); // a separate purify model exists
+      expect(list.last.concurrent, 1);
+      expect([list.first.isRoleAnalysis, list.first.isPurify, list.last.isRoleAnalysis, list.last.isPurify], [true, false, false, true]);
       await Setting.saveAiModels(list);
       for (final k in Setting.legacyAiKeys) {
         expect(Storage.getString(k), '', reason: k);
       }
       expect(Setting.getAiModels().length, 2);
       expect(Storage.getString('aiModelList'), isNotEmpty);
+    });
+
+    test('identical legacy groups become one legacy_default serving both roles', () async {
+      for (final k in ['aiUrl', 'purifyUrl']) {
+        await Storage.setString(k, 'https://same/v1');
+      }
+      for (final k in ['aiKey', 'purifyKey']) {
+        await Storage.setString(k, 'K');
+      }
+      for (final k in ['aiModel', 'purifyModel']) {
+        await Storage.setString(k, 'm');
+      }
+      final list = Setting.getAiModels();
+      expect(list.single.id, 'legacy_default');
+      expect([list.single.isRoleAnalysis, list.single.isPurify, list.single.concurrent], [true, true, 0]);
     });
 
     test('nothing configured gives an empty list', () {

@@ -1,10 +1,15 @@
 // Widget tests of the extras pages: 「我的」 layout and keys, member gates for non-members (themes, network drive, SVG bubbles, local TTS),
 // the AI model editor and check, settings dialogs, plus the reading statistics loader and hotkey rules.
+import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_svg/flutter_svg.dart' show SvgPicture;
 import 'package:get/get.dart';
+import 'package:newread/common/app_dirs.dart';
 import 'package:newread/data/background_music_manager.dart';
 import 'package:newread/data/bookself.dart';
 import 'package:newread/data/fonts.dart';
@@ -15,9 +20,11 @@ import 'package:newread/data/tts.dart';
 import 'package:newread/data/user.dart';
 import 'package:newread/data/webdav.dart';
 import 'package:newread/models/ai_model_config.dart';
+import 'package:newread/models/book.dart';
 import 'package:newread/models/theme.dart';
 import 'package:newread/models/userinfo.dart';
 import 'package:newread/pages/me_page.dart';
+import 'package:newread/read/api/book_content.dart';
 import 'package:newread/pages/reading_statistics_page.dart';
 import 'package:newread/pages/setting/ai_model_page.dart';
 import 'package:newread/pages/setting/backup_page.dart';
@@ -154,9 +161,17 @@ void main() {
       expect(Toast.log, contains(WebDavManagerPage.vipText));
     });
 
-    testWidgets('SVG bubbles: edit / import are member-only', (t) async {
+    testWidgets('SVG bubbles: edit / import are member-only, non-members see the four built-in bubbles rendered', (t) async {
       await t.pumpWidget(app(const ChooseSvgPage()));
-      expect(find.text('暂无气泡'), findsOneWidget);
+      await t.pump();
+      expect(find.text('暂无气泡'), findsNothing);
+      for (final id in ['0', '1', '2', '3']) {
+        expect(find.byKey(Key('svg_item_$id')), findsOneWidget);
+      }
+      expect(find.byType(SvgPicture), findsNWidgets(4));
+      await t.tap(find.byKey(const Key('svg_item_2')));
+      await t.pump();
+      expect(Storage.getString(ChooseSvgPage.selectedKey), '2');
       await t.tap(find.byKey(const Key('svg_add')));
       await t.pump();
       await t.tap(find.byKey(const Key('svg_import')));
@@ -173,13 +188,67 @@ void main() {
       await t.tap(find.byKey(const Key('tts_add')));
       await t.pumpAndSettle();
       expect(find.text('请选择新建引擎类型'), findsOneWidget);
-      for (final s in ['大声朗读', '中文角色', '火山引擎', 'MiMo引擎', '本地引擎']) {
+      for (final s in ['普通引擎', '多角色引擎', '火山引擎', 'MiMo引擎', '本地引擎']) {
         expect(find.text(s), findsWidgets, reason: s);
       }
       await t.tap(find.byKey(const Key('tts_new_multiRole')));
       await t.pumpAndSettle();
       expect(Toast.log, contains('多角色引擎需要ai支持，请先配置ai接口'));
     });
+  });
+
+  testWidgets('火山引擎: credentials dialog, a voice tap adds a page engine once; MiMo 音色设计 adds an engine', (t) async {
+    await t.pumpWidget(app(const TTsSetting()));
+    await t.tap(find.byKey(const Key('tts_add')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('tts_new_volcano')));
+    await t.pumpAndSettle();
+    expect(find.text('未配置凭证，点击填写'), findsOneWidget);
+    await t.tap(find.byKey(const Key('volc_creds')));
+    await t.pumpAndSettle();
+    await t.enterText(find.byKey(const Key('volc_appid')), 'app-1');
+    await t.enterText(find.byKey(const Key('volc_token')), 'tok-1');
+    await t.tap(find.byKey(const Key('volc_save')));
+    for (var i = 0; i < 200 && !Toast.log.contains('火山引擎凭证已保存'); i++) {
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await t.pump();
+    }
+    await t.pumpAndSettle();
+    expect(Toast.log, contains('火山引擎凭证已保存'));
+    expect(Storage.getString('volcano_tts_app_id'), 'app-1');
+    expect(find.text('凭证已配置，点击修改'), findsOneWidget);
+    // the stores write files: let real IO and the fake-async zone take turns until the expected toast shows up
+    Future<void> io(String toast) async {
+      for (var i = 0; i < 200 && !Toast.log.contains(toast); i++) {
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await t.pump();
+      }
+      await t.pumpAndSettle();
+    }
+
+    await t.tap(find.byKey(const Key('volc_BV700_streaming')));
+    await io('已添加：火山-灿灿(女声)');
+    await t.tap(find.byKey(const Key('volc_BV700_streaming')));
+    await io('该音色引擎已存在');
+    expect(Toast.log, containsAll(['已添加：火山-灿灿(女声)', '该音色引擎已存在']));
+    expect(TTSData.engines.where((e) => e.name == '火山-灿灿(女声)').length, 1);
+    expect(TTSData.pageOf(TTSData.engines.single), contains('"body": "BV700_streaming"'));
+    Navigator.of(t.element(find.text('火山引擎').first)).pop();
+    await t.pumpAndSettle();
+
+    await t.tap(find.byKey(const Key('tts_add')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('tts_new_mimo')));
+    await t.pumpAndSettle();
+    expect(find.text('未设置（无法合成）'), findsOneWidget);
+    await t.tap(find.byKey(const Key('mimo_design')));
+    await t.pumpAndSettle();
+    await t.enterText(find.byKey(const Key('mimo_design_name')), '御姐-温柔');
+    await t.enterText(find.byKey(const Key('mimo_design_desc')), '温柔御姐，语速慢');
+    await t.tap(find.byKey(const Key('mimo_design_add')));
+    await io('已添加音色设计引擎：御姐-温柔（描述 8 字）');
+    expect(Toast.log, contains('已添加音色设计引擎：御姐-温柔（描述 8 字）'));
+    expect(TTSData.engines.map((e) => e.name), contains('御姐-温柔'));
   });
 
   testWidgets('members pass the local-engine gate and get the not-in-this-build message', (t) async {
@@ -258,6 +327,20 @@ void main() {
     expect(find.text('匿名'), findsOneWidget);
   });
 
+  test('清理书本缓存 keeps bookcache2/<md5(bookUrl)> of shelf books (the reading core naming) and deletes other folders', () async {
+    await BookSelfN.addAll([Book(bookUrl: 'https://x/keep', name: '留下')]);
+    final root = AppDirs.dir('bookcache2')..createSync(recursive: true);
+    final keep = BookContent.bookDir(root, 'https://x/keep')..createSync();
+    File('${keep.path}/book.json').writeAsStringSync('{}');
+    final gone = BookContent.bookDir(root, 'https://x/gone')..createSync();
+    File('${root.path}/stray.txt').writeAsStringSync('x');
+    expect(CleanPage.cacheName('https://x/keep'), md5.convert(utf8.encode('https://x/keep')).toString());
+    expect(CleanPage.cleanBookCache(), 1);
+    expect(keep.existsSync(), isTrue);
+    expect(gone.existsSync(), isFalse);
+    expect(File('${root.path}/stray.txt').existsSync(), isTrue, reason: 'only folders are cache entries');
+  });
+
   testWidgets('backup and clean pages render their sections', (t) async {
     await t.pumpWidget(app(const BackupPage()));
     expect(find.text('快速备份'), findsOneWidget);
@@ -286,9 +369,17 @@ void main() {
     await BookReadingTimeStorage.addReading('book-a', 600, day: today);
     await BookReadingTimeStorage.addReading('book-b', 1200, day: today.subtract(const Duration(days: 3)));
     await BookReadingTimeStorage.addReading('book-a', 60, day: today.subtract(const Duration(days: 40)));
+    await BookSelfN.addAll([
+      Book(bookUrl: 'u1', name: '读到一半', totalChapterNum: 10, durChapterIndex: 3),
+      Book(bookUrl: 'u2', name: '读完了', totalChapterNum: 10, durChapterIndex: 10),
+      Book(bookUrl: 'u3', name: '有声书', totalChapterNum: 10, durChapterIndex: 1)..type_ = 1,
+    ]);
     final s = await ReadingStats.load(today: today);
-    expect(s.totalSeconds, 1860);
-    expect(s.books, 2);
+    expect(s.totalSeconds, 1800, reason: '累计时长 sums the last 30 days (0x10df938)');
+    expect(s.books, 1, reason: 'in progress: type != 1 and durChapterIndex < totalChapterNum');
+    expect(await BookReadingTimeStorage.readingTimeRange(today.subtract(const Duration(days: 30)), today), {'2026-10-28': 600, '2026-10-25': 1200});
+    expect(await BookReadingTimeStorage.bookRecords('book-a'), {'2026-10-28': 600, '2026-09-18': 60});
+    expect(await BookReadingTimeStorage.bookSeconds('book-a'), 660);
     expect(s.days.length, 30);
     expect(s.days.last.$2, 600);
     expect(s.days[26].$2, 1200);

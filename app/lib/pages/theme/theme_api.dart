@@ -35,7 +35,8 @@ class PlazaTheme {
   final String version;
   final String author;
 
-  /// `theme_mode`: `day` / `night` (the plaza filter 白天 / 夜间). TODO(asm 0x81b908): other values are shown as day themes.
+  /// `theme_mode`: `day` = a day theme, anything else a night theme (the plaza card / detail 0x6cb994: `day` → `☀ 白天`, otherwise
+  /// `🌙 夜间`; the app itself sends `day` / `dark` by the current brightness, 0x5ac588).
   final String themeMode;
   final String createdAt;
   final String updatedAt;
@@ -56,7 +57,7 @@ class PlazaTheme {
     this.updatedAt = '',
   });
 
-  bool get isNight => themeMode == 'night' || themeMode == 'dark';
+  bool get isNight => themeMode != 'day';
 
   factory PlazaTheme.fromJson(Map<String, dynamic> j) => PlazaTheme(
         id: _int(j['id']),

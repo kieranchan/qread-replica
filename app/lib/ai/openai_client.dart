@@ -247,8 +247,8 @@ class OpenAiClient {
     final c = OpenAiClient(config, dio: dio);
     if (!c.configured) return '请先填写完整的接口地址、密钥和模型';
     try {
-      // TODO(asm 0x109208c): the exact temperature / top_p / max_tokens literals of the check are not recovered.
-      await c.chat(const [AiMessage.user('test')], temperature: 0.01, topP: 0.01, maxTokens: 16, timeout: timeout);
+      // 0x109208c: one user message `test`, temperature 0.01, top_p 0.01, max_tokens 8192 (Smi 0x4000), thinking off, 30 s.
+      await c.chat(const [AiMessage.user('test')], temperature: 0.01, topP: 0.01, maxTokens: 8192, timeout: timeout);
       return null;
     } on AiException catch (e) {
       if (e.message.startsWith('检验超时')) return e.message;

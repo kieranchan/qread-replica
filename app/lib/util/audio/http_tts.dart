@@ -7,7 +7,8 @@
 // in the wild use: the variables `speakText` / `speakSpeed` / `speakVolume` / `voice`, string and number literals, `+ - * / %`,
 // parentheses and the helpers `java.encodeURI`, `encodeURI`, `encodeURIComponent`, `java.base64Encode`, `java.md5Encode`, `String`,
 // `Number`, `parseInt`, `Math.round` / `Math.floor` / `Math.ceil`. Anything else fails with `不支持的表达式: …`.
-// TODO(asm 0x4bf18): engines whose definition is an HTML page (`getttsurl`) need the web view bridge of the reader area.
+// Engines whose definition is an HTML page (`getttsurl`, the original's format) run through util/audio/tts_page.dart; this file
+// only serves the Legado-style maps earlier replica builds stored.
 import 'dart:convert';
 import 'dart:typed_data';
 

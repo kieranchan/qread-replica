@@ -3,6 +3,7 @@
 //   /vip, /vip.js           会员中心 page          /redeem  activation-code redemption (used by the page)
 //   /public/themes[/:id], /public/categories, /public/files/*   theme plaza
 //   /images/*, /static/down.json, /static/qq.json, /healthz, /api/allocate (stub)
+//   PUT|GET /autobackup/<key>   upload / download of a device backup (urls handed out by openAuto / newopenAuto2 / getBookSelf ...)
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -10,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.mjs';
 import { openDb } from './db.mjs';
 import { Service } from './service.mjs';
-import { createUserApi } from './userapi.mjs';
+import { createAutoBackups, createUserApi } from './userapi.mjs';
 import { createThemes } from './themes.mjs';
 import { VIP_HTML, VIP_JS } from './pages.mjs';
 import { ApiError, CODE, RateLimiter, readBody, parseMultipart } from './util.mjs';
@@ -24,6 +25,7 @@ export function createApp(overrides = {}) {
   const svc = new Service(db, cfg);
   const limiter = new RateLimiter();
   const api = createUserApi(svc, cfg, limiter);
+  const autoBackups = createAutoBackups(svc);
   const themes = createThemes(db);
   const startedAt = Date.now();
 
@@ -95,6 +97,27 @@ export function createApp(overrides = {}) {
         }
       }
       if (pathname === '/api/allocate') return send(res, 200, { code: -1, msg: '兼容层服务未启用' });
+      if (pathname.startsWith('/autobackup/')) {
+        const key = pathname.slice('/autobackup/'.length);
+        if (req.method === 'PUT' || req.method === 'POST') {
+          const buf = await readBody(req, cfg.maxBodyBytes);
+          if (!autoBackups.put(key, buf, Date.now())) {
+            status = 404;
+            return send(res, 404, { code: CODE.ERR, errorMsg: 'not found' });
+          }
+          return send(res, 200, { code: 0 });
+        }
+        if (req.method === 'GET' || req.method === 'HEAD') {
+          const data = autoBackups.get(key);
+          if (!data) {
+            status = 404;
+            return send(res, 404, { code: 404, message: 'not found' });
+          }
+          return send(res, 200, data);
+        }
+        status = 405;
+        return send(res, 405, { code: CODE.ERR, errorMsg: 'method not allowed' });
+      }
 
       // ---- account / cloud API ----
       const name = pathname.slice(1);

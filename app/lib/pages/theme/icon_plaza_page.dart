@@ -22,8 +22,10 @@ class IconPlazaPage extends StatefulWidget {
     '11.png', '12.jpg', '13.png', '14.png', '15.png', '16.png', '17.png', '18.jpg', '19.jpeg', '20.png',
   ];
 
-  /// Hook for the platform call that switches the home-screen icon (iOS `setAlternateIconName`). TODO(asm 0x10d0708): the replica's
-  /// iOS project defines no alternate icons yet, so the default only records the choice.
+  /// Hook for the platform call that switches the home-screen icon (iOS `setAlternateIconName`); 0x10d0708 itself only reads
+  /// `icon.txt`. The original's Info.plist declares `CFBundleIcons/CFBundleAlternateIcons` `icon1` … `icon19` (+ `AppIcon`).
+  /// TODO(asm 0x10d0708): the replica's iOS project has no alternate icons and no channel yet (lead: Info.plist entries + icon
+  /// files + a method channel calling `UIApplication.shared.setAlternateIconName`), so the default only records the choice.
   static Future<void> Function(String name) setAppIcon = (_) async {};
 
   static File get iconFile => File(p.join(AppDirs.root.path, 'icon.txt'));

@@ -30,6 +30,7 @@ import '../storage/book_reading_time_storage.dart';
 import '../storage/storage.dart';
 import '../theme/theme_provider.dart';
 import '../theme/widgets.dart';
+import '../widget/ui/q_glass.dart';
 import '../util/toast.dart';
 import 'about_page.dart';
 import 'background_manager_page.dart';
@@ -66,13 +67,10 @@ class MePage extends StatefulWidget {
   static const String showDailyGoalKey = 'showDailyGoal';
   static const String showRecentReadKey = 'showRecentRead';
 
-  /// Default goal in minutes when nothing is stored. TODO(asm 0x10be2a8): the original default is not recovered.
+  /// Default goal in minutes when nothing is stored (0x10be2a8 → closure 0x8ebf9c: `int.tryParse(dailyReadingGoal) ?? 30`).
   static const int defaultGoal = 30;
 
-  static int get dailyGoal {
-    final v = int.tryParse(Storage.getString(dailyGoalKey).trim());
-    return v == null || v <= 0 ? defaultGoal : v;
-  }
+  static int get dailyGoal => int.tryParse(Storage.getString(dailyGoalKey).trim()) ?? defaultGoal;
 
   @override
   State<MePage> createState() => _MePageState();
@@ -330,7 +328,8 @@ class _MePageState extends State<MePage> {
   Future<void> _feedback() async {
     final text = await Dialogs.input(context, '问题反馈', hint: '请输入您的问题或建议...', maxLines: 5);
     if (text == null || text.trim().isEmpty) return;
-    // TODO(asm 0x516414): the original mails a fixed support address; the replica has none and leaves the recipient empty.
+    // TODO(asm 0x516414): the original mails its operator's support address; deliberately not copied (own server only), the recipient
+    // stays empty.
     final uri = Uri(scheme: 'mailto', query: 'subject=${Uri.encodeComponent('轻悦时光的问题')}&body=${Uri.encodeComponent(text)}');
     try {
       if (!await launchUrl(uri)) throw StateError('mailto');
@@ -391,9 +390,20 @@ class _MePageState extends State<MePage> {
           appBar: AppBar(
             title: const Text('我的', style: TextStyle(fontWeight: FontWeight.w600)),
             centerTitle: false,
+            // 0x514204: the actions sit in a glass pill (QGlassContainer, height 40, radius 20, horizontal padding 10) + 10 px gap.
             actions: [
-              IconButton(key: const Key('me_dark'), icon: Icon(tp.modeIcon), tooltip: '跟随系统 / 白天 / 夜间', onPressed: tp.cycleMode),
-              const SizedBox(width: 6),
+              QGlassContainer(
+                height: 40,
+                borderRadius: 20,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Tooltip(
+                    message: '跟随系统 / 白天 / 夜间',
+                    child: GestureDetector(key: const Key('me_dark'), onTap: tp.cycleMode, child: Icon(tp.modeIcon, size: 24)),
+                  ),
+                ]),
+              ),
+              const SizedBox(width: 10),
             ],
           ),
           body: RefreshIndicator(

@@ -1,14 +1,13 @@
-// pages/reading_statistics_page.dart — 阅读统计 (`ReadingStatisticsPage`, 15 functions), from storage/book_reading_time_storage.dart:
-// 累计时长 (all daily files; `小时` / `分钟`), 在读书籍 n 本 (books with a reading-time file), and 近30日阅读记录 as a bar chart with
-// `月` / `日` labels. Load failures: `加载累计阅读时间失败: …`, `加载在读书籍数量失败: …`, `加载近30天阅读记录失败: …`,
-// `获取阅读时间范围失败: …`.
-import 'dart:convert';
-import 'dart:io';
-
+// pages/reading_statistics_page.dart — 阅读统计 (`ReadingStatisticsPage`, 15 functions; build 0x7ef744, loader 0x10df3a8) as the original:
+//   累计时长   0x10df938: the sum of `readingTimeRange(now - 30 days, now)` (storage/book_reading_time_storage.dart, 0x10dfb2c)
+//   在读书籍   0x10e02f0: shelf books with `type != 1` and `durChapterIndex < totalChapterNum` (closure 0x925fc0), `本`
+//   近30日阅读记录 0x10df4f4: the 30 days up to today labelled `M月d日`, rows sorted newest first (0x7f0b0c); each row (0x7f04c8) =
+//              80 px date, a 24 px bar whose length is minutes / 480 (at least 0.05), 60 px `n分钟`.
+// Load failures: `加载累计阅读时间失败: …`, `加载在读书籍数量失败: …`, `加载近30天阅读记录失败: …`, `加载阅读统计数据失败: …`.
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as p;
 
-import '../common/app_dirs.dart';
+import '../data/bookself.dart';
+import '../models/book.dart';
 import '../storage/book_reading_time_storage.dart';
 import '../util/toast.dart';
 
@@ -16,43 +15,34 @@ class ReadingStats {
   final int totalSeconds;
   final int books;
 
-  /// Oldest first, 30 entries.
+  /// Oldest first, 30 entries (today last).
   final List<(DateTime, int)> days;
   const ReadingStats(this.totalSeconds, this.books, this.days);
 
-  static int _seconds(File f) {
-    try {
-      final v = jsonDecode(f.readAsStringSync());
-      if (v is Map) return int.tryParse('${v['seconds'] ?? 0}') ?? 0;
-    } catch (_) {}
-    return 0;
-  }
+  /// 0x925fc0.
+  static bool inProgress(Book b) => b.type_ != 1 && b.durChapterIndex < b.totalChapterNum;
 
   static Future<ReadingStats> load({DateTime? today}) async {
+    final now = today ?? DateTime.now();
     var total = 0;
     try {
-      final d = AppDirs.dir('reading_time');
-      if (d.existsSync()) {
-        for (final f in d.listSync().whereType<File>()) {
-          if (p.extension(f.path) == '.json') total += _seconds(f);
-        }
-      }
+      final m = await BookReadingTimeStorage.readingTimeRange(now.subtract(const Duration(days: 30)), now);
+      m.forEach((_, v) => total += v);
     } catch (e) {
       Toast.show('加载累计阅读时间失败: $e', iserror: true);
     }
     var books = 0;
     try {
-      final d = AppDirs.dir('book_reading_time');
-      if (d.existsSync()) books = d.listSync().whereType<File>().where((f) => _seconds(f) > 0).length;
+      books = (await Bookdata.load()).where(inProgress).length;
     } catch (e) {
       Toast.show('加载在读书籍数量失败: $e', iserror: true);
     }
     final days = <(DateTime, int)>[];
     try {
-      final t = today ?? DateTime.now();
+      final range = await BookReadingTimeStorage.readingTimeRange(DateTime(now.year, now.month, now.day - 30), now);
       for (var i = 29; i >= 0; i--) {
-        final d = DateTime(t.year, t.month, t.day - i);
-        days.add((d, await BookReadingTimeStorage.daySeconds(d)));
+        final d = DateTime(now.year, now.month, now.day - i);
+        days.add((d, range[BookReadingTimeStorage.dateKey(d)] ?? 0));
       }
     } catch (e) {
       Toast.show('加载近30天阅读记录失败: $e', iserror: true);
@@ -107,7 +97,6 @@ class _ReadingStatisticsPageState extends State<ReadingStatisticsPage> {
   @override
   Widget build(BuildContext context) {
     final s = _s;
-    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('阅读统计')),
       body: s == null
@@ -117,54 +106,36 @@ class _ReadingStatisticsPageState extends State<ReadingStatisticsPage> {
                 _tile('累计时长', s.totalSeconds >= 3600 ? (s.totalSeconds / 3600).toStringAsFixed(1) : '${s.totalSeconds ~/ 60}', s.totalSeconds >= 3600 ? '小时' : '分钟'),
                 _tile('在读书籍', '${s.books}', '本'),
               ]),
-              const SizedBox(height: 12),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    const Text('近30日阅读记录', style: TextStyle(fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 12),
-                    SizedBox(height: 180, child: CustomPaint(size: Size.infinite, painter: _BarsPainter(s.days, cs.primary, cs.outline))),
-                    const SizedBox(height: 8),
-                    if (s.days.isNotEmpty)
-                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                        Text('${s.days.first.$1.month}月${s.days.first.$1.day}日', style: TextStyle(fontSize: 11, color: cs.outline)),
-                        Text('${s.days.last.$1.month}月${s.days.last.$1.day}日', style: TextStyle(fontSize: 11, color: cs.outline)),
-                      ]),
-                  ]),
-                ),
+              const SizedBox(height: 16),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                child: Text('近30日阅读记录', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
               ),
-              const SizedBox(height: 8),
-              for (final d in s.days.reversed.where((e) => e.$2 > 0))
-                ListTile(dense: true, title: Text('${d.$1.month}月${d.$1.day}日'), trailing: Text(formatDuration(d.$2))),
+              for (final d in s.days.reversed) _row(d.$1, d.$2),
             ]),
     );
   }
-}
 
-class _BarsPainter extends CustomPainter {
-  final List<(DateTime, int)> days;
-  final Color color;
-  final Color axis;
-  _BarsPainter(this.days, this.color, this.axis);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (days.isEmpty) return;
-    final maxV = days.map((e) => e.$2).fold<int>(0, (a, b) => b > a ? b : a);
-    final w = size.width / days.length;
-    final paint = Paint()..color = color;
-    canvas.drawLine(Offset(0, size.height), Offset(size.width, size.height), Paint()..color = axis.withValues(alpha: 0.4));
-    if (maxV == 0) return;
-    for (var i = 0; i < days.length; i++) {
-      final h = (days[i].$2 / maxV) * (size.height - 4);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(Rect.fromLTWH(i * w + w * 0.15, size.height - h, w * 0.7, h), const Radius.circular(2)),
-        paint,
-      );
-    }
+  /// 0x7f04c8.
+  Widget _row(DateTime day, int seconds) {
+    final cs = Theme.of(context).colorScheme;
+    final minutes = seconds ~/ 60;
+    return Container(
+      key: Key('stat_${day.month}_${day.day}'),
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(children: [
+        SizedBox(width: 80, child: Text('${day.month}月${day.day}日', style: const TextStyle(fontSize: 14))),
+        Expanded(
+          child: Stack(children: [
+            Container(height: 24, decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12))),
+            FractionallySizedBox(
+              widthFactor: (minutes / 480).clamp(0.05, 1.0).toDouble(),
+              child: Container(height: 24, decoration: BoxDecoration(color: cs.primary, borderRadius: BorderRadius.circular(12))),
+            ),
+          ]),
+        ),
+        Container(width: 60, alignment: Alignment.centerRight, child: Text('$minutes分钟', style: const TextStyle(fontSize: 14))),
+      ]),
+    );
   }
-
-  @override
-  bool shouldRepaint(covariant _BarsPainter old) => old.days != days || old.color != color;
 }
