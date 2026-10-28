@@ -5,22 +5,27 @@
 // html 0x9072b8; menu 0xfc6814 copy `引擎已复制` / paste / help / login / search / cleancaches `是否要清理当前书源所有的cache？`;
 // code 0xfc7368 and debug 0xfc742c check `请输入书源URL`).
 //
-// The replica has no web-view source engine, so 时光源 can be kept, edited, imported and exported, but not run (the page says so).
+// The source runs in the 时光源 runtime (util/source/): 登录 opens the page's login (sg_login.dart), 搜索 the search page on this
+// source, 调试 the debugger, 清除缓存 drops the source's `cache.*` store and its running page.
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../api/sourceapi.dart';
+import '../../common/nav.dart';
 import '../../data/source.dart';
+import '../../models/source.dart';
+import '../../util/source/cache.dart';
+import '../../util/source/source.dart';
 import '../../util/toast.dart';
 import 'code.dart';
+import 'debug_source.dart';
+import 'sg_login.dart';
 import 'source_help.dart';
 
 /// 0x9072b8: the html a new 时光源 starts with.
 const String defaultSgHtml = '<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <title>默认书源</title>\n</head>\n<body>\n\n</body>\n\n</html>\n      ';
-
-/// Shown on the page: why this kind cannot run here.
-const String sgUnsupportedNote = '此版本不支持运行时光源（需要原版的网页书源引擎），可以编辑、导入和导出。';
 
 class EditSgSourcePage extends StatefulWidget {
   final Map<String, dynamic>? source;
@@ -102,6 +107,8 @@ class _EditSourceState extends State<EditSgSourcePage> {
     }
     try {
       await Sources.update(_savedUrl.isEmpty ? url : _savedUrl, json);
+      if (_savedUrl.isNotEmpty) SourceApi.reloadSource(_savedUrl);
+      SourceApi.reloadSource(url);
       _savedUrl = url;
       _raw = json;
       Toast.show('保存成功');
@@ -146,7 +153,18 @@ class _EditSourceState extends State<EditSgSourcePage> {
       case 'login':
       case 'search':
       case 'debug':
-        Toast.show(_savedUrl.isEmpty ? '请先保存书源' : sgUnsupportedNote);
+        final raw = _savedUrl.isEmpty ? null : Sourcedata.byUrl(_savedUrl);
+        if (raw == null) {
+          Toast.show('请先保存书源');
+          return;
+        }
+        if (v == 'login') {
+          await showTimeSourceLogin(context, BaseSource.fromJson(raw));
+        } else if (v == 'search') {
+          await Nav.openSearch(context, sources: [Source.fromJson(raw)]);
+        } else {
+          await Navigator.of(context).push(MaterialPageRoute(builder: (c) => DebugSourcePage(source: raw)));
+        }
       case 'cleancaches':
         final ok = await showDialog<bool>(
           context: context,
@@ -159,13 +177,16 @@ class _EditSourceState extends State<EditSgSourcePage> {
             ],
           ),
         );
-        if (ok == true) Toast.show('清除成功！');
+        if (ok != true) return;
+        final url = _savedUrl.isEmpty ? _c['bookSourceUrl']!.text.trim() : _savedUrl;
+        await Cache(url).clear();
+        SourceApi.reloadSource(url);
+        Toast.show('清除成功！');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text('书源编辑'),
@@ -189,13 +210,6 @@ class _EditSourceState extends State<EditSgSourcePage> {
       ),
       body: SafeArea(
         child: ListView(padding: const EdgeInsets.all(12), children: [
-          Container(
-            key: const Key('sg_note'),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: cs.errorContainer, borderRadius: BorderRadius.circular(8)),
-            child: Text(sgUnsupportedNote, style: TextStyle(color: cs.onErrorContainer)),
-          ),
-          const SizedBox(height: 8),
           for (final s in _switches)
             SwitchListTile(
               dense: true,

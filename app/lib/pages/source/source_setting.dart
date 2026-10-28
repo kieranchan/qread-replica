@@ -34,6 +34,7 @@ import '../../models/source.dart';
 import '../../qread/api/qsourceapi.dart';
 import '../../qread/qread.dart';
 import '../../util/http.dart';
+import '../../util/source/source.dart' as ts;
 import '../../util/toast.dart';
 import '../../util/webbook/model/book_source.dart';
 import '../../widget/ui/q_glass.dart';
@@ -43,6 +44,7 @@ import 'debug_qsource.dart';
 import 'debug_source.dart';
 import 'edit_source.dart';
 import 'login_dialog.dart';
+import 'sg_login.dart';
 import 'source_help.dart';
 
 const String allGroups = '全部分组';
@@ -375,10 +377,6 @@ class _SourceSettingPageState extends State<SourceSettingPage> {
       await Navigator.of(context).push(MaterialPageRoute(builder: (c) => DebugQSourcePage(url: i.url, name: i.name)));
       return;
     }
-    if (i.kind == SourceKind.sg) {
-      Toast.show('此版本不支持运行时光源（需要原版的网页书源引擎），可以编辑、导入和导出。');
-      return;
-    }
     await Navigator.of(context).push(MaterialPageRoute(builder: (c) => DebugSourcePage(source: i.raw)));
   }
 
@@ -398,7 +396,12 @@ class _SourceSettingPageState extends State<SourceSettingPage> {
       case 'del':
         if (await _confirm('删除确认', '确定要删除《${i.name}》吗？')) await _delete([i]);
       case 'login':
-        if (mounted) await showSourceLogin(context, BookSource.fromJson(i.raw));
+        if (!mounted) return;
+        if (i.kind == SourceKind.sg) {
+          await showTimeSourceLogin(context, ts.BaseSource.fromJson(i.raw));
+        } else {
+          await showSourceLogin(context, BookSource.fromJson(i.raw));
+        }
       case 'setVariable':
         if (i.remote) {
           final cur = await QSourceApi.getVariable(i.url).catchError((_) => '');
@@ -420,7 +423,12 @@ class _SourceSettingPageState extends State<SourceSettingPage> {
       case 'debug':
         await _debug(i);
       case 'help':
-        if (mounted) await Navigator.of(context).push(MaterialPageRoute(builder: (c) => const SourceHelpPage()));
+        if (!mounted) return;
+        if (i.kind == SourceKind.sg && ts.BaseSource.fromJson(i.raw).help) {
+          await showTimeSourceHelp(context, ts.BaseSource.fromJson(i.raw));
+        } else {
+          await Navigator.of(context).push(MaterialPageRoute(builder: (c) => const SourceHelpPage()));
+        }
     }
   }
 
@@ -709,7 +717,9 @@ class _SourceSettingPageState extends State<SourceSettingPage> {
                   const PopupMenuItem(value: 'found', child: Text('发现')),
                   const PopupMenuItem(value: 'debug', child: Text('调试')),
                   const PopupMenuItem(value: 're', child: Text('重载')),
-                  if ('${i.raw['loginUrl'] ?? ''}'.trim().isNotEmpty) const PopupMenuItem(value: 'login', child: Text('登录')),
+                  if ('${i.raw['loginUrl'] ?? ''}'.trim().isNotEmpty || (i.kind == SourceKind.sg && ts.BaseSource.fromJson(i.raw).login))
+                    const PopupMenuItem(value: 'login', child: Text('登录')),
+                  if (i.kind == SourceKind.sg && ts.BaseSource.fromJson(i.raw).help) const PopupMenuItem(value: 'help', child: Text('帮助')),
                   const PopupMenuItem(value: 'setVariable', child: Text('设置源变量')),
                   const PopupMenuItem(value: 'del', child: Text('删除')),
                 ],
