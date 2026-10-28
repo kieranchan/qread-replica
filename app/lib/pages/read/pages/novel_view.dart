@@ -28,6 +28,7 @@ import '../../../read/api/readapi.dart';
 import '../../../read/model/mypage.dart';
 import '../../../read/model/page.dart';
 import '../../../read/pdf/pdf_file.dart';
+import '../../../qread/qread_jobs.dart';
 import '../../../read/setting/read_layout_style.dart';
 import '../../../read/setting/read_setting.dart';
 import '../../../read/util/chapter_content.dart';
@@ -180,6 +181,9 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     if (ReadApi.log == _logLine) ReadApi.log = null;
     if (ReadApi.aiError == _aiError) ReadApi.aiError = null;
     if (ReadApi.refreshCurrent == _refreshFromSource) ReadApi.refreshCurrent = null;
+    if (QreadHooks.currentBook == widget.book) QreadHooks.currentBook = null;
+    if (QreadHooks.refreshToc == _refreshToc) QreadHooks.refreshToc = null;
+    if (QreadHooks.refreshContent == _refreshFromSource) QreadHooks.refreshContent = null;
     _setting.removeListener(_onSetting);
     _autoTimer?.cancel();
     ReaderWakelock.stop();
@@ -236,6 +240,10 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     ReadApi.log ??= _logLine;
     ReadApi.aiError = _aiError;
     ReadApi.refreshCurrent = _refreshFromSource;
+    // the bound 轻阅读 backend's refreshBookToc / refreshContent jobs act on this book (0x10c54ac sets the statics)
+    QreadHooks.currentBook = widget.book;
+    QreadHooks.refreshToc = _refreshToc;
+    QreadHooks.refreshContent = _refreshFromSource;
     final b = widget.book;
     var start = widget.chapterIndex ?? b.durChapterIndex;
     var progress = widget.chapterIndex == null || widget.chapterIndex == b.durChapterIndex ? b.durChapterPos : 0.0;
@@ -459,6 +467,20 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
 
   /// `refreshContent` of a 时光源 page: reload the current chapter from the source.
   Future<void> _refreshFromSource() => reloadChapter(refresh: true);
+
+  /// 0x10c6328: the table of contents again (the backend changed it).
+  Future<void> _refreshToc() async {
+    final l = widget.chapterListLoader;
+    if (l == null) return;
+    try {
+      final list = await l(widget.book);
+      if (list.isEmpty || !mounted) return;
+      setState(() => _chapters = List<BookChapter>.of(list));
+      _api.chapters = _chapters;
+    } catch (e) {
+      _logLine('目录刷新失败: $e');
+    }
+  }
 
   @override
   Future<void> reloadChapter({bool refresh = false}) async {

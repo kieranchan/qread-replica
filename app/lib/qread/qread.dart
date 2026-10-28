@@ -27,6 +27,7 @@ import '../util/http.dart';
 import '../util/toast.dart';
 import '../util/webbook/util/client_app.dart';
 import 'http.dart';
+import 'qread_jobs.dart';
 
 /// A failed backend call; [message] is the backend's `errorMsg` (or the original's client-side text).
 class QreadException implements Exception {
@@ -206,6 +207,7 @@ abstract class Qread {
 
   static Future<void> unbind() async {
     QreadWebsocket.close();
+    QreadJobs.inited = false;
     isbind = false;
     accessToken = '';
     caneditsource = false;
@@ -235,11 +237,11 @@ abstract class Qread {
 }
 
 /// The backend's device channel (0x2ad0ac). The backend sends `{msg, id, …}` jobs; the app runs them and answers with
-/// `{id, data}`. Implemented: toast, longToast, log, copyText, allowchange, source (edit permission), get / post / head
-/// (proxied through the app's HTTP client), getVerificationCode, getWebViewUA, startBrowser / startBrowserdp / showBrowser
-/// and webview through the LegadoPlatform hooks.
-// TODO(asm 0x2ad0ac): searchBook / addBook / refreshBookInfo / refreshBookToc / refreshContent / refreshExplore / bookmd5 /
-// rssmd5 / sourcemd5 / gonggao / upLoginData / reLoginView / logout / openurl jobs need the shelf and reader areas.
+/// `{id, data}`. Here: toast, longToast, log, copyText, allowchange, source (edit permission), get / post / head (proxied through
+/// the app's HTTP client), getVerificationCode, getWebViewUA, startBrowser / startBrowserdp / showBrowser and webview through the
+/// LegadoPlatform hooks; the jobs that act on pages and lists (logout, openurl, searchBook, addBook, bookmd5, rssmd5, sourcemd5, init,
+/// gonggao, reLoginView, upLoginData, refreshBookInfo / refreshBookToc / refreshContent, refreshExplore) are in qread_jobs.dart;
+/// any other job is answered with `/noCookies {id}` like the original.
 abstract class QreadWebsocket {
   static final ValueNotifier<bool> islink = ValueNotifier<bool>(false);
   static final Random random = Random();
@@ -333,7 +335,11 @@ abstract class QreadWebsocket {
       case 'head':
         out = await proxy('${m['msg']}', body);
       default:
-        debugPrint('QreadWebsocket: unsupported ${m['msg']}');
+        String field(String k) => '${m[k] ?? body[k] ?? ''}';
+        if (!await QreadJobs.run('${m['msg']}', field)) {
+          debugPrint('QreadWebsocket: unsupported ${m['msg']}');
+          if (m.containsKey('msg')) await QreadJobs.notHandled(field('id'));
+        }
     }
     if (id != null) _reply(id, out);
     return out;
