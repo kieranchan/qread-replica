@@ -13,6 +13,7 @@ import '../../../../../models/back_ground.dart';
 import '../../../../../read/setting/read_setting.dart';
 import '../../../../../read/util/read.dart';
 import '../../../../../util/toast.dart';
+import '../../../../../widget/ui/q_glass.dart';
 import '../read_more_setting.dart';
 import '../theme_page.dart';
 import 'reader_host.dart';
@@ -44,9 +45,11 @@ class _ButtomMenuState extends State<ButtomMenu> {
     ReaderFonts.all().then((f) {
       if (mounted) setState(() => _fonts = f);
     });
-    Ground.load().then((_) {
-      if (mounted) setState(() {});
-    }).catchError((Object _) {});
+    Ground.load()
+        .then((_) {
+          if (mounted) setState(() {});
+        })
+        .catchError((Object _) {});
   }
 
   void _go(_Panel p) => setState(() => _panel = p);
@@ -59,24 +62,26 @@ class _ButtomMenuState extends State<ButtomMenu> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(children: [
-          TextButton(onPressed: host.prevChapter, child: const Text('上一章')),
-          Expanded(
-            child: Slider(
-              value: cur,
-              min: 0,
-              max: n <= 1 ? 1 : (n - 1).toDouble(),
-              label: n == 0 ? '' : host.chapters[cur.round().clamp(0, n - 1)].name,
-              divisions: n <= 1 ? null : n - 1,
-              onChanged: n <= 1 ? null : (v) => setState(() => _dragChapter = v),
-              onChangeEnd: (v) {
-                setState(() => _dragChapter = null);
-                host.jumpToChapter(v.round());
-              },
+        Row(
+          children: [
+            TextButton(onPressed: host.prevChapter, child: const Text('上一章')),
+            Expanded(
+              child: Slider(
+                value: cur,
+                min: 0,
+                max: n <= 1 ? 1 : (n - 1).toDouble(),
+                label: n == 0 ? '' : host.chapters[cur.round().clamp(0, n - 1)].name,
+                divisions: n <= 1 ? null : n - 1,
+                onChanged: n <= 1 ? null : (v) => setState(() => _dragChapter = v),
+                onChangeEnd: (v) {
+                  setState(() => _dragChapter = null);
+                  host.jumpToChapter(v.round());
+                },
+              ),
             ),
-          ),
-          TextButton(onPressed: host.nextChapter, child: const Text('下一章')),
-        ]),
+            TextButton(onPressed: host.nextChapter, child: const Text('下一章')),
+          ],
+        ),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
@@ -92,12 +97,19 @@ class _ButtomMenuState extends State<ButtomMenu> {
   }
 
   Widget _tool(IconData icon, String label, VoidCallback onTap) => InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(icon), const SizedBox(height: 2), Text(label, style: const TextStyle(fontSize: 12))]),
-        ),
-      );
+    onTap: onTap,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon),
+          const SizedBox(height: 2),
+          Text(label, style: const TextStyle(fontSize: 12)),
+        ],
+      ),
+    ),
+  );
 
   Future<void> _push(BuildContext context, Widget page) async {
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
@@ -107,71 +119,117 @@ class _ButtomMenuState extends State<ButtomMenu> {
   // ------------------------------------------------------------------ 界面设置
 
   Widget _title(String t, {Widget? trailing}) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 8, 4),
-        child: Row(children: [
-          IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.arrow_back), onPressed: () => _go(_panel == _Panel.ui || _panel == _Panel.light ? _Panel.main : _Panel.ui)),
-          Text(t, style: const TextStyle(fontWeight: FontWeight.w600)),
-          const Spacer(),
-          ?trailing,
-        ]),
-      );
+    padding: const EdgeInsets.fromLTRB(16, 8, 8, 4),
+    child: Row(
+      children: [
+        IconButton(
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => _go(_panel == _Panel.ui || _panel == _Panel.light ? _Panel.main : _Panel.ui),
+        ),
+        Text(t, style: const TextStyle(fontWeight: FontWeight.w600)),
+        const Spacer(),
+        ?trailing,
+      ],
+    ),
+  );
 
   Widget _ui(BuildContext context) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _title('界面设置', trailing: TextButton(onPressed: () => _push(context, ReadMoreSettingPage(setting: s, book: host.book)), child: const Text('更多'))),
-        _row('字号', Row(children: [
-          IconButton(key: const ValueKey('font_minus'), icon: const Icon(Icons.text_decrease), onPressed: s.fontSize <= 10 ? null : () => s.setFontSize(s.fontSize - 1)),
-          SizedBox(width: 36, child: Text('${s.fontSize}', textAlign: TextAlign.center, key: const ValueKey('font_size_value'))),
-          IconButton(key: const ValueKey('font_plus'), icon: const Icon(Icons.text_increase), onPressed: s.fontSize >= 55 ? null : () => s.setFontSize(s.fontSize + 1)),
-        ])),
-        _row('字体', SizedBox(
-          height: 40,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
+        _title(
+          '界面设置',
+          trailing: TextButton(
+            onPressed: () => _push(context, ReadMoreSettingPage(setting: s, book: host.book)),
+            child: const Text('更多'),
+          ),
+        ),
+        _row(
+          '字号',
+          Row(
             children: [
-              for (final f in _fonts)
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(
-                    label: Text(f.label),
-                    selected: s.fontFamily == f.family,
-                    onSelected: (_) async {
-                      final ok = await ReaderFonts.ensure(f.family);
-                      if (!ok) {
-                        Toast.show('字体加载失败');
-                        return;
-                      }
-                      await s.setFontFamily(f.family);
-                    },
+              IconButton(
+                key: const ValueKey('font_minus'),
+                icon: const Icon(Icons.text_decrease),
+                onPressed: s.fontSize <= 10 ? null : () => s.setFontSize(s.fontSize - 1),
+              ),
+              SizedBox(
+                width: 36,
+                child: Text('${s.fontSize}', textAlign: TextAlign.center, key: const ValueKey('font_size_value')),
+              ),
+              IconButton(
+                key: const ValueKey('font_plus'),
+                icon: const Icon(Icons.text_increase),
+                onPressed: s.fontSize >= 55 ? null : () => s.setFontSize(s.fontSize + 1),
+              ),
+            ],
+          ),
+        ),
+        _row(
+          '字体',
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                for (final f in _fonts)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      label: Text(f.label),
+                      selected: s.fontFamily == f.family,
+                      onSelected: (_) async {
+                        final ok = await ReaderFonts.ensure(f.family);
+                        if (!ok) {
+                          Toast.show('字体加载失败');
+                          return;
+                        }
+                        await s.setFontFamily(f.family);
+                      },
+                    ),
                   ),
+              ],
+            ),
+          ),
+        ),
+        _row(
+          '排版',
+          Wrap(
+            spacing: 6,
+            children: [
+              ChoiceChip(label: const Text('单列'), selected: !s.ispad, onSelected: (_) => s.setBool('ispad', false)),
+              ChoiceChip(label: const Text('双列'), selected: s.ispad, onSelected: (_) => s.setBool('ispad', true)),
+            ],
+          ),
+        ),
+        _row(
+          '简体繁体',
+          Wrap(
+            spacing: 6,
+            children: [
+              for (final e in const {FanMode.off: '原文', FanMode.toSimplified: '简体', FanMode.toTraditional: '繁体'}.entries)
+                ChoiceChip(
+                  key: ValueKey('simplified_${e.key}'),
+                  label: Text(e.value),
+                  selected: s.simplified == e.key,
+                  onSelected: (_) => s.setSimplified(e.key),
                 ),
             ],
           ),
-        )),
-        _row('排版', Wrap(spacing: 6, children: [
-          ChoiceChip(label: const Text('单列'), selected: !s.ispad, onSelected: (_) => s.setBool('ispad', false)),
-          ChoiceChip(label: const Text('双列'), selected: s.ispad, onSelected: (_) => s.setBool('ispad', true)),
-        ])),
-        _row('简体繁体', Wrap(spacing: 6, children: [
-          for (final e in const {FanMode.off: '原文', FanMode.toSimplified: '简体', FanMode.toTraditional: '繁体'}.entries)
-            ChoiceChip(
-              key: ValueKey('simplified_${e.key}'),
-              label: Text(e.value),
-              selected: s.simplified == e.key,
-              onSelected: (_) => s.setSimplified(e.key),
-            ),
-        ])),
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Wrap(spacing: 8, children: [
-            OutlinedButton(onPressed: () => _go(_Panel.space), child: const Text('间距设置')),
-            OutlinedButton(onPressed: () => _go(_Panel.turn), child: const Text('翻页设置')),
-            OutlinedButton(onPressed: () => _go(_Panel.layout), child: const Text('排版管理')),
-            OutlinedButton(onPressed: () => _go(_Panel.light), child: const Text('背景设置')),
-          ]),
+          child: Wrap(
+            spacing: 8,
+            children: [
+              OutlinedButton(onPressed: () => _go(_Panel.space), child: const Text('间距设置')),
+              OutlinedButton(onPressed: () => _go(_Panel.turn), child: const Text('翻页设置')),
+              OutlinedButton(onPressed: () => _go(_Panel.layout), child: const Text('排版管理')),
+              OutlinedButton(onPressed: () => _go(_Panel.light), child: const Text('背景设置')),
+            ],
+          ),
         ),
         const SizedBox(height: 8),
       ],
@@ -179,9 +237,14 @@ class _ButtomMenuState extends State<ButtomMenu> {
   }
 
   Widget _row(String label, Widget child) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-        child: Row(children: [SizedBox(width: 56, child: Text(label)), Expanded(child: child)]),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+    child: Row(
+      children: [
+        SizedBox(width: 56, child: Text(label)),
+        Expanded(child: child),
+      ],
+    ),
+  );
 
   // ------------------------------------------------------------------ 背景设置 / 亮度设置
 
@@ -227,20 +290,19 @@ class _ButtomMenuState extends State<ButtomMenu> {
           ),
         ),
         const Padding(padding: EdgeInsets.fromLTRB(16, 8, 16, 0), child: Text('亮度设置')),
-        Row(children: [
-          const SizedBox(width: 8),
-          const Icon(Icons.brightness_low, size: 18),
-          Expanded(
-            child: Slider(
-              value: s.brightness < 0 ? 1 : s.brightness,
-              onChanged: s.autoBrightness ? null : (v) => s.setBrightness(v),
+        Row(
+          children: [
+            const SizedBox(width: 8),
+            const Icon(Icons.brightness_low, size: 18),
+            Expanded(
+              child: Slider(value: s.brightness < 0 ? 1 : s.brightness, onChanged: s.autoBrightness ? null : (v) => s.setBrightness(v)),
             ),
-          ),
-          const Icon(Icons.brightness_high, size: 18),
-          Checkbox(value: s.autoBrightness, onChanged: (v) => s.setAutoBrightness(v ?? true)),
-          const Text('自动'),
-          const SizedBox(width: 12),
-        ]),
+            const Icon(Icons.brightness_high, size: 18),
+            Checkbox(value: s.autoBrightness, onChanged: (v) => s.setAutoBrightness(v ?? true)),
+            const Text('自动'),
+            const SizedBox(width: 12),
+          ],
+        ),
         const SizedBox(height: 8),
       ],
     );
@@ -258,11 +320,46 @@ class _ButtomMenuState extends State<ButtomMenu> {
         _SettingSlider(label: '段距', value: s.paragraphSpacing, min: 0, max: 100, divisions: 100, onCommit: s.setParagraphSpacing),
         _SettingSlider(label: '字距', value: s.letterSpacing, min: -2, max: 10, divisions: 24, digits: 1, onCommit: s.setLetterSpacing),
         _SettingSlider(label: '缩进', value: s.kong.toDouble(), min: 0, max: 4, divisions: 4, onCommit: (v) => s.setKong(v.round())),
-        _SettingSlider(label: '上边距', value: s.topMargin.toDouble(), min: 0, max: 100, divisions: 100, onCommit: (v) => s.setMargins(top: v.round())),
-        _SettingSlider(label: '下边距', value: s.bottomMargin.toDouble(), min: 0, max: 100, divisions: 100, onCommit: (v) => s.setMargins(bottom: v.round())),
-        _SettingSlider(label: '左边距', value: s.leftMargin.toDouble(), min: 0, max: 100, divisions: 100, onCommit: (v) => s.setMargins(left: v.round())),
-        _SettingSlider(label: '右边距', value: s.rightMargin.toDouble(), min: 0, max: 100, divisions: 100, onCommit: (v) => s.setMargins(right: v.round())),
-        _SettingSlider(label: '标题间距', value: s.titleBottomMargin.toDouble(), min: 0, max: 100, divisions: 100, onCommit: (v) => s.setTitle(bottom: v.round())),
+        _SettingSlider(
+          label: '上边距',
+          value: s.topMargin.toDouble(),
+          min: 0,
+          max: 100,
+          divisions: 100,
+          onCommit: (v) => s.setMargins(top: v.round()),
+        ),
+        _SettingSlider(
+          label: '下边距',
+          value: s.bottomMargin.toDouble(),
+          min: 0,
+          max: 100,
+          divisions: 100,
+          onCommit: (v) => s.setMargins(bottom: v.round()),
+        ),
+        _SettingSlider(
+          label: '左边距',
+          value: s.leftMargin.toDouble(),
+          min: 0,
+          max: 100,
+          divisions: 100,
+          onCommit: (v) => s.setMargins(left: v.round()),
+        ),
+        _SettingSlider(
+          label: '右边距',
+          value: s.rightMargin.toDouble(),
+          min: 0,
+          max: 100,
+          divisions: 100,
+          onCommit: (v) => s.setMargins(right: v.round()),
+        ),
+        _SettingSlider(
+          label: '标题间距',
+          value: s.titleBottomMargin.toDouble(),
+          min: 0,
+          max: 100,
+          divisions: 100,
+          onCommit: (v) => s.setTitle(bottom: v.round()),
+        ),
         const SizedBox(height: 8),
       ],
     );
@@ -281,36 +378,51 @@ class _ButtomMenuState extends State<ButtomMenu> {
         const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text('翻页方式')),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: Wrap(spacing: 6, runSpacing: 4, children: [
-            for (final e in labels.entries)
-              ChoiceChip(
-                label: Text(e.value),
-                selected: s.turn == e.key,
-                onSelected: (_) {
-                  if (e.key == TurnMode.appleBook && s.needcss2) {
-                    Toast.show('完整 css 无法使用 IOS 原生仿真，请先关闭完整 CSS！');
-                    return;
-                  }
-                  s.setTurn(e.key);
-                },
-              ),
-          ]),
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              for (final e in labels.entries)
+                ChoiceChip(
+                  label: Text(e.value),
+                  selected: s.turn == e.key,
+                  onSelected: (_) {
+                    if (e.key == TurnMode.appleBook && s.needcss2) {
+                      Toast.show('完整 css 无法使用 IOS 原生仿真，请先关闭完整 CSS！');
+                      return;
+                    }
+                    s.setTurn(e.key);
+                  },
+                ),
+            ],
+          ),
         ),
-        _SettingSlider(label: '速度', value: s.pageTurnSpeed.toDouble(), min: 100, max: 1000, divisions: 18, unit: '毫秒', onCommit: (v) => s.setPageTurnSpeed(v.round())),
+        _SettingSlider(
+          label: '速度',
+          value: s.pageTurnSpeed.toDouble(),
+          min: 100,
+          max: 1000,
+          divisions: 18,
+          unit: '毫秒',
+          onCommit: (v) => s.setPageTurnSpeed(v.round()),
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Wrap(spacing: 8, children: [
-            OutlinedButton(
-              onPressed: () async {
-                final r = await Navigator.of(context).push<ClickAreaSetting>(
-                  MaterialPageRoute(builder: (_) => CustomClickAreaSetting(initial: s.clickArea)),
-                );
-                if (r != null) await s.setClickArea(r);
-              },
-              child: const Text('点击区域'),
-            ),
-            OutlinedButton(onPressed: host.startAutoTurn, child: const Text('自动翻页')),
-          ]),
+          child: Wrap(
+            spacing: 8,
+            children: [
+              OutlinedButton(
+                onPressed: () async {
+                  final r = await Navigator.of(
+                    context,
+                  ).push<ClickAreaSetting>(MaterialPageRoute(builder: (_) => CustomClickAreaSetting(initial: s.clickArea)));
+                  if (r != null) await s.setClickArea(r);
+                },
+                child: const Text('点击区域'),
+              ),
+              OutlinedButton(onPressed: host.startAutoTurn, child: const Text('自动翻页')),
+            ],
+          ),
         ),
         const SizedBox(height: 8),
       ],
@@ -351,12 +463,18 @@ class _ButtomMenuState extends State<ButtomMenu> {
   }
 
   Widget _layout(BuildContext context) {
-    final list = [for (final g in Ground.grounds) if (g.name >= ReadSetting.userIdBase) g];
+    final list = [
+      for (final g in Ground.grounds)
+        if (g.name >= ReadSetting.userIdBase) g,
+    ];
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _title('排版管理', trailing: IconButton(tooltip: '新增排版', icon: const Icon(Icons.add), onPressed: _addLayout)),
+        _title(
+          '排版管理',
+          trailing: IconButton(tooltip: '新增排版', icon: const Icon(Icons.add), onPressed: _addLayout),
+        ),
         if (list.isEmpty)
           const Padding(
             padding: EdgeInsets.all(16),
@@ -404,7 +522,6 @@ class _ButtomMenuState extends State<ButtomMenu> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final body = switch (_panel) {
       _Panel.main => _main(context),
       _Panel.ui => _ui(context),
@@ -420,27 +537,36 @@ class _ButtomMenuState extends State<ButtomMenu> {
         if (_panel == _Panel.main)
           Padding(
             padding: const EdgeInsets.only(right: 12, bottom: 8),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              if (s.aichat && widget.onAiChat != null)
-                _fab(Icons.smart_toy_outlined, 'AI', widget.onAiChat!),
-              _fab(Icons.search, '搜索正文', host.openSearch),
-              _fab(Icons.slow_motion_video, '自动翻页', host.startAutoTurn),
-              _fab(Icons.brightness_6_outlined, '亮度设置', () => _go(_Panel.light)),
-            ]),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (s.aichat && widget.onAiChat != null) _fab(Icons.smart_toy_outlined, 'AI', widget.onAiChat!),
+                _fab(Icons.search, '搜索正文', host.openSearch),
+                _fab(Icons.slow_motion_video, '自动翻页', host.startAutoTurn),
+                _fab(Icons.brightness_6_outlined, '亮度设置', () => _go(_Panel.light)),
+              ],
+            ),
           ),
-        Material(
-          color: scheme.surfaceContainerHigh,
-          elevation: 6,
-          child: SafeArea(top: false, child: AnimatedSize(duration: const Duration(milliseconds: 150), child: body)),
+        // the original draws its menu panels on the glass surface (QGlassContainer, 沉浸光感 level)
+        QGlassContainer(
+          borderRadius: 16,
+          margin: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+          child: Material(
+            type: MaterialType.transparency,
+            child: SafeArea(
+              top: false,
+              child: AnimatedSize(duration: const Duration(milliseconds: 150), child: body),
+            ),
+          ),
         ),
       ],
     );
   }
 
   Widget _fab(IconData icon, String tip, VoidCallback onTap) => Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: FloatingActionButton.small(heroTag: null, tooltip: tip, onPressed: onTap, child: Icon(icon)),
-      );
+    padding: const EdgeInsets.only(top: 8),
+    child: FloatingActionButton.small(heroTag: null, tooltip: tip, onPressed: onTap, child: Icon(icon)),
+  );
 }
 
 /// A slider that shows the value while dragging and commits it once at the end (a commit re-paginates the book).
@@ -477,23 +603,25 @@ class _SettingSliderState extends State<_SettingSlider> {
     final v = (_v ?? widget.value).clamp(widget.min, widget.max);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(children: [
-        SizedBox(width: 56, child: Text(widget.label)),
-        Expanded(
-          child: Slider(
-            value: v,
-            min: widget.min,
-            max: widget.max,
-            divisions: widget.divisions,
-            onChanged: (x) => setState(() => _v = x),
-            onChangeEnd: (x) async {
-              await widget.onCommit(x);
-              if (mounted) setState(() => _v = null);
-            },
+      child: Row(
+        children: [
+          SizedBox(width: 56, child: Text(widget.label)),
+          Expanded(
+            child: Slider(
+              value: v,
+              min: widget.min,
+              max: widget.max,
+              divisions: widget.divisions,
+              onChanged: (x) => setState(() => _v = x),
+              onChangeEnd: (x) async {
+                await widget.onCommit(x);
+                if (mounted) setState(() => _v = null);
+              },
+            ),
           ),
-        ),
-        SizedBox(width: 64, child: Text('${v.toStringAsFixed(widget.digits)}${widget.unit}', textAlign: TextAlign.end)),
-      ]),
+          SizedBox(width: 64, child: Text('${v.toStringAsFixed(widget.digits)}${widget.unit}', textAlign: TextAlign.end)),
+        ],
+      ),
     );
   }
 }

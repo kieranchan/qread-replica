@@ -22,6 +22,7 @@ import '../../../../../read/util/replace_rules.dart';
 import '../../../../../storage/setting.dart';
 import '../../../../../storage/storage.dart';
 import '../../../../../util/toast.dart';
+import '../../../../../widget/ui/q_glass.dart';
 import '../../../../highlight/highlight_rule_setting.dart';
 import '../../../../replace/replace_rule_setting.dart';
 import '../../../web_book_loader.dart';
@@ -37,10 +38,38 @@ class TopMenuEntry {
 
 /// Prefs keys copied by 备份设置 / 恢复设置.
 const List<String> readerBackupKeys = [
-  'turn', 'pageTurnSpeed', 'volumeButton', 'turntype', 'turntime', 'turnsudu', 'lineHeight', 'letterSpacing', 'fontWeight12345',
-  'fontFamily', 'paragraphSpacing', 'kong', 'fen', 'titleAlign', 'titleTopMargin', 'titleBottomMargin', 'titlefontSize', 'topMargin',
-  'bottomMargin', 'leftMargin', 'rightMargin', 'showTop', 'showBottom', 'hidetitle', 'hidetop', 'hidebottom', 'showProgress', 'fan',
-  'background', 'darkbackground', 'readHighlightType', 'topMenuButtons',
+  'turn',
+  'pageTurnSpeed',
+  'volumeButton',
+  'turntype',
+  'turntime',
+  'turnsudu',
+  'lineHeight',
+  'letterSpacing',
+  'fontWeight12345',
+  'fontFamily',
+  'paragraphSpacing',
+  'kong',
+  'fen',
+  'titleAlign',
+  'titleTopMargin',
+  'titleBottomMargin',
+  'titlefontSize',
+  'topMargin',
+  'bottomMargin',
+  'leftMargin',
+  'rightMargin',
+  'showTop',
+  'showBottom',
+  'hidetitle',
+  'hidetop',
+  'hidebottom',
+  'showProgress',
+  'fan',
+  'background',
+  'darkbackground',
+  'readHighlightType',
+  'topMenuButtons',
 ];
 
 abstract class TopMenuActions {
@@ -71,11 +100,10 @@ abstract class TopMenuActions {
     Toast.show('准备缓存...');
     final helper = DownNotificationHelper.instance;
     try {
-      final r = await CacheBook(host.api, concurrent: Storage.getInt('cacheThread', 2).clamp(1, 8)).cacheRange(
-        from,
-        to,
-        onProgress: (done, total, _) => helper.update(DownTask(host.book.bookUrl, host.book.name, done, total)),
-      );
+      final r = await CacheBook(
+        host.api,
+        concurrent: Storage.getInt('cacheThread', 2).clamp(1, 8),
+      ).cacheRange(from, to, onProgress: (done, total, _) => helper.update(DownTask(host.book.bookUrl, host.book.name, done, total)));
       helper.update(DownTask(host.book.bookUrl, host.book.name, r.cached.length, r.cached.length, finished: true, failed: r.failed.length));
       Toast.show('缓存加载完成');
     } catch (e) {
@@ -157,7 +185,10 @@ abstract class TopMenuActions {
           width: double.maxFinite,
           child: rules.isEmpty
               ? const Text('无')
-              : ListView(shrinkWrap: true, children: [for (final r in rules) ListTile(dense: true, title: Text(r.name), subtitle: Text(r.pattern))]),
+              : ListView(
+                  shrinkWrap: true,
+                  children: [for (final r in rules) ListTile(dense: true, title: Text(r.name), subtitle: Text(r.pattern))],
+                ),
         ),
         actions: [
           TextButton(
@@ -183,7 +214,10 @@ abstract class TopMenuActions {
   /// file store (`readSettingBackup`).
   static Future<void> backupSetting(BuildContext context, ReaderHost host) async {
     try {
-      final map = {for (final k in readerBackupKeys) if (Storage.containsKey(k)) k: Storage.getString(k)};
+      final map = {
+        for (final k in readerBackupKeys)
+          if (Storage.containsKey(k)) k: Storage.getString(k),
+      };
       await Storage.write(backupItem, jsonEncode(map));
       Toast.show('上传成功');
     } catch (e) {
@@ -211,17 +245,17 @@ abstract class TopMenuActions {
   }
 
   static Future<void> showLog(BuildContext context, ReaderHost host) => showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('显示日志'),
-          content: SizedBox(
-            width: double.maxFinite,
-            height: 400,
-            child: ListView(children: [for (final l in host.logs.reversed) Text(l, style: const TextStyle(fontSize: 12))]),
-          ),
-          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭'))],
-        ),
-      );
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('显示日志'),
+      content: SizedBox(
+        width: double.maxFinite,
+        height: 400,
+        child: ListView(children: [for (final l in host.logs.reversed) Text(l, style: const TextStyle(fontSize: 12))]),
+      ),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭'))],
+    ),
+  );
 
   static Future<void> buyChapter(BuildContext context, ReaderHost host) async {
     final c = host.chapters[host.chapterIndex];
@@ -277,55 +311,62 @@ class TopMenu extends StatelessWidget {
     final ids = Setting.getTopMenuButtons();
     final scheme = Theme.of(context).colorScheme;
     final local = ReadApi.isLocalBook(host.book);
-    return Material(
-      color: scheme.surfaceContainerHigh,
-      elevation: 4,
-      child: SafeArea(
-        bottom: false,
-        child: SizedBox(
-          height: 56,
-          child: Row(
-            children: [
-              IconButton(tooltip: '返回', icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.of(context).maybePop()),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => Nav.openBook(context, host.book),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(host.book.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16)),
-                      Text(host.chapterTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: scheme.outline)),
-                    ],
+    return QGlassContainer(
+      borderRadius: 0,
+      child: Material(
+        type: MaterialType.transparency,
+        child: SafeArea(
+          bottom: false,
+          child: SizedBox(
+            height: 56,
+            child: Row(
+              children: [
+                IconButton(tooltip: '返回', icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.of(context).maybePop()),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => Nav.openBook(context, host.book),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(host.book.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16)),
+                        Text(
+                          host.chapterTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 12, color: scheme.outline),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              for (final id in ids)
-                if (entries[id] != null && !(local && const {'browser', 'changeSource', 'sourceLogin', 'buyChapter'}.contains(id)))
-                  id == 'bookmark'
-                      ? _BookmarkButton(host: host)
-                      : IconButton(
-                          tooltip: entries[id]!.label,
-                          icon: Icon(entries[id]!.icon),
-                          onPressed: () => entries[id]!.run(context, host),
-                        ),
-              PopupMenuButton<String>(
-                tooltip: '更多',
-                icon: const Icon(Icons.more_vert),
-                onSelected: (id) {
-                  if (id == 'detail') {
-                    Nav.openBook(context, host.book);
-                    return;
-                  }
-                  entries[id]?.run(context, host);
-                },
-                itemBuilder: (_) => [
-                  const PopupMenuItem(value: 'detail', child: Text('详情')),
-                  for (final e in entries.values)
-                    if (!ids.contains(e.id)) PopupMenuItem(value: e.id, child: Text(e.label)),
-                ],
-              ),
-            ],
+                for (final id in ids)
+                  if (entries[id] != null && !(local && const {'browser', 'changeSource', 'sourceLogin', 'buyChapter'}.contains(id)))
+                    id == 'bookmark'
+                        ? _BookmarkButton(host: host)
+                        : IconButton(
+                            tooltip: entries[id]!.label,
+                            icon: Icon(entries[id]!.icon),
+                            onPressed: () => entries[id]!.run(context, host),
+                          ),
+                PopupMenuButton<String>(
+                  tooltip: '更多',
+                  icon: const Icon(Icons.more_vert),
+                  onSelected: (id) {
+                    if (id == 'detail') {
+                      Nav.openBook(context, host.book);
+                      return;
+                    }
+                    entries[id]?.run(context, host);
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(value: 'detail', child: Text('详情')),
+                    for (final e in entries.values)
+                      if (!ids.contains(e.id)) PopupMenuItem(value: e.id, child: Text(e.label)),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

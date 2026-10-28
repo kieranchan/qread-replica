@@ -203,7 +203,8 @@ class _ReadSettingPageState extends State<ReadSettingPage> {
       body: ListView(children: [
         _section('书架设置', [
           _choice('书架排序', ShelfPrefs.sortKey, 0, ShelfPrefs.sortModes, '首页书架书本的排列顺序'),
-          _choice('未读章节', ShelfPrefs.unreadKey, 0, const {0: '完整显示', 1: '不显示', 2: '缩略显示'}, '书架页是否显示未读章节红点'),
+          _choice('未读章节', ShelfPrefs.unreadKey, ShelfPrefs.unreadDot,
+              const {ShelfPrefs.unreadFull: '完整显示', ShelfPrefs.unreadHidden: '不显示', ShelfPrefs.unreadDot: '缩略显示'}, '书架页是否显示未读章节红点'),
           _number('列表缩放', ShelfPrefs.listScaleKey, 100, min: 50, max: 200, hint: '请输入缩放比例', help: '调整书架为列表时书本的显示大小，范围50-200%', unit: '%'),
           _number('宫格缩放', ShelfPrefs.gridScaleKey, 100, min: 50, max: 200, hint: '请输入缩放比例', help: '调整书架宫格时书本的显示大小，范围50-200%', unit: '%'),
           _number('列表列数', ShelfPrefs.listColumnsKey, 0, min: 0, max: 10, hint: '0为自适应', help: '书架为列表显示时每行个数，0为自适应', show: (v) => v == 0 ? '自适应' : '$v'),
