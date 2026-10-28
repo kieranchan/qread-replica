@@ -11,11 +11,15 @@ import 'package:newread/widget/exploration/exploration_component.dart';
 import 'support.dart';
 
 void main() {
-  test('ComponentType accepts names, labels and indexes', () {
+  test('ComponentType: the original order, found by name, anything else is 推荐卡片 (0x647e58 / 0x647e4c)', () {
+    expect(ComponentType.values.map((t) => t.label), ['推荐卡片', '排行榜', '宫格', '左右滑动', '网络排行榜', '多分类排行榜', '错位瀑布流']);
+    expect(ComponentType.values.map((t) => t.name),
+        ['recommendCard', 'ranking', 'grid', 'horizontalScroll', 'networkRanking', 'multiCategoryRanking', 'staggeredWaterfall']);
     expect(ComponentType.of('ranking'), ComponentType.ranking);
-    expect(ComponentType.of('ComponentType.grid'), ComponentType.grid);
-    expect(ComponentType.of(6), ComponentType.staggeredWaterfall);
-    expect(ComponentType.of('排行榜'), ComponentType.ranking);
+    expect(ComponentType.of('staggeredWaterfall'), ComponentType.staggeredWaterfall);
+    for (final v in ['ComponentType.grid', 6, '排行榜', null, '']) {
+      expect(ComponentType.of(v), ComponentType.recommendCard, reason: '$v');
+    }
   });
 
   testWidgets('a ranking component of the active template lists the explore books with ranks', (t) async {
