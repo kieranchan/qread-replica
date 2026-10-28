@@ -18,6 +18,8 @@ import '../pages/search/search_book_page.dart';
 import '../pages/setting/extras_routes.dart';
 import '../pages/web/web_hooks.dart';
 import '../read/api/read_storage_root.dart';
+import '../service/app_links_service.dart';
+import '../widget/book/intro_html_flutter.dart';
 import '../storage/storage.dart';
 import '../theme/extras_init.dart';
 import '../util/legado/js_engines.dart';
@@ -68,6 +70,10 @@ abstract class Wiring {
     // sets Nav.openSourceEdit / Nav.openRss
     await SourcesArea.init();
     SourcesArea.registerNav();
+    // files opened with the app, qread:// and legado:// / yuedu:// links (original service/app_links_service.dart)
+    await AppLinksService.init(null);
+    // book intros with <usehtml> are rendered by flutter_html as in the original
+    useFlutterHtmlIntro();
 
     MainTabs.builders.addAll({
       '书架': (_) => const BookshelfPage(),
