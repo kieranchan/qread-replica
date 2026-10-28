@@ -10,6 +10,9 @@ import 'base_source.dart';
 abstract class SharedJsScope {
   static final Map<String, String> _resolved = {};
 
+  /// Forgets the resolved jsLib of the source with key [sourceKey] (重载书源线程).
+  static void forget(String sourceKey) => _resolved.removeWhere((k, _) => k.startsWith('$sourceKey\u0001'));
+
   /// The JavaScript to prepend for [source] (null when it has no jsLib).
   static Future<String?> jsLibOf(BaseSource? source) async {
     final lib = source?.jsLib;

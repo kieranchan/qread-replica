@@ -1,5 +1,5 @@
 // util/http.dart - the engine's HTTP transport: one replaceable Dio (tests and hosts swap it), manual redirects with cookie handling,
-// gzip, retries, and charset handling (HTTP header, BOM, `<meta charset>`, UTF-8 validity, GBK/GB2312/GB18030).
+// gzip, retries, and charset handling (HTTP header, BOM, `<meta charset>`, UTF-8 validity, GBK/GB2312/GB18030, Big5).
 //
 // The original runs Dio inside a worker isolate (`httpIsolate`, `HttpRequest`/`HttpResponse` at 0xe2528); the replica keeps the same
 // request/response value classes but runs on the calling isolate (rules are I/O bound, not CPU bound).
@@ -12,7 +12,9 @@ import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:fast_gbk/fast_gbk.dart';
 
+import 'legado/cjk_charsets.dart';
 import 'legado/cookie_jar.dart';
+import 'legado/proxy.dart';
 
 class HttpRequest {
   final String method;
@@ -26,6 +28,9 @@ class HttpRequest {
   final bool useCookieJar;
   final int retry;
 
+  /// Legado proxy string `http|socks4|socks5://host:port[@user@password]` (url option or `proxy` header); null = direct.
+  final String? proxy;
+
   const HttpRequest({
     required this.url,
     this.method = 'GET',
@@ -35,6 +40,7 @@ class HttpRequest {
     this.followRedirects = true,
     this.useCookieJar = true,
     this.retry = 0,
+    this.proxy,
   });
 }
 
@@ -78,7 +84,33 @@ abstract class AppHttp {
   /// Replaces the Dio instance (tests, hosts with their own interceptors/proxy).
   static void useDio(Dio d) => _dio = d;
 
-  static void reset() => _dio = null;
+  static void reset() {
+    _dio = null;
+    _proxyDios.clear();
+  }
+
+  static final Map<String, Future<Dio>> _proxyDios = {};
+
+  /// The Dio for a request: the shared one, or one per proxy string (Legado `getProxyClient`, cached per string; see
+  /// util/legado/proxy.dart). An unparsable proxy string means a direct connection, as in Legado.
+  static Future<Dio> dioFor(String? proxy) async {
+    final key = proxy?.trim() ?? '';
+    if (key.isEmpty) return dio;
+    final p = ProxySpec.parse(key);
+    if (p == null) return dio;
+    return _proxyDios[key] ??= () async {
+      // SOCKS bridges start here, so that the synchronous createHttpClient below only sets fields
+      final rule = await p.findProxyRule();
+      final d = Dio(dio.options.copyWith(persistentConnection: false));
+      d.httpClientAdapter = IOHttpClientAdapter(createHttpClient: () {
+        final c = HttpClient();
+        if (allowBadCertificates) c.badCertificateCallback = (cert, host, port) => true;
+        p.configure(c, rule);
+        return c;
+      });
+      return d;
+    }();
+  }
 
   static Dio _defaultDio() {
     final d = Dio(BaseOptions(
@@ -158,7 +190,8 @@ abstract class AppHttp {
           contentType = reqHeaders.remove(key);
         }
       }
-      final response = await dio.request<List<int>>(
+      final client = await dioFor(r.proxy);
+      final response = await client.request<List<int>>(
         url,
         data: (method == 'GET' || method == 'HEAD') ? null : body,
         options: Options(
@@ -236,7 +269,7 @@ abstract class AppHttp {
     }
     final u = _strictUtf8(bytes);
     if (u != null) return u;
-    return gbk.decode(bytes, allowMalformed: true);
+    return CjkCharsets.decodeGb18030(bytes);
   }
 
   static String? _bomCharset(List<int> b) {
@@ -277,8 +310,9 @@ abstract class AppHttp {
       case 'x-gbk':
       case 'cp936':
       case 'ms936':
-        // TODO(asm 0x1ad124): GB18030 four-byte sequences are not decoded (fast_gbk is a GBK table); they come out as U+FFFD.
-        return gbk.decode(bytes, allowMalformed: true);
+        // The original decodes all three with its GBK table (0xe59850); four-byte GB18030 sequences are decoded here too (a GBK
+        // page never has a second byte 0x30..0x39, so the four-byte path does not change GBK text).
+        return CjkCharsets.decodeGb18030(bytes);
       case 'iso-8859-1':
       case 'latin1':
       case 'latin-1':
@@ -292,8 +326,14 @@ abstract class AppHttp {
       case 'utf-16':
         return _utf16(bytes, Endian.big);
       case 'big5':
-        // TODO(asm 0x1ad124): no Big5 table available offline; callers get the GBK reading which is wrong for Big5 pages.
-        return null;
+      case 'big5-hkscs':
+      case 'x-big5':
+      case 'csbig5':
+      case 'cp950':
+      case 'ms950':
+      case 'x-windows-950':
+        // not in the original (its switch knows gbk/gb2312/gb18030/latin1/utf-8 only); cp950 table generated from Python's codecs
+        return CjkCharsets.decodeBig5(bytes);
     }
     return null;
   }
@@ -314,8 +354,13 @@ abstract class AppHttp {
     switch (n) {
       case 'gbk':
       case 'gb2312':
-      case 'gb18030':
         return gbk.encode(s);
+      case 'gb18030':
+        return CjkCharsets.encodeGb18030(s);
+      case 'big5':
+      case 'big5-hkscs':
+      case 'cp950':
+        return CjkCharsets.encodeBig5(s);
       case 'iso-8859-1':
       case 'latin1':
         return latin1.encode(s);

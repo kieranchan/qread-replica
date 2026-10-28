@@ -41,7 +41,10 @@ abstract class DiscoveryPrefs {
 List<Source> exploreSources() => [for (final m in Sourcedata.exploreRaw) Source.fromJson(m)];
 
 class DiscoveryPageNew extends StatefulWidget {
-  const DiscoveryPageNew({super.key});
+  /// The source to show first (the source manager's 「发现」 on one source, 0xf8bc70); null = the saved choice.
+  final Source? source;
+
+  const DiscoveryPageNew({super.key, this.source});
 
   @override
   State<DiscoveryPageNew> createState() => _DiscoveryPageState();
@@ -64,10 +67,11 @@ class _DiscoveryPageState extends BasePage<DiscoveryPageNew> with AutomaticKeepA
   Future<void> _load() async {
     await Sourcedata.load();
     final list = exploreSources();
-    final url = DiscoveryPrefs.selectedUrl;
+    final given = widget.source;
+    final url = given?.bookSourceUrl ?? DiscoveryPrefs.selectedUrl;
     update(() {
-      _sources = list;
-      _source = list.where((s) => s.bookSourceUrl == url).firstOrNull ?? list.firstOrNull;
+      _sources = given == null || list.any((s) => s.bookSourceUrl == given.bookSourceUrl) ? list : [given, ...list];
+      _source = _sources!.where((s) => s.bookSourceUrl == url).firstOrNull ?? _sources!.firstOrNull;
     });
   }
 

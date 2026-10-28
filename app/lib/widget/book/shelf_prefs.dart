@@ -3,7 +3,8 @@
 import '../../storage/storage.dart';
 
 abstract class ShelfPrefs {
-  /// `listtype` (default 1): 1 = grid (宫格), 0 = list (列表). TODO(asm 0x8ee0e4): which value is the grid is inferred from the default.
+  /// `listtype`: 2 = grid (宫格, sized by `bookshelfScale2`, toggle 0xf82b90), anything else = list (列表); 0x8ee0e4 reads it with
+  /// `toInt` and turns 0 (unset) into 1, so a fresh shelf is a list.
   static const String listtypeKey = 'listtype';
 
   /// `group`: the last selected group tab.
@@ -35,20 +36,27 @@ abstract class ShelfPrefs {
   /// `searchpppl`: search threads (default 6).
   static const String searchThreadsKey = 'searchpppl';
 
-  /// 未读章节 (完整显示 / 不显示 / 缩略显示). TODO(asm 0x7fe684): the prefs key of this switch is not in the pool string list;
-  /// the replica uses `bookshelfUnread` (0 = full count, 1 = hidden, 2 = dot).
-  static const String unreadKey = 'bookshelfUnread';
+  /// 未读章节 (「书架页是否显示未读章节红点」, read settings 0x7fe684): prefs `needupdate` read with `toInt` at start-up (0x10dbb68)
+  /// into a static: 1 = 完整显示 (the count), 2 = 不显示, anything else (0 = unset) = 缩略显示 (a red dot).
+  static const String unreadKey = 'needupdate';
+  static const int unreadFull = 1;
+  static const int unreadHidden = 2;
+  static const int unreadDot = 0;
 
   /// Sort modes of `booklistordrer` (comparators of 0xe66264): 0 last read first (`durChapterTime`), 1 name, 4 latest update
-  /// first (`latestChapterTime`), anything else = stored (manual) order.
-  static const Map<int, String> sortModes = {0: '最近阅读', 1: '书名', 4: '最近更新', 2: '手动排序'};
+  /// first (`latestChapterTime`), anything else = stored (manual) order; dragging a book writes 3 (0xf6fdf4).
+  static const int manualSort = 3;
+  static const Map<int, String> sortModes = {0: '最近阅读', 1: '书名', 4: '最近更新', manualSort: '手动排序'};
+
+  /// Whether the stored order is shown (drag to reorder is on).
+  static bool get isManualSort => !const {0, 1, 4}.contains(sort);
 
   static String _s(String k) => Storage.getString(k);
   static int _i(String k, int def) => _s(k).isEmpty ? def : Storage.getInt(k, def);
   static bool _b(String k, bool def) => _s(k).isEmpty ? def : Storage.getBool(k, def);
 
-  static bool get isGrid => _i(listtypeKey, 1) == 1;
-  static Future<void> setGrid(bool grid) => Storage.setString(listtypeKey, grid ? '1' : '0');
+  static bool get isGrid => _i(listtypeKey, 1) == 2;
+  static Future<void> setGrid(bool grid) => Storage.setString(listtypeKey, grid ? '2' : '1');
 
   static String get group => _s(groupKey);
   static Future<void> setGroup(String g) => Storage.setString(groupKey, g);

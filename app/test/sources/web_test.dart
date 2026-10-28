@@ -140,17 +140,17 @@ void main() {
     await idleUntil(t, () => Toast.log.contains('已添加到收藏夹'));
     expect(Chromemarks.contains('https://www.bing.com/'), isTrue);
     expect(Toast.log, contains('已添加到收藏夹'));
-    // menu -> UA设置 -> iPhone
+    // menu -> UA设置 -> iOS UA
     await act(t, () => t.tap(find.byKey(const Key('chrome_menu'))));
     await t.pumpAndSettle();
     await act(t, () => t.tap(find.text('UA设置')));
     await t.pumpAndSettle();
-    await t.tap(find.text('iPhone'));
+    await t.tap(find.text('iOS UA'));
     await t.pump();
     await act(t, () => t.tap(find.text('确定')));
     await idle(t);
-    expect(Storage.getInt('userAgentType'), UAType.iphone.index);
-    expect(c.userAgent, UAType.iphone.ua);
+    expect(Storage.getInt('userAgentType'), UAType.ios.index);
+    expect(c.userAgent, UAType.ios.ua);
     expect(Toast.log, contains('UA设置已应用,重新打开页面后生效'));
   });
 
@@ -190,6 +190,30 @@ void main() {
     await t.tap(find.byKey(const Key('scanner_ok')));
     await t.pumpAndSettle();
     expect(result, 'https://q.test/s.json');
+  });
+
+  testWidgets('scanner: a photo from the library is analysed (url accepted, other text rejected)', (t) async {
+    final codes = <String>['plain text'];
+    final pick = MobileScannerPage.pickImagePath;
+    addTearDown(() => MobileScannerPage.pickImagePath = pick);
+    MobileScannerPage.pickImagePath = () async => '/tmp/qr.png';
+    MobileScannerPage.analyzeImage = (c, path) async => path == '/tmp/qr.png' ? codes : const [];
+    addTearDown(() => MobileScannerPage.analyzeImage = null);
+    Object? result = 'none';
+    await t.pumpWidget(app(Pusher(const MobileScannerPage(), (r) => result = r)));
+    await t.tap(find.byKey(const Key('push')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('scanner_pick')));
+    await t.pump();
+    await t.pump();
+    expect(find.text('检测到的二维码不是有效的URL: plain text'), findsOneWidget);
+    codes
+      ..clear()
+      ..add('https://q.test/rss.json');
+    await t.pump(const Duration(seconds: 3));
+    await t.tap(find.byKey(const Key('scanner_pick')));
+    await t.pumpAndSettle();
+    expect(result, 'https://q.test/rss.json');
   });
 
   // last: the search page reads its history while building (see support.dart `act`)

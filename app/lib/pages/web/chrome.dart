@@ -6,20 +6,21 @@ import 'package:flutter/material.dart';
 import '../../storage/storage.dart';
 import 'chrome_inapp.dart';
 
+/// The six user agents of the browser (maps built by 0x9765d0: `UAType → String` labels and agents, in enum order).
 enum UAType {
-  defaultUA('默认', null),
-  android('安卓', 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36'),
-  iphone('iPhone', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1'),
-  ipad('iPad', 'Mozilla/5.0 (iPad; CPU OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1'),
-  windows('电脑(Windows)', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'),
-  mac('电脑(Mac)', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15');
+  defaultUA('默认UA', null),
+  pc('PC UA', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'),
+  mac('Mac UA', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'),
+  android('安卓UA', 'Mozilla/5.0 (Linux; Android 13; SM-G998U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36'),
+  ios('iOS UA', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/123.0.6312.58 Mobile/15E148 Safari/604.1'),
+  // TODO(asm 0x9765d0): the original takes this one from a static string (pool 0x1e1c) whose value is not in the dump.
+  harmony('鸿蒙UA', 'Mozilla/5.0 (Phone; OpenHarmony 5.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36 ArkWeb/4.1.6.1 Mobile');
 
   final String label;
   final String? ua;
   const UAType(this.label, this.ua);
 
-  // TODO(asm 0x5d8440): the original's six UAType values and their strings are const objects not visible in the digest;
-  // labels and user agents above are the replica's.
+  /// 0x5d8440: `toInt(userAgentType)` into the six values.
   static UAType get current {
     final i = Storage.getInt('userAgentType', 0);
     return i >= 0 && i < values.length ? values[i] : UAType.defaultUA;

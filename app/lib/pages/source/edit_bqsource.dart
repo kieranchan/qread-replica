@@ -14,6 +14,7 @@ import 'package:flutter/services.dart';
 
 import '../../common/nav.dart';
 import '../../data/source.dart';
+import '../../models/source.dart';
 import '../../util/legado/cookie_jar.dart';
 import '../../util/toast.dart';
 import '../../util/webbook/model/book_source.dart';
@@ -324,8 +325,8 @@ class _EditSourcePageState extends State<EditBqSourcePage> with SingleTickerProv
           Toast.show('请先保存书源');
           return;
         }
-        // TODO(asm 0xfacdfc): the original opens SearchBookPage limited to this source; Nav.openSearch has no source argument.
-        await Nav.openSearch(context);
+        // 0xfacdfc: SearchBookPage limited to this source
+        await Nav.openSearch(context, sources: [Source.fromJson(_json)]);
       case 'copy':
         await Clipboard.setData(ClipboardData(text: const JsonEncoder.withIndent('  ').convert(_json)));
         Toast.show('书源已复制');

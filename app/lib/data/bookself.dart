@@ -599,9 +599,8 @@ abstract class BookSelfN {
   ///  * latest-chapter info comes from the side with the larger chapter count / later `latestChapterTime`; `lastCheckTime` is the max
   ///  * everything else (group, flags, descriptive fields) stays as it is locally, empty fields are filled from the cloud copy
   ///
-  /// TODO(asm 0xe6766c): the original proceeds into its merge branch when the update-url reply is `""` or `"-1"` and treats a
-  /// non-empty reply as the new etag; that reads like the opposite of the owner's server contract (docs/API.md says the sync
-  /// proceeds only when the reply is neither). The replica follows docs/API.md; see report.
+  /// Update-url semantics as the original (0xe6766c): `""` = the cloud has newer data (merge), `"-1"` = failure, any other value
+  /// = the client's etag is current; the owner's server answers the same way (docs/API.md, `CloudSync.syncList`).
   static Future<CloudSyncResult?> syncCloud({CloudApi? api}) => _lock.synchronized(() async {
         if (!UserSession.cloudbookself) return null;
         await Bookdata.load();

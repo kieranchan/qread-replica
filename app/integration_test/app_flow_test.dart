@@ -64,6 +64,13 @@ void main() {
     await binding.takeScreenshot('00_privacy');
     await tester.tap(find.byKey(const Key('privacy_agree')));
     await tester.pumpAndSettle();
+    // then the 沉浸光感 choice of the original (asked once)
+    await pumpUntil(tester, find.byKey(const Key('immersive_dialog')));
+    await binding.takeScreenshot('00b_immersive_light');
+    await tester.tap(find.byKey(const Key('immersive_2')));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byKey(const Key('immersive_ok')));
+    await tester.pumpAndSettle();
     await binding.takeScreenshot('00_shelf_empty');
     await tester.tap(find.byKey(const Key('tab_我的')));
     await tester.pumpAndSettle();

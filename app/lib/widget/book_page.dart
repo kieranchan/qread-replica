@@ -9,7 +9,9 @@
 import 'package:flutter/material.dart';
 
 import '../data/bookself.dart';
+import '../data/source.dart';
 import '../models/book.dart';
+import '../qread/qread.dart';
 import '../read/api/book_content.dart';
 import '../read/api/readapi.dart';
 import '../read/local_book_importer.dart';
@@ -56,13 +58,32 @@ abstract class ShelfGroups {
   }
 }
 
-/// Per-book variable of the source engine (「书本变量」). TODO(asm 0x53a074): the original hands the text to the engine
-/// (`setbookVariable`); the replica keeps it in prefs under `bookVariable<bookUrl>` until the engine area exposes it.
+/// Per-book variable of the source engine (「设置书籍变量」, save 0x53a074 → 0xf709ac): books of the bound backend (`isqread`) send it
+/// to `/setbookVariable` `{bookurl, info}`; local books keep it in the file store under `book_<bookUrl>_custom` (阅读源, read by the
+/// engine as `book.getVariable("custom")` / `getCustomVariable()`) or under the book url itself (时光源).
 abstract class BookVariables {
-  static String key(String bookUrl) => 'bookVariable$bookUrl';
-  static String get(String bookUrl) => Storage.getString(key(bookUrl));
-  static Future<void> set(String bookUrl, String value) =>
-      value.isEmpty ? Storage.remove(key(bookUrl)) : Storage.setString(key(bookUrl), value);
+  /// The file-store key for [book] ([legado]: its source is a 阅读源 / Legado source).
+  static String key(String bookUrl, {bool legado = true}) => legado ? 'book_${bookUrl}_custom' : bookUrl;
+
+  static bool _isLegado(Book book) {
+    final raw = Sourcedata.byUrl(book.origin);
+    if (raw == null) return true;
+    final html = '${raw['html'] ?? ''}'.trim();
+    return html.isEmpty || html.startsWith('@yuedu') || raw.containsKey('ruleSearch') || raw.containsKey('searchUrl');
+  }
+
+  static Future<String> get(Book book) => Storage.read(key(book.bookUrl, legado: _isLegado(book)));
+
+  /// Engine side: the stored `custom` variable of a local book ('' when none).
+  static Future<String> custom(String bookUrl) => Storage.read(key(bookUrl));
+
+  static Future<void> set(Book book, String value) async {
+    if (book.isqread) {
+      await Qread.post('/setbookVariable', {'bookurl': book.bookUrl, 'info': value});
+      return;
+    }
+    await Storage.write(key(book.bookUrl, legado: _isLegado(book)), value);
+  }
 }
 
 /// Replaces [old] on the shelf by [found] (change source): the new copy keeps position, group, progress and flags of the old
@@ -201,36 +222,24 @@ abstract class BookApiPage<T extends StatefulWidget> extends BasePage<T> {
     return stored;
   }
 
-  /// 「删除书籍」 / batch delete: 「删除确认」 「确定要删除这些书本吗？」 (0xf6f844) with the cache option.
+  /// 「删除书籍」 / batch delete (0xf6f844): 「删除确认」 「确定要删除这些书本吗？」, then the shelf entries are removed under the shelf
+  /// lock (0xf6fa0c); the downloaded chapters stay (「清除缓存」 removes them); failure `删除失败: `.
   Future<bool> deleteBooks(List<Book> books) async {
     if (books.isEmpty) return false;
-    var withCache = false;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (c) => StatefulBuilder(
-        builder: (c, set) => AlertDialog(
-          title: const Text('删除确认'),
-          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(books.length == 1 ? '确定要删除《${books.first.name}》吗？' : '确定要删除这些书本吗？'),
-            // TODO(asm 0xf6f844): the original deletes the shelf entries only; the cache option is the replica's (brief).
-            CheckboxListTile(
-              key: const Key('del_with_cache'),
-              contentPadding: EdgeInsets.zero,
-              value: withCache,
-              onChanged: (v) => set(() => withCache = v ?? false),
-              title: const Text('同时删除缓存'),
-            ),
-          ]),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(c).pop(false), child: const Text('取消')),
-            ElevatedButton(key: const Key('del_ok'), onPressed: () => Navigator.of(c).pop(true), child: const Text('删除')),
-          ],
-        ),
+      builder: (c) => AlertDialog(
+        title: const Text('删除确认'),
+        content: const Text('确定要删除这些书本吗？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(c).pop(false), child: const Text('取消')),
+          ElevatedButton(key: const Key('del_ok'), onPressed: () => Navigator.of(c).pop(true), child: const Text('确定')),
+        ],
       ),
     );
     if (ok != true) return false;
     try {
-      await deleteShelfBooks(books, withCache: withCache);
+      await deleteShelfBooks(books);
       return true;
     } catch (e) {
       Toast.show('删除失败: $e', iserror: true);
@@ -251,7 +260,8 @@ abstract class BookApiPage<T extends StatefulWidget> extends BasePage<T> {
 
   /// 0x5396a4: 「设置书籍变量」.
   Future<void> editBookVariable(Book book) async {
-    final ctl = TextEditingController(text: BookVariables.get(book.bookUrl));
+    final ctl = TextEditingController(text: book.isqread ? '' : await BookVariables.get(book));
+    if (!mounted) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
@@ -270,8 +280,12 @@ abstract class BookApiPage<T extends StatefulWidget> extends BasePage<T> {
       ),
     );
     if (ok == true) {
-      await BookVariables.set(book.bookUrl, ctl.text);
-      Toast.show('操作成功');
+      try {
+        await BookVariables.set(book, ctl.text);
+        Toast.show('操作成功');
+      } catch (e) {
+        Toast.show('操作失败:$e', iserror: true);
+      }
     }
     ctl.dispose();
   }

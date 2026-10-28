@@ -7,10 +7,9 @@
 // 0x5c9394 `在线调试 HTTP（固定端口 5858）`, address pick 0xfc5e4c (192.168. / 10. / 172.16-31), `已复制服务地址`, `接口说明已复制`;
 // PUT /source validation 0xfc49b0).
 //
-// The replica runs `SourceApi.debug` (the engine's debugger, Legado log markers) and streams its lines. The page sources of the
-// steps are fetched again with the source's headers when asked for.
-// TODO(asm 0xfc20b0): the original keeps the response bodies of the run itself; POST requests are therefore not reproduced
-// exactly by the source views.
+// The replica runs `SourceApi.debug` (the engine's debugger, Legado log markers) and streams its lines; the response body of every
+// step is kept from the run itself (0xfc20b0), so the source views show exactly what the rules saw (POST requests included). Only
+// a step the run did not reach falls back to fetching its url again.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -33,6 +32,9 @@ const List<(String, String)> debugSourceSteps = [('search', '搜索源码'), ('e
 class DebugRun {
   final List<String> lines = [];
   final Map<String, String> urls = {};
+
+  /// Response bodies of the steps, from the run itself.
+  final Map<String, String> bodies = {};
   String _stage = '';
 
   static const Map<String, String> _markers = {
@@ -160,7 +162,7 @@ class _DebugSourcePageState extends State<DebugSourcePage> {
     });
     _addlog(debugStartLine(key));
     try {
-      await SourceApi.debug(_engine, key, onLine: _addlog);
+      await SourceApi.debug(_engine, key, onLine: _addlog, onBody: (step, body) => run.bodies[step] = body);
     } catch (e) {
       _addlog('error: $e');
     } finally {
@@ -180,8 +182,10 @@ class _DebugSourcePageState extends State<DebugSourcePage> {
     await _start(k);
   }
 
-  /// The page source of one step, fetched with the source's headers.
+  /// The page source of one step: the body the run received, else fetched again with the source's headers.
   Future<String> _rawOf(DebugRun run, String step) async {
+    final kept = run.bodies[step];
+    if (kept != null) return kept;
     final url = run.urls[step];
     if (url == null) return '';
     try {

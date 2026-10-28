@@ -9,7 +9,9 @@
 import 'package:flutter/material.dart';
 
 import '../../data/bookself.dart';
+import '../../data/source.dart';
 import '../../models/book.dart';
+import '../../models/source.dart';
 import '../../read/api/readapi.dart';
 import '../bookshelf_page.dart';
 import '../discovery_page.dart';
@@ -31,7 +33,7 @@ abstract class ShelfRoutes {
   static final Map<String, Widget Function(Object? arguments)> pages = {
     'bookshelf_page': (_) => const BookshelfPage(),
     'discovery_page': (_) => const DiscoveryPage(),
-    'discovery_page_new': (_) => const DiscoveryPageNew(),
+    'discovery_page_new': (a) => DiscoveryPageNew(source: a is Source ? a : (a is String ? Sourcedata.sourceByUrl(a) : null)),
     'exploration_page': (_) => const ExplorationPage(),
     'exploration_edit_page': (_) => const ExplorationEditPage(),
     'history_page': (_) => const HistoryPage(),
