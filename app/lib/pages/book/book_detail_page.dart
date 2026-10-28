@@ -1,7 +1,7 @@
 // pages/book/book_detail_page.dart — 书籍详情 (`BookDetailPage`, `_BookDetailPageState extends BookApiPage`, 156 functions).
 //
 // Recovered layout and behaviour (pool strings in code order): blurred cover header with name / author (tap author →
-// SearchBookPage, `clickAuthor`), kind labels, intro (简介, `<usehtml>`/`<useweb>` variants not ported), info rows 类型：/ 编码：/
+// SearchBookPage, `clickAuthor`), kind labels, intro (简介, widget/book/intro_view.dart: `<useweb>` / `@html:` / `<usehtml>` / text), info rows 类型：/ 编码：/
 // 规则：/ 分组：/ 最新：/ 进度： with 「修改」 (选择书本类型 / 修改编码 / 修改目录规则 for local TXT), the 目录 row opening
 // BookCatalogPage, bottom buttons 加入书架 + 阅读; 「更多」 menu: 编辑书本, 关闭更新/开启更新, 更换书源, 重新载入, 阅读记录, 删除书本,
 // 书籍信息 (书源地址 / 书籍地址 + 「复制地址」 → 「地址已复制」), 本地缓存 (range dialog: 「请输入要缓存的章节范围：」 …, errors
@@ -20,6 +20,7 @@ import '../../models/bookchapter.dart';
 import '../../read/local_book_importer.dart';
 import '../../storage/book_reading_time_storage.dart';
 import '../../util/toast.dart';
+import '../../widget/book/intro_view.dart';
 import '../../widget/book/toc_cache.dart';
 import '../../widget/book_page.dart';
 import '../../widget/image/cached_cover_image.dart';
@@ -397,8 +398,7 @@ class _BookDetailPageState extends BookApiPage<BookDetailPage> {
         const Divider(height: 24),
         const Text('简介', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
         const SizedBox(height: 6),
-        Text(b.intro.isEmpty ? (_loading ? '加载中' : '无') : b.intro.replaceAll(RegExp(r'<br\s*/?>|</p>'), '\n').replaceAll(RegExp('<[^>]+>'), '').trim(),
-            style: const TextStyle(height: 1.6)),
+        if (b.intro.isEmpty) Text(_loading ? '加载中' : '无', style: const TextStyle(height: 1.6)) else IntroView(intro: b.intro),
         const Divider(height: 24),
         ListTile(
           key: const Key('detail_toc'),
