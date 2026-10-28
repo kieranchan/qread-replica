@@ -3,8 +3,10 @@
 // Original: `highlight_apply.dart` (0xf0caec, applies `HighlightRule`s of `HighlightData` to the paragraph text with the day/night colours,
 // font weight/style, decoration and a background image drawn as nine-patch). This port builds the [TextSpan] of a [Content] block with
 // the same styles the layout engine measured with (see `ReadTextBuilder.span`) and splits the runs at every decoration boundary.
-// Only properties that do not move line breaks are applied (colour, background, decoration, italic); `fontSize` / `lineHeight` /
-// `fontFamily` of a rule and the background images are not drawn. TODO(asm 0xf0caec): nine-patch background images of rules.
+// Only properties that do not move line breaks are applied (colour, background, decoration incl. 波浪线 `underline wavy`, weight, italic)
+// plus the rule's background image, drawn as a nine-patch behind the range (highlight_bg.dart). `fontSize` / `lineHeight` /
+// `fontFamily` of a rule would change the pagination and are not applied: the layout engine measures the plain text.
+// TODO(asm 0xf0caec): rule font size / line height need the rules inside CalculateChapter's measurement.
 import 'package:flutter/painting.dart';
 
 import '../../models/highlight_rule.dart';
@@ -12,6 +14,7 @@ import '../model/line.dart';
 import '../model/page.dart';
 import '../setting/read_layout_style.dart';
 import 'content_painter.dart';
+import 'highlight_bg.dart';
 
 /// A styled range in the painter text of one block (`start` inclusive, `end` exclusive). Later decorations win on conflicts.
 class TextDeco {
@@ -25,6 +28,9 @@ class TextDeco {
   final Color? decorationColor;
   final TextDecorationStyle? decorationStyle;
 
+  /// The rule's background image (nine-patch), painted behind the text.
+  final RuleBgImage? bgImage;
+
   const TextDeco(
     this.start,
     this.end, {
@@ -35,6 +41,7 @@ class TextDeco {
     this.decoration,
     this.decorationColor,
     this.decorationStyle,
+    this.bgImage,
   });
 
   TextStyle apply(TextStyle s) => s.copyWith(
@@ -95,9 +102,14 @@ abstract class HighlightApply {
       final weight = _weight(r.fontWeight);
       final italic = r.fontStyle.toLowerCase().contains('italic') ? FontStyle.italic : null;
       final deco = _decoration(r.textDecoration);
+      final wavy = r.textDecoration.toLowerCase().contains('wavy') ? TextDecorationStyle.wavy : null;
+      final img = night
+          ? RuleBgImage.of(r.nightBgImage, r.nightBgImageOpacity, r.nightBgImagePadding, r.nightBgImageStretch)
+          : RuleBgImage.of(r.dayBgImage, r.dayBgImageOpacity, r.dayBgImagePadding, r.dayBgImageStretch);
       for (final m in matches) {
         if (m.end <= m.start) continue;
-        out.add(TextDeco(m.start, m.end, color: color, background: bg, fontWeight: weight, fontStyle: italic, decoration: deco));
+        out.add(TextDeco(m.start, m.end,
+            color: color, background: bg, fontWeight: weight, fontStyle: italic, decoration: deco, decorationStyle: wavy, bgImage: img));
       }
     }
     return out;
@@ -107,6 +119,7 @@ abstract class HighlightApply {
     final t = s.trim().toLowerCase();
     if (t.isEmpty || t == 'normal') return t == 'normal' ? FontWeight.w400 : null;
     if (t == 'bold') return FontWeight.w700;
+    if (t == 'medium') return FontWeight.w500;
     final v = int.tryParse(t.replaceAll(RegExp(r'[^0-9]'), ''));
     if (v == null) return null;
     final i = (v / 100).round().clamp(1, 9);

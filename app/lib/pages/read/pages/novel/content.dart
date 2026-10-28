@@ -18,6 +18,7 @@ import '../../../../read/setting/read_layout_style.dart';
 import '../../../../read/setting/read_setting.dart';
 import '../../../../read/util/content_painter.dart';
 import '../../../../read/util/highlight_apply.dart';
+import '../../../../read/util/highlight_bg.dart';
 import 'views/battery_painter.dart';
 
 typedef BlockDecorator = List<TextDeco> Function(Content block, int chapterIndex);
@@ -101,12 +102,16 @@ class PageBody extends StatelessWidget {
       return SizedBox(width: width, height: c.height, child: _image(href, c.fit));
     }
     final isTitle = c.lines.isNotEmpty && c.lines.first.paragraphIndex < 0;
-    Widget text = Text.rich(
-      HighlightApply.span(c, style, color: textColor, decos: decorate?.call(c, chapterIndex) ?? const []),
-      textAlign: HighlightApply.alignOf(c, style),
-      strutStyle: HighlightApply.strutOf(c, style),
-      textScaler: TextScaler.noScaling,
-    );
+    final decos = decorate?.call(c, chapterIndex) ?? const <TextDeco>[];
+    final span = HighlightApply.span(c, style, color: textColor, decos: decos);
+    final align = HighlightApply.alignOf(c, style);
+    final strut = HighlightApply.strutOf(c, style);
+    Widget text = Text.rich(span, textAlign: align, strutStyle: strut, textScaler: TextScaler.noScaling);
+    final images = [for (final d in decos) if (d.bgImage != null) (d.start, d.end, d.bgImage!)];
+    if (images.isNotEmpty) {
+      // the rules' background images, nine-patch behind their ranges
+      text = CustomPaint(painter: NinePatchPainter(span: span, align: align, strut: strut, ranges: images), child: text);
+    }
     final lp = onLongPress;
     if (lp != null && !isTitle) {
       text = GestureDetector(

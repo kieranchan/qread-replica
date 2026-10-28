@@ -2,19 +2,55 @@
 // Strings: 规则名称 (请输入规则名称) · 分组 · 匹配规则（正则或文本） (请输入匹配规则) · 使用正则表达式 · 快捷正则规则（点击直接填入） · 白天 / 夜间 ·
 // 文字颜色 · 背景颜色 (如 #FF0000 或 red) · 字体样式 正常/斜体 · 字体粗细 细/正常/中等/粗体/特粗 · 文本装饰 无/下划线/删除线/上划线 · 字体大小
 // (如 16px 或 1.2em) · 行高 (如 1.5) · 字体 系统默认 · 文字示例 · 保存成功 / 保存失败： / 规则名称重复.
-// TODO(asm 0x6513e0): background images with nine-patch stretching (上传背景图 / 拖拽 4 条线划分九宫格 / 透明度 / 文字边距) are not ported; the
-// reader does not draw them (see read/util/highlight_apply.dart). TODO(asm 0x64bf54): the original list of quick regex presets.
+// 背景图 (0x6513e0): 上传背景图 / 更换背景图 / 移除 (copied to `@high/`, at most 5 MB), the nine-patch lines (拖拽 4 条线划分九宫格, 重置), 透明度
+// and 延展区域 per day / night; the reader draws it behind the matches (read/util/highlight_bg.dart). The quick regex presets are the
+// original's 16 (pp+0x8a648).
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
+
+import '../../common/app_dirs.dart';
 
 import '../../data/highlight.dart';
 import '../../models/highlight_rule.dart';
 import '../../read/util/css.dart';
 import '../../read/util/highlight_apply.dart';
+import '../../read/util/highlight_bg.dart';
 import '../../util/toast.dart';
+
+abstract class HighlightRuleEditPresets {
+  /// 快捷正则规则 of the original (const list pp+0x8a648, 16 entries, in order).
+  static const Map<String, String> quick = {
+    '中文引号对话': r'[“](.*?)[”]',
+    '英文引号对话': r'"(.*?)"',
+    '单引号对话': r"'(.*?)'",
+    '书名号内容': r'《(.*?)》',
+    '括号内容': r'（(.*?)）',
+    '英文括号内容': r'\((.*?)\)',
+    '道字对话': r'.{1,8}(说|道|喊|叫|问|答|讲|低声|大声|笑道|怒道|冷冷道|淡淡道)',
+    '某人说': r'[一-龥A-Za-z]{2,6}(说|道|开口道)',
+    '整数': r'\d+',
+    '小数': r'\d+\.\d+',
+    '百分比': r'\d+(\.\d+)?%',
+    '时间 HH:MM': r'\d{1,2}:\d{2}',
+    '日期 YYYY-MM-DD': r'\d{4}-\d{2}-\d{2}',
+    '章节标题': r'第[一二三四五六七八九十百千万0-9]+[章节回卷部]',
+    '中文逗号结尾句': r'[^，。！？；：\n]*[，。！？；：]',
+    '省略号': r'……|······|\.\.\.',
+  };
+}
 
 class HighlightRuleEdit extends StatefulWidget {
   final HighlightRule? rule;
   const HighlightRuleEdit({super.key, this.rule});
+
+  /// Picks an image file for 上传背景图 (tests replace it).
+  static Future<String?> Function() pickImage = () async {
+    final r = await FilePicker.pickFiles(type: FileType.image);
+    return r.firstOrNull?.path;
+  };
 
   @override
   State<HighlightRuleEdit> createState() => _HighlightRuleEditState();
@@ -28,13 +64,6 @@ class _HighlightRuleEditState extends State<HighlightRuleEdit> {
   late final Map<String, TextEditingController> _c;
   bool _night = false;
 
-  static const Map<String, String> quick = {
-    '“对话”': '“[^”]*”',
-    '「对话」': '「[^」]*」',
-    '数字': r'\d+',
-    '英文': r'[A-Za-z]+',
-    '括号': r'（[^）]*）|\([^)]*\)',
-  };
 
   @override
   void initState() {
@@ -111,6 +140,134 @@ class _HighlightRuleEditState extends State<HighlightRuleEdit> {
         ),
       );
 
+  // ------------------------------------------------------------------ 背景图 (0x6513e0)
+
+  String get _img => _night ? _r.nightBgImage : _r.dayBgImage;
+  set _img(String v) => _night ? _r.nightBgImage = v : _r.dayBgImage = v;
+  double get _opacity => _night ? _r.nightBgImageOpacity : _r.dayBgImageOpacity;
+  set _opacity(double v) => _night ? _r.nightBgImageOpacity = v : _r.dayBgImageOpacity = v;
+  List<dynamic> get _padding => _night ? _r.nightBgImagePadding : _r.dayBgImagePadding;
+  set _padding(List<dynamic> v) => _night ? _r.nightBgImagePadding = v : _r.dayBgImagePadding = v;
+  List<dynamic> get _stretch => _night ? _r.nightBgImageStretch : _r.dayBgImageStretch;
+  set _stretch(List<dynamic> v) => _night ? _r.nightBgImageStretch = v : _r.dayBgImageStretch = v;
+
+  /// 上传背景图: copied into the app's `high` folder and referenced as `@high/<file>` (at most 5 MB).
+  Future<void> _upload() async {
+    try {
+      final path = await HighlightRuleEdit.pickImage();
+      if (path == null) return;
+      final f = File(path);
+      if (f.lengthSync() > 5 * 1024 * 1024) return Toast.show('图片大小不能超过5MB');
+      final dir = AppDirs.dir('high');
+      if (!dir.existsSync()) dir.createSync(recursive: true);
+      final name = '${DateTime.now().millisecondsSinceEpoch}${p.extension(path)}';
+      await f.copy('${dir.path}/$name');
+      setState(() {
+        _img = '@high/$name';
+        if (_stretch.length != 4) _stretch = List<dynamic>.of(RuleBgImage.defaultStretch);
+      });
+    } catch (e) {
+      Toast.show('上传失败: $e');
+    }
+  }
+
+  List<double> get _lines => RuleBgImage.of('x', 0, const [], _stretch)!.stretch;
+
+  void _setLine(int i, double v) => setState(() {
+        final l = List<double>.of(_lines);
+        l[i] = double.parse(v.clamp(0, 49).toStringAsFixed(1));
+        _stretch = l;
+      });
+
+  Widget _bgImageSection() {
+    final img = _img;
+    final lines = _lines;
+    final pad = [for (var i = 0; i < 4; i++) i < _padding.length ? (num.tryParse('${_padding[i]}') ?? 0).toDouble() : 0.0];
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      ListTile(
+        title: const Text('背景图'),
+        trailing: Wrap(spacing: 8, children: [
+          TextButton(key: const ValueKey('hl_bg_upload'), onPressed: _upload, child: Text(img.isEmpty ? '上传背景图' : '更换背景图')),
+          if (img.isNotEmpty) TextButton(onPressed: () => setState(() => _img = ''), child: const Text('移除')),
+        ]),
+      ),
+      if (img.isNotEmpty) ...[
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: AspectRatio(
+            aspectRatio: 1.7777777777777777,
+            child: LayoutBuilder(builder: (context, box) {
+              final w = box.maxWidth, h = box.maxHeight;
+              Widget line(bool vertical, int i, double pos) => Positioned(
+                    left: vertical ? pos - 12 : 0,
+                    top: vertical ? 0 : pos - 12,
+                    width: vertical ? 24 : w,
+                    height: vertical ? h : 24,
+                    child: GestureDetector(
+                      onPanUpdate: (d) {
+                        final f = vertical ? (d.localPosition.dx + pos - 12) / w : (d.localPosition.dy + pos - 12) / h;
+                        _setLine(i, i == 0 || i == 2 ? f * 100 : (1 - f) * 100);
+                      },
+                      child: Center(child: Container(width: vertical ? 2 : w, height: vertical ? h : 2, color: Colors.redAccent)),
+                    ),
+                  );
+              return Stack(children: [
+                Positioned.fill(
+                  child: Image.file(File(HighlightBgImages.resolve(img)), fit: BoxFit.fill, errorBuilder: (_, _, _) => const SizedBox()),
+                ),
+                line(true, 0, w * lines[0] / 100),
+                line(true, 1, w - w * lines[1] / 100),
+                line(false, 2, h * lines[2] / 100),
+                line(false, 3, h - h * lines[3] / 100),
+              ]);
+            }),
+          ),
+        ),
+        const Padding(padding: EdgeInsets.fromLTRB(16, 6, 16, 0), child: Text('拖拽 4 条线划分九宫格', style: TextStyle(fontSize: 12))),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(children: [
+            Expanded(
+              child: Text(
+                '水平拉伸：拖拽上下横线  上 ${lines[2].toStringAsFixed(0)}% / 下 ${lines[3].toStringAsFixed(0)}%\n'
+                '垂直拉伸：拖拽左右竖线  左 ${lines[0].toStringAsFixed(0)}% / 右 ${lines[1].toStringAsFixed(0)}%',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+            TextButton(onPressed: () => setState(() => _stretch = List<dynamic>.of(RuleBgImage.defaultStretch)), child: const Text('重置')),
+          ]),
+        ),
+        ListTile(
+          title: const Text('透明度'),
+          subtitle: Slider(
+            key: const ValueKey('hl_bg_opacity'),
+            value: _opacity <= 0 ? 1 : _opacity.clamp(0.0, 1.0),
+            onChanged: (v) => setState(() => _opacity = double.parse(v.toStringAsFixed(2))),
+          ),
+        ),
+        const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text('延展区域')),
+        for (final (i, label) in const [(0, '左'), (1, '上'), (2, '右'), (3, '下')])
+          Row(children: [
+            const SizedBox(width: 16),
+            SizedBox(width: 24, child: Text(label)),
+            Expanded(
+              child: Slider(
+                value: pad[i].clamp(0, 40).toDouble(),
+                max: 40,
+                divisions: 40,
+                onChanged: (v) => setState(() {
+                  final l = List<dynamic>.of(pad);
+                  l[i] = v.round();
+                  _padding = l;
+                }),
+              ),
+            ),
+            SizedBox(width: 40, child: Text('${pad[i].round()}')),
+          ]),
+      ],
+    ]);
+  }
+
   Widget _preview() {
     _collect();
     final bg = _night ? const Color(0xFF000000) : const Color(0xFFE6E6E6);
@@ -149,7 +306,7 @@ class _HighlightRuleEditState extends State<HighlightRuleEdit> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Wrap(spacing: 6, children: [
-              for (final e in quick.entries)
+              for (final e in HighlightRuleEditPresets.quick.entries)
                 ActionChip(
                   label: Text(e.key),
                   onPressed: () => setState(() {
@@ -180,14 +337,15 @@ class _HighlightRuleEditState extends State<HighlightRuleEdit> {
           ListTile(
             title: const Text('字体粗细'),
             trailing: DropdownButton<String>(
-              value: const ['', '300', '400', '500', '700', '800'].contains(_r.fontWeight) ? _r.fontWeight : '',
+              value: const ['', '100', 'normal', 'medium', 'bold', '700', '900'].contains(_r.fontWeight) ? _r.fontWeight : '',
               items: const [
                 DropdownMenuItem(value: '', child: Text('无')),
-                DropdownMenuItem(value: '300', child: Text('细')),
-                DropdownMenuItem(value: '400', child: Text('正常')),
-                DropdownMenuItem(value: '500', child: Text('中等')),
-                DropdownMenuItem(value: '700', child: Text('粗体')),
-                DropdownMenuItem(value: '800', child: Text('特粗')),
+                DropdownMenuItem(value: '100', child: Text('细')),
+                DropdownMenuItem(value: 'normal', child: Text('正常')),
+                DropdownMenuItem(value: 'medium', child: Text('中等')),
+                DropdownMenuItem(value: 'bold', child: Text('粗体')),
+                DropdownMenuItem(value: '700', child: Text('加粗')),
+                DropdownMenuItem(value: '900', child: Text('特粗')),
               ],
               onChanged: (v) => setState(() => _r.fontWeight = v ?? ''),
             ),
@@ -195,16 +353,18 @@ class _HighlightRuleEditState extends State<HighlightRuleEdit> {
           ListTile(
             title: const Text('文本装饰'),
             trailing: DropdownButton<String>(
-              value: const ['', 'underline', 'line-through', 'overline'].contains(_r.textDecoration) ? _r.textDecoration : '',
+              value: const ['', 'underline', 'line-through', 'overline', 'underline wavy'].contains(_r.textDecoration) ? _r.textDecoration : '',
               items: const [
                 DropdownMenuItem(value: '', child: Text('无')),
                 DropdownMenuItem(value: 'underline', child: Text('下划线')),
                 DropdownMenuItem(value: 'line-through', child: Text('删除线')),
                 DropdownMenuItem(value: 'overline', child: Text('上划线')),
+                DropdownMenuItem(value: 'underline wavy', child: Text('波浪线')),
               ],
               onChanged: (v) => setState(() => _r.textDecoration = v ?? ''),
             ),
           ),
+          _bgImageSection(),
           _field(_c['fontSize']!, '字体大小', hint: '如 16px 或 1.2em'),
           _field(_c['lineHeight']!, '行高', hint: '如 1.5'),
           _preview(),
