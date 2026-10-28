@@ -65,8 +65,9 @@ flutter analyze; flutter test     # about 625 tests, about 2 minutes
 * `test/reader_ui/rule_pages_test.dart` and `test/shelf/detail_catalog_test.dart` have each failed once in a full run and passed
   on rerun (timing-sensitive).
 
-## UI test on the iOS Simulator (no phone needed)
-`integration_test/app_flow_test.dart` + `test_driver/`, run by `.github/workflows/ios-ui-test.yml` against the real server started
+## UI test on the iOS Simulator (manual, `workflow_dispatch` only since 2026-10-29)
+`integration_test/app_flow_test.dart` + `test_driver/`, run by `.github/workflows/ios-ui-test.yml` (start it by hand; the owner checks
+features on their phone instead, next section) against the real server started
 on the macOS runner: privacy → signed out → login → gated switch → activation code → member → self-check → 会员中心, then books on
 a demo site served inside the test (`integration_test/demo_site.dart`, text written for the test): import source → search →
 detail → add to shelf → reader (page turn, menus) → shelf → 发现 / 探索 / 订阅. Screenshots of every step are the

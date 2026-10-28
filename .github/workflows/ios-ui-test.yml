@@ -3,11 +3,9 @@ name: ios-ui-test
 # Drives the real app on an iOS Simulator against the real server (started on the runner) and uploads screenshots of every
 # step, so the UI can be checked without a phone. Flow: signed out -> login -> member-only switch gated -> activation code ->
 # member -> self-check (cloud round trip, report) -> 会员中心 web page. See app/integration_test/app_flow_test.dart.
+# Manual only since 2026-10-29: the owner checks features on their phone instead (app/README.md "Testing on the owner's iPhone").
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: ['app/**', 'server/**', '.github/workflows/ios-ui-test.yml']
 
 jobs:
   ui:
