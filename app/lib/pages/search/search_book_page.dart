@@ -19,6 +19,7 @@ import '../../widget/base_page.dart';
 import '../../widget/book/booklist.dart';
 import '../book/book_detail_page.dart';
 import 'search.dart';
+import 'source_filter.dart';
 
 abstract class SearchPrefs {
   static const String historyKey = 'historysearch';
@@ -117,16 +118,16 @@ class _SearchBookPageState extends BasePage<SearchBookPage> with SingleTickerPro
   }
 
   /// The sources to search: explicit list > saved url choice > saved category > every enabled source. Null = none usable.
-  List<Source>? _sources() {
+  List<Source>? _sources({bool quiet = false}) {
     if (widget.sources != null) return widget.sources;
     final all = Sourcedata.sources;
     if (all.isEmpty) {
-      Toast.show('您当前没有书源，请先添加书源');
+      if (!quiet) Toast.show('您当前没有书源，请先添加书源');
       return null;
     }
     final enabled = [for (final m in Sourcedata.enabledRaw) Source.fromJson(m)];
     if (enabled.isEmpty) {
-      Toast.show('您当前所有书源都已被禁用请先启用书源');
+      if (!quiet) Toast.show('您当前所有书源都已被禁用请先启用书源');
       return null;
     }
     final urls = SearchPrefs.urls;
@@ -146,7 +147,10 @@ class _SearchBookPageState extends BasePage<SearchBookPage> with SingleTickerPro
     _history = await SearchPrefs.history();
     final sources = _sources();
     if (sources != null && sources.isEmpty) Toast.show('当前未选择任何书源只显示书架搜索结果！');
-    final s = Search(key, sources: sources ?? const []);
+    // one source: its 筛选 is asked once (0xfdad4c) and the page searches with env `searchone`
+    final one = sources != null && sources.length == 1;
+    if (one) await _loadFilter(sources.first);
+    final s = Search(key, sources: sources ?? const [], env: one ? 'searchone' : 'search');
     s.revision.addListener(update);
     update(() => _search = s);
     if (sources != null && sources.isNotEmpty) {
@@ -218,8 +222,30 @@ class _SearchBookPageState extends BasePage<SearchBookPage> with SingleTickerPro
     update();
   }
 
+  /// The 筛选 answer of the single source searched (`filter()`, 0xfdb170) and the source it belongs to.
+  String _filter = '';
+  String? _filterOf;
+
+  Future<void> _loadFilter(Source s) async {
+    if (_filterOf == s.bookSourceUrl) return;
+    _filter = await SourceFilter.searchFilter(s);
+    _filterOf = s.bookSourceUrl;
+  }
+
+  /// 搜索分类 (`_showCategoryDialog` 0xfdbecc): with one 时光源 chosen whose 筛选 is a page, that page opens (the search runs again
+  /// when it closes); otherwise the category dialog.
   Future<void> _chooseCategory() async {
     await Sourcedata.load();
+    if (!mounted) return;
+    final one = _sources(quiet: true);
+    if (one != null && one.length == 1 && SourceFilter.supports(one.first)) {
+      if (_filterOf != one.first.bookSourceUrl) await withLoading(() => _loadFilter(one.first));
+      if (SourceFilter.isPage(_filter)) {
+        await SourceFilter.open(one.first, _filter);
+        if (mounted && _ctl.text.trim().isNotEmpty) await _start(_ctl.text);
+        return;
+      }
+    }
     if (!mounted) return;
     final groups = Sourcedata.groups;
     final cur = SearchPrefs.category;

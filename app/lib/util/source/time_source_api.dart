@@ -37,11 +37,21 @@ abstract class TimeSourceApi {
     return e.toSearchBook();
   }
 
-  static Future<List<SearchBook>> search(BookSource s, String key, {int page = 1, DebugLog? debug}) async {
+  /// `search(key, page, env)`: [env] `search`, or `searchone` when this is the only source searched (筛选 applies then).
+  static Future<List<SearchBook>> search(BookSource s, String key, {int page = 1, String env = 'search', DebugLog? debug}) async {
     final run = await runOf(s);
-    final list = await run.search(key, page, log: _log(debug), text: _text(debug));
+    final list = await run.search(key, page, env: env, log: _log(debug), text: _text(debug));
     return [for (final b in list) _searchBook(s, b)];
   }
+
+  /// 筛选 (`filter()` 0xfdb268 for the single-source search, `findfilter(url)` 0x1058fa4 for a discovery list): the page answers
+  /// an http url or a `data:` html page that lets the user choose (it keeps the choice with `cache.set`), or nothing.
+  static Future<String> filter(BookSource s) async => (await runOf(s)).filter();
+
+  static Future<String> findFilter(BookSource s, String url) async => (await runOf(s)).findfilter(url);
+
+  /// A filter answer that is a page to open (0xfdbecc / 0x746e28 test `http` / `data` at the start).
+  static bool isFilterPage(String v) => v.startsWith('http') || v.startsWith('data');
 
   static Future<List<SearchBook>> explore(BookSource s, String url, {int page = 1, DebugLog? debug}) async {
     final run = await runOf(s);

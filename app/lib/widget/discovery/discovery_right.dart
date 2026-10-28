@@ -20,6 +20,7 @@ import '../../models/source.dart';
 import '../../pages/book/book_detail_page.dart';
 import '../../pages/search/book_search_service.dart';
 import '../../pages/search/search_page.dart';
+import '../../pages/search/source_filter.dart';
 import '../../pages/web/webview.dart';
 import '../../qread/qread.dart';
 import '../../util/source/baswebview.dart';
@@ -228,8 +229,28 @@ class DiscoveryRightPageState extends BasePage<DiscoveryRightPage> {
     update(() {
       _selected = i;
       _pager = p;
+      _findFilter = '';
     });
+    // a 时光源 list asks `findfilter(url)` first (0x1058850); a page answer shows the filter button
+    if (SourceFilter.supports(widget.source)) {
+      final f = await SourceFilter.findFilter(widget.source, k.url);
+      if (!identical(_pager, p)) return;
+      update(() => _findFilter = f);
+    }
     await p.next();
+    update();
+  }
+
+  /// The `findfilter` answer of the list shown.
+  String _findFilter = '';
+
+  /// 0x10591a4: the filter page, then the list from its first page.
+  Future<void> _openFilter() async {
+    final p = _pager;
+    if (p == null) return;
+    await SourceFilter.open(widget.source, _findFilter);
+    update();
+    await p.reset();
     update();
   }
 
@@ -300,6 +321,8 @@ class DiscoveryRightPageState extends BasePage<DiscoveryRightPage> {
                   ),
             ]),
           ),
+          if (SourceFilter.isPage(_findFilter))
+            IconButton(key: const Key('found_filter'), tooltip: '筛选', icon: const Icon(Icons.filter_list_alt), onPressed: _openFilter),
           IconButton(tooltip: '所有发现', icon: const Icon(Icons.apps), onPressed: kinds.isEmpty ? null : _allKinds),
         ]),
       ),

@@ -2,7 +2,8 @@
 //
 // Original (`_SearchPageState`, closure 0x7476e8): loads page n+1 when the list nears its end; stops with 「没有下一页了」 when a
 // page is empty (「空」) or repeats the previous page (「和前面一样」); errors 「搜索错误: 」 / 「书元不存在,或者已经搜索结束」. Tapping a
-// book opens its detail page.
+// book opens its detail page. A 时光源 list first asks the page's `findfilter(url)`; a page answer adds the filter button
+// (source_filter.dart).
 import 'package:flutter/material.dart';
 
 import '../../models/book.dart';
@@ -11,6 +12,7 @@ import '../../widget/base_page.dart';
 import '../../widget/book/booklist.dart';
 import '../book/book_detail_page.dart';
 import 'book_search_service.dart';
+import 'source_filter.dart';
 
 /// Paging state of an explore list (shared by SearchPage, the discovery pages and the exploration components).
 class FoundPager {
@@ -75,13 +77,32 @@ class SearchPage extends StatefulWidget {
 class _SearchPageState extends BasePage<SearchPage> with AutomaticKeepAliveClientMixin {
   late final FoundPager _pager = FoundPager(widget.source, widget.url);
 
+  /// `findfilter(url)` of a 时光源 (0x1058850): a page answer shows the filter button.
+  String _filter = '';
+
   @override
   bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
-    _more();
+    _init();
+  }
+
+  Future<void> _init() async {
+    if (SourceFilter.supports(widget.source)) {
+      final f = await SourceFilter.findFilter(widget.source, widget.url);
+      update(() => _filter = f);
+    }
+    await _more();
+  }
+
+  /// 0x10591a4: the filter page, then the list from its first page.
+  Future<void> _openFilter() async {
+    await SourceFilter.open(widget.source, _filter);
+    update();
+    await _pager.reset();
+    update();
   }
 
   Future<void> _more() async {
@@ -95,7 +116,14 @@ class _SearchPageState extends BasePage<SearchPage> with AutomaticKeepAliveClien
     super.build(context);
     final p = _pager;
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title), centerTitle: true),
+      appBar: AppBar(
+        title: Text(widget.title),
+        centerTitle: true,
+        actions: [
+          if (SourceFilter.isPage(_filter))
+            IconButton(key: const Key('found_filter'), tooltip: '筛选', icon: const Icon(Icons.filter_list_alt), onPressed: _openFilter),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: () async {
           await p.reset();

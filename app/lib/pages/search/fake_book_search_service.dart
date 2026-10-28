@@ -70,8 +70,8 @@ class FakeBookSearchService implements BookSearchService {
   List<String> _urls(List<Source>? sources) => sources == null ? library.keys.toList() : [for (final s in sources) s.bookSourceUrl];
 
   @override
-  Stream<List<Book>> search(String key, {List<Source>? sources}) {
-    calls.add('search:$key');
+  Stream<List<Book>> search(String key, {List<Source>? sources, String env = 'search'}) {
+    calls.add(env == 'search' ? 'search:$key' : 'search:$key:$env');
     return _perSource(_urls(sources), (u) => [
           for (final b in library[u] ?? const <Book>[])
             if (b.name.contains(key) || b.author.contains(key)) _copy(b, u)

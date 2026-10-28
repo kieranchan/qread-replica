@@ -90,13 +90,13 @@ class EngineBookSearchService implements BookSearchService {
     ..lastCheckTime = from.lastCheckTime
     ..latestChapterTime = to.latestChapterTime == 0 ? from.latestChapterTime : to.latestChapterTime;
 
-  Stream<List<Book>> _searchMany(List<BookSource> list, String key, bool Function(Book b) keep) {
-    return SourceApi.searchAll(list, key, concurrency: concurrency, onlyEnabled: false)
+  Stream<List<Book>> _searchMany(List<BookSource> list, String key, bool Function(Book b) keep, {String env = 'search'}) {
+    return SourceApi.searchAll(list, key, concurrency: concurrency, onlyEnabled: false, env: env)
         .map((r) => [for (final s in r.books) _remember(s.toBook())].where(keep).toList());
   }
 
   @override
-  Stream<List<Book>> search(String key, {List<Source>? sources}) => _searchMany(_sources(sources), key, (_) => true);
+  Stream<List<Book>> search(String key, {List<Source>? sources, String env = 'search'}) => _searchMany(_sources(sources), key, (_) => true, env: env);
 
   @override
   Future<List<Explore>> exploreKinds(Source source) async {
