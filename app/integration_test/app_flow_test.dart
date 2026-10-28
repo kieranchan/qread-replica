@@ -86,7 +86,8 @@ void main() {
     await tester.enterText(find.byKey(const Key('login_pass')), testPass);
     await tester.pump();
     await tester.tap(find.byKey(const Key('login_go')));
-    await pumpUntil(tester, find.text('非会员'));
+    // a loaded CI simulator has taken 28 s for this login once (normally < 1 s)
+    await pumpUntil(tester, find.text('非会员'), timeout: const Duration(seconds: 60));
     await tester.pumpAndSettle();
     expect(UserSession.isLoggedIn, isTrue);
     expect(UserSession.isvip, isFalse);
