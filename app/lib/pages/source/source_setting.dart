@@ -26,6 +26,7 @@ import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
 
 import '../../api/sourceapi.dart';
+import '../../common/immersive_light.dart';
 import '../../common/nav.dart';
 import '../../data/qsource.dart';
 import '../../data/source.dart';
@@ -35,6 +36,7 @@ import '../../qread/qread.dart';
 import '../../util/http.dart';
 import '../../util/toast.dart';
 import '../../util/webbook/model/book_source.dart';
+import '../../widget/ui/q_glass.dart';
 import '../qread/qread_login.dart';
 import '../scanner/mobile_scanner.dart';
 import 'debug_qsource.dart';
@@ -722,9 +724,10 @@ class _SourceSettingPageState extends State<SourceSettingPage> {
   Widget _bottomBar(List<_Item> shown) {
     final cs = Theme.of(context).colorScheme;
     final allSel = shown.isNotEmpty && shown.every((i) => _selected.contains(i.url));
-    return Material(
-      elevation: 6,
-      color: cs.surfaceContainer,
+    // 0x5439e4: the bar is a QGlassContainer (沉浸光感)
+    return QGlassContainer(
+      borderRadius: 0,
+      color: ImmersiveLight.level.value == ImmersiveLight.off ? cs.surfaceContainer : null,
       child: SafeArea(
         top: false,
         child: SingleChildScrollView(
