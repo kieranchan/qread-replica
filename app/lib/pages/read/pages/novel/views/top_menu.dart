@@ -22,6 +22,7 @@ import '../../../../../read/util/down_notification.dart';
 import '../../../../../read/util/replace_rules.dart';
 import '../../../../../storage/setting.dart';
 import '../../../../../storage/storage.dart';
+import '../../../../../util/source/source_events.dart';
 import '../../../../../util/toast.dart';
 import '../../../../../widget/ui/q_glass.dart';
 import '../../../../highlight/highlight_rule_setting.dart';
@@ -326,6 +327,15 @@ class TopMenu extends StatelessWidget {
                     ),
                   ),
                 ),
+                // 定制按钮 of a 时光源 (0x10e950c / 0x10e93c4): tap clickCustomButton, long press longClickCustomButton
+                if (!local && SourceEvents.hasCustomButton(host.book.origin))
+                  InkResponse(
+                    key: const Key('reader_custom_button'),
+                    radius: 22,
+                    onTap: () => SourceEvents.send(host.book.origin, SourceEvents.clickCustomButton, host.book),
+                    onLongPress: () => SourceEvents.send(host.book.origin, SourceEvents.longClickCustomButton, host.book),
+                    child: const Padding(padding: EdgeInsets.all(8), child: Icon(Icons.circle_outlined)),
+                  ),
                 for (final id in ids)
                   if (entries[id] != null && !(local && const {'browser', 'changeSource', 'sourceLogin', 'buyChapter'}.contains(id)))
                     id == 'bookmark'

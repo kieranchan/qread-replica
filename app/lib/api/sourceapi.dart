@@ -81,14 +81,15 @@ abstract class SourceApi {
   static String _cacheKey(BookSource s, String key, int page) => '${s.bookSourceUrl}\u0001$page\u0001$key';
 
   /// Searches [key] in [source]. Results are cached for a few minutes unless [useCache] is false.
-  static Future<List<SearchBook>> search(BookSource source, String key, {int page = 1, bool useCache = true, DebugLog? debug}) async {
+  /// [env] goes to a 时光源's `search(key, page, env)` (`searchone` for a single-source search).
+  static Future<List<SearchBook>> search(BookSource source, String key, {int page = 1, bool useCache = true, DebugLog? debug, String env = 'search'}) async {
     final ck = _cacheKey(source, key, page);
     if (useCache) {
       final hit = cache.get(ck);
       if (hit != null) return hit;
     }
     final r = source.isTimeSource
-        ? await TimeSourceApi.search(source, key, page: page, debug: debug)
+        ? await TimeSourceApi.search(source, key, page: page, debug: debug, env: env)
         : await WebBook(source, debug: debug).searchBook(key, page: page);
     if (useCache) cache.put(ck, r);
     return r;
@@ -96,7 +97,8 @@ abstract class SourceApi {
 
   /// Searches many sources with at most [concurrency] running at once; results arrive as each source finishes. Cancel the
   /// subscription to stop starting new sources. A failing source yields a result with `error` set instead of failing the stream.
-  static Stream<SourceSearchResult> searchAll(List<BookSource> sources, String key, {int page = 1, int concurrency = 4, bool onlyEnabled = true}) {
+  static Stream<SourceSearchResult> searchAll(List<BookSource> sources, String key,
+      {int page = 1, int concurrency = 4, bool onlyEnabled = true, String env = 'search'}) {
     final list = onlyEnabled ? sources.where((s) => s.enabled).toList() : List<BookSource>.from(sources);
     final controller = StreamController<SourceSearchResult>();
     var next = 0;
@@ -106,7 +108,7 @@ abstract class SourceApi {
       while (!cancelled && running < concurrency && next < list.length) {
         final s = list[next++];
         running++;
-        search(s, key, page: page).then((books) {
+        search(s, key, page: page, env: env).then((books) {
           if (!controller.isClosed) controller.add(SourceSearchResult(s, books));
         }).catchError((Object e) {
           if (!controller.isClosed) controller.add(SourceSearchResult(s, const [], e));

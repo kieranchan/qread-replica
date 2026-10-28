@@ -16,6 +16,7 @@ import '../../../models/book.dart';
 import '../../../models/bookchapter.dart';
 import '../../../read/api/readapi.dart';
 import '../../../storage/storage.dart';
+import '../../../util/source/source_events.dart';
 import '../../../util/toast.dart';
 import '../../image/gallery_viewer_page.dart';
 import 'novel_view.dart' show ChapterListLoader;
@@ -242,6 +243,7 @@ class ComicViewState extends State<ComicView> {
     }
     try {
       await _api.saveProgress(chapterIndex: _ci, pos: pos);
+      SourceEvents.fire(SourceEvents.saveRead, _api.book);
     } catch (_) {}
   }
 

@@ -3,8 +3,10 @@
 // link when `loadWithBaseUrl`); without it the article link itself is loaded. `injectJs` runs after every page load.
 //
 // Original `_WebviewRssPageState` (72 functions: InAppWebView, cookie injection `注入cookie成功:`, ua `修改ua错误:`, JS console
-// `JS 日志 [`, external schemes `外部跳转确认`, dark mode script `注入暗黑模式JavaScript失败: `, cache progress `缓存进度`; it also hosts
-// the book-matching panel of web sources: 切换书源 / 加载目录 / 匹配书籍 …). The book-matching panel is not ported.
+// `JS 日志 [`, external schemes `外部跳转确认`, dark mode script `注入暗黑模式JavaScript失败: `). The strings the screen list files
+// under this page next to them (缓存进度 / 终止 / 隐藏, 切换书源 / 加载目录 / 匹配书籍 / 不同作者 / 相近名称) belong to the download
+// progress dialog (pages/read/pages/cachebook.dart, 0x7b87ac) and the 换源 page (pages/book/book_change_yuan.dart, 0x7ab140 /
+// 0x7ada38): this page has no book-matching panel.
 // Navigation (0xfbd220): import links (`yuedu` / `legado` / `qread`) go to the importers; then the source's `shouldOverrideUrlLoading`
 // decides (local sources run the JavaScript with `url`, backend sources ask `/rssshouldOverrideUrlLoading`); a true answer keeps
 // the page; other schemes ask 「外部跳转确认」. New windows (`onCreateWindow` 0xfbf010) open in this page.

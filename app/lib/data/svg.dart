@@ -4,7 +4,11 @@
 // Original: `Svg` (`_svgs` 0x4ab8, `desvgs` 0x4ac0 = the defaults used when nothing is stored, `_lock` 0x4aa8; load 0x10db80c:
 // empty result -> `desvgs`). The four defaults are the late initializer 0x2276cc (ids "0".."3", built from the pool strings
 // pp+0x29600..0x29698 by string concatenation, reproduced below piece by piece).
+import 'dart:convert';
+
 import '../models/svgimage.dart';
+import '../storage/storage.dart';
+import 'cloud_api.dart';
 import 'user.dart';
 import 'list_store.dart';
 
@@ -102,4 +106,35 @@ abstract class Svg {
   static Future<void> delete(String id) => store.run((list) => list.removeWhere((e) => e.id == id));
 
   static Future<void> clear() => store.run((list) => list.clear());
+
+  /// The bubbles a page asks for (`getsvg`, 0x2273b0) as JSON maps.
+  static Future<List<Map<String, dynamic>>> availableJson() async {
+    await load();
+    return [for (final s in available) s.toJson()];
+  }
+
+  /// The cloud pull of the bubble chooser a source page opens (`showsvg` / `addsvg`, 0xea5444): with 云端主题 on (static 0x1f9c)
+  /// and the cloud md5 of item `svg` differing from `svgmd5`, the cloud list replaces the local one and its md5 is kept. Returns
+  /// whether something was pulled.
+  static Future<bool> pullCloud({CloudApi? api}) async {
+    if (!UserSession.cloudtheme) return false;
+    final a = api ?? defaultCloudApi;
+    final md5 = await a.getItemMd5('svg');
+    if (md5 == Storage.getString(PrefKeys.svgmd5) || !UserSession.cloudtheme) return false;
+    final text = await a.getItemJson('svg');
+    final list = <Svgimage>[];
+    if (text.isNotEmpty) {
+      final v = jsonDecode(text);
+      if (v is List) {
+        for (final e in v) {
+          if (e is Map) list.add(Svgimage.fromJson(Map<String, dynamic>.from(e)));
+        }
+      }
+    }
+    await Storage.setString(PrefKeys.svgmd5, md5);
+    await store.run((items) => items
+      ..clear()
+      ..addAll(list));
+    return true;
+  }
 }

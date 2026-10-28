@@ -43,7 +43,7 @@ abstract class ExtrasRoutes {
     'ai_model_page': (_) => const AiModelPage(),
     'background_music_page': (_) => const BackgroundMusicPage(),
     'backup_page': (_) => const BackupPage(),
-    'choose_svg': (_) => const ChooseSvgPage(),
+    'choose_svg': (a) => ChooseSvgPage(svg: _arg<String>(a, 'svg') ?? ''),
     'clean_page': (_) => const CleanPage(),
     'hotkey_setting_page': (_) => const HotkeySettingPage(),
     'listem_setting_page': (_) => const ListenSettingPage(),

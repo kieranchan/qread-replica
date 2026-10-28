@@ -46,7 +46,10 @@ class Search {
   StreamSubscription<List<Book>>? _sub;
   final Completer<void> _finished = Completer<void>();
 
-  Search(this.key, {this.sources, BookSearchService? service}) : service = service ?? BookSearchService.instance;
+  /// The 时光源 search type: `search`, `searchone` for a single-source search.
+  final String env;
+
+  Search(this.key, {this.sources, BookSearchService? service, this.env = 'search'}) : service = service ?? BookSearchService.instance;
 
   /// Completes when every source answered or the search was cancelled.
   Future<void> get finished => _finished.future;
@@ -55,7 +58,7 @@ class Search {
     total = sources?.length ?? total;
     running = true;
     debugPrint('开始搜索 $key');
-    _sub = service.search(key, sources: sources).listen(
+    _sub = service.search(key, sources: sources, env: env).listen(
       _add,
       onError: (Object e) => debugPrint('搜索错误: $e'),
       onDone: _end,

@@ -19,7 +19,9 @@ abstract class BookSearchService {
   /// completion order (an empty list when the source found nothing or failed), then closes; the pages use the number of
   /// events for the 「已搜索 n/m」 progress. Every [Book] carries its source in `origin` (the `bookSourceUrl`).
   /// Cancelling the subscription stops the search.
-  Stream<List<Book>> search(String key, {List<Source>? sources});
+  /// [env] is what a 时光源's `search(key, page, env)` gets: `search`, or `searchone` when one source is searched (its 筛选
+  /// applies then).
+  Stream<List<Book>> search(String key, {List<Source>? sources, String env = 'search'});
 
   /// Explore categories ("发现" entries) of a source, parsed from its `exploreUrl` (Legado `title::url` lines or the JSON
   /// list form with `title`, `url`, `type`, `action`, `chars`, `default` …).

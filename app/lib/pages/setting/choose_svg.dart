@@ -22,7 +22,10 @@ import '../../util/toast.dart';
 import '../../util/vip.dart';
 
 class ChooseSvgPage extends StatefulWidget {
-  const ChooseSvgPage({super.key});
+  /// A bubble a source page offers (`addsvg(svg)`, 0xea5444): once the list is loaded the editor opens with this code (0x926574).
+  final String svg;
+
+  const ChooseSvgPage({super.key, this.svg = ''});
 
   static const String selectedKey = 'svg';
 
@@ -73,7 +76,9 @@ class _ChooseSvgPageState extends State<ChooseSvgPage> {
   @override
   void initState() {
     super.initState();
-    _reload();
+    _reload().then((_) {
+      if (mounted && widget.svg.isNotEmpty) _edit(null, widget.svg);
+    });
   }
 
   Future<void> _reload() async {
@@ -85,10 +90,10 @@ class _ChooseSvgPageState extends State<ChooseSvgPage> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _edit([Svgimage? old]) async {
+  Future<void> _edit([Svgimage? old, String svg = '']) async {
     if (!Vip.require('仅会员可编辑')) return;
     final id = TextEditingController(text: old?.id ?? '${DateTime.now().millisecondsSinceEpoch}');
-    final code = TextEditingController(text: old?.svg ?? '');
+    final code = TextEditingController(text: old?.svg ?? svg);
     final color = TextEditingController(text: '#FF0000');
     final text = TextEditingController(text: '1');
     final saved = await showDialog<Svgimage>(

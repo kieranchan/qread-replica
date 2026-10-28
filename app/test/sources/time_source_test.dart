@@ -424,7 +424,8 @@ void main() {
       expect(await e.callHandler('id'), 'device-1');
       expect(await e.callHandler('getsourceurl'), 'https://src.test');
       expect(await e.callHandler('getsearch'), -1);
-      expect(await e.callHandler('getsvg'), isEmpty);
+      // the built-in 段评 bubbles for non-members (paragraph_comment_test.dart has the rest)
+      expect(await e.callHandler('getsvg'), hasLength(4));
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
       expect(await e.callHandler('device'), 'ios');
       debugDefaultTargetPlatformOverride = null;
@@ -441,7 +442,7 @@ void main() {
       expect(await e.callHandler('startBrowser', ['https://x/a', '标题', '{"User-Agent":"ua"}']), '<html>done</html>');
       await e.callHandler('startBrowserWithShouldOverrideUrlLoading', ['https://x/b', 't', '{}']);
       await e.callHandler('startBrowserDp', ['https://x/c', '段评']);
-      await e.callHandler('startBrowserDpwithHtml', ['<p>h</p>', '段评']);
+      await e.callHandler('startBrowserDpwithHtml', ['', '<p>h</p>', '段评']);
       expect([for (final r in opened) (r.url, r.overrideUrlLoading, r.half)], [
         ('https://x/a', false, false),
         ('https://x/b', true, false),
@@ -474,17 +475,15 @@ void main() {
     });
 
     test('webview: a background page answers its source, a js value or the matched override url', () async {
+      Webview.unit = const Duration(milliseconds: 10);
+      addTearDown(() => Webview.unit = const Duration(seconds: 1));
       expect(await e.callHandler('webview', ['https://w.test/', '', '<p>x</p>', '', '{}', '', '']), '<p>x</p>');
       expect(FakeSourceEngine.created.last.options.intercept, isTrue);
       expect(FakeSourceEngine.created.last.disposed, isTrue);
       expect(await e.callHandler('webview', ['https://w.test/book/9', '', '', '', '{"User-Agent":"ua2"}', r'book/\d+', '']), 'https://w.test/book/9');
       expect(FakeSourceEngine.created.last.options.userAgent, 'ua2');
-      Webview.timeout = const Duration(milliseconds: 200);
-      Webview.regexGrace = const Duration(milliseconds: 20);
-      // no match: falls back to the page source
+      // no match: after the 60 steps it falls back to the page source
       expect(await e.callHandler('webview', ['https://w.test/a', '', '', '', '{}', '', r'\.m3u8']), contains('https://w.test/a'));
-      Webview.timeout = const Duration(seconds: 60);
-      Webview.regexGrace = const Duration(seconds: 5);
     });
   });
 

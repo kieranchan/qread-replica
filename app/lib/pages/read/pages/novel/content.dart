@@ -10,6 +10,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart' show SvgPicture;
 
 import '../../../../read/model/mypage.dart';
 import '../../../../read/model/page.dart';
@@ -19,6 +20,7 @@ import '../../../../read/setting/read_setting.dart';
 import '../../../../read/util/content_painter.dart';
 import '../../../../read/util/highlight_apply.dart';
 import '../../../../read/util/highlight_bg.dart';
+import '../../../../util/source/image_meta.dart';
 import 'views/battery_painter.dart';
 
 typedef BlockDecorator = List<TextDeco> Function(Content block, int chapterIndex);
@@ -67,9 +69,27 @@ class PageBody extends StatelessWidget {
 
   Widget _image(String href, BoxFit fit) {
     if (href.startsWith(PdfFile.scheme)) return PdfPageView(src: href, fit: fit);
-    if (href.startsWith('http')) return Image.network(href, fit: fit, errorBuilder: (_, _, _) => const SizedBox());
     if (href.isEmpty) return const SizedBox();
-    return Image.file(File(href), fit: fit, errorBuilder: (_, _, _) => const SizedBox());
+    // book-source images: `src,{json}` (js / headers), `dp:N` bubbles, data: images (util/source/image_meta.dart)
+    final m = ImageMeta.parse(href);
+    Widget img;
+    if (m.isDp) {
+      img = SvgPicture.string(m.dpSvg(textColor), fit: fit, errorBuilder: (_, _, _) => const SizedBox());
+    } else if (m.isData) {
+      final bytes = m.dataBytes;
+      img = bytes == null
+          ? const SizedBox()
+          : m.isSvgData
+              ? SvgPicture.memory(bytes, fit: fit, errorBuilder: (_, _, _) => const SizedBox())
+              : Image.memory(bytes, fit: fit, errorBuilder: (_, _, _) => const SizedBox());
+    } else if (m.url.startsWith('http')) {
+      img = Image.network(m.url, headers: m.headers.isEmpty ? null : m.headers, fit: fit, errorBuilder: (_, _, _) => const SizedBox());
+    } else {
+      img = Image.file(File(m.url), fit: fit, errorBuilder: (_, _, _) => const SizedBox());
+    }
+    // an image with `js` runs it in the source page when tapped (段评: showCmt → the half-height comment sheet)
+    if (m.js.isEmpty) return img;
+    return GestureDetector(behavior: HitTestBehavior.opaque, onTap: () => ParagraphComments.click(m.js), child: img);
   }
 
   /// Chapter offset of the character under [local] in block [c] (-1 when none).

@@ -17,6 +17,7 @@ import '../read/api/readapi.dart';
 import '../read/local_book_importer.dart';
 import '../storage/storage.dart';
 import '../util/source/cache.dart';
+import '../util/source/source_events.dart';
 import '../util/toast.dart';
 import 'base_page.dart';
 
@@ -191,7 +192,9 @@ abstract class BookApiPage<T extends StatefulWidget> extends BasePage<T> {
   }
 
   /// 0x566de8: 「加入书架」 — confirm with a group picker, then store the book. Returns the stored copy (null when cancelled).
+  /// A listening 时光源 gets `addBookShelf` first (0xf99388, not awaited).
   Future<Book?> addToShelf(Book book) async {
+    SourceEvents.fire(SourceEvents.addBookShelf, book);
     var group = '';
     final ok = await showDialog<bool>(
       context: context,
@@ -241,6 +244,10 @@ abstract class BookApiPage<T extends StatefulWidget> extends BasePage<T> {
       ),
     );
     if (ok != true) return false;
+    // listening 时光源 get `delBookShelf` once the deletion is confirmed (0xf700b4, not awaited)
+    for (final b in books) {
+      SourceEvents.fire(SourceEvents.delBookShelf, b);
+    }
     try {
       await deleteShelfBooks(books);
       return true;

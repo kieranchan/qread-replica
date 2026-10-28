@@ -84,6 +84,9 @@ class FakeTimePage {
   final Set<String> declared;
   final List<String> calls = [];
 
+  /// `callbackjs(event, book)` calls of every page: (event, book name).
+  static final List<(String, String)> events = [];
+
   FakeTimePage(this.e, this.html, this.baseUrl) : declared = {for (final m in RegExp(r'async function (\w+)\(').allMatches(html)) m.group(1)!};
 
   /// The page's start-up: `CookieJar(isCookieJar)` when it has the bridge.
@@ -209,6 +212,13 @@ class FakeTimePage {
         return '@html:<b>帮助</b>内容';
       case 'shouldOverrideUrlLoading':
         return !'${a[0]}'.contains('/book/');
+      case 'callbackjs':
+        events.add((('${a[0]}'), (jsonDecode('${a[1]}') as Map)['name'] as String? ?? ''));
+        return '${a[0]}'.startsWith('long');
+      case 'filter':
+        return '${await server()}/filter.html';
+      case 'findfilter':
+        return '${a[0]}'.contains('c=male') ? 'data:text/html;base64,PGI+562b6YCJPC9iPg==' : '';
       case 'hang':
         return Completer<Object?>().future;
     }

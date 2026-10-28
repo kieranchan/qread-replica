@@ -24,18 +24,37 @@ class SourceJsEngineOptions {
   /// Report every navigation to [SourceJsEngine.onNavigate] and every loaded resource to [SourceJsEngine.onResource].
   final bool intercept;
 
+  /// Report the page's XMLHttpRequests to [SourceJsEngine.onAjax] (`useShouldInterceptAjaxRequest`).
+  final bool interceptAjax;
+
   /// User agent of the web view (null = the platform default).
   final String? userAgent;
 
-  const SourceJsEngineOptions({this.intercept = false, this.userAgent});
+  const SourceJsEngineOptions({this.intercept = false, this.interceptAjax = false, this.userAgent});
+}
+
+/// One `onAjaxReadyStateChange` of a page: the request url, its `readyState` (4 = done) and, when done, the answer text.
+class AjaxEvent {
+  final String url;
+  final int readyState;
+  final String? responseText;
+
+  const AjaxEvent(this.url, this.readyState, [this.responseText]);
 }
 
 abstract class SourceJsEngine implements JsHandlerSink {
   /// Creates the engine of a book source / background page; tests install a fake.
   static SourceJsEngine Function(SourceJsEngineOptions options) create = (o) => InAppWebViewEngineAdapter(o);
 
-  /// A page (main frame) finished loading.
+  /// A page (main frame) started / finished loading.
+  void Function(String url)? onLoadStart;
   void Function(String url)? onLoadStop;
+
+  /// A request of the page failed (`onReceivedError` / `onReceivedHttpError`), with [SourceJsEngineOptions.intercept].
+  void Function(String url)? onLoadError;
+
+  /// An XMLHttpRequest of the page changed state, with [SourceJsEngineOptions.interceptAjax].
+  void Function(AjaxEvent event)? onAjax;
 
   /// `console.*` output of the page.
   void Function(String message)? onConsole;

@@ -37,6 +37,8 @@ import '../../../read/util/listcontroller.dart';
 import '../../../read/util/read.dart';
 import '../../../util/epub/epub_zh_convert.dart';
 import '../../../util/image/image_service.dart';
+import '../../../util/source/image_meta.dart';
+import '../../../util/source/source_events.dart';
 import '../../../util/toast.dart';
 import '../../../widget/delayed_selection_area.dart';
 import '../../../widget/note_sheet.dart';
@@ -169,6 +171,8 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
   @override
   void initState() {
     super.initState();
+    // tapped images with `js` run it in this book's 时光源 page
+    ParagraphComments.activeSource = () => widget.book.origin;
     WidgetsBinding.instance.addObserver(this);
     _setting.addListener(_onSetting);
     _init();
@@ -335,12 +339,19 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     return ChapterContent.fromBlocks(c.blocks);
   }
 
+  /// 显示段评 (`needdp`) off: the `dp:` bubbles of book-source text are left out.
+  ChapterContent _paragraphComments(ChapterContent c) {
+    if (_setting.needdp || c.isPlainText) return c;
+    final kept = [for (final b in c.blocks) if (!(b.isImage && b.runs.isNotEmpty && b.runs.first.href.startsWith('dp:'))) b];
+    return kept.length == c.blocks.length ? c : ChapterContent.fromBlocks(kept);
+  }
+
   Future<ReadChapter> _ensureContent(int i, {bool refresh = false}) async {
     final have = _content[i];
     if (have != null && !refresh) return have;
     _logLine('正文获取 $i');
     final rc = await _api.loadChapter(i, refresh: refresh);
-    final out = ReadChapter(rc.chapter, rc.title, _convert(rc.content), purified: rc.purified);
+    final out = ReadChapter(rc.chapter, rc.title, _convert(_paragraphComments(rc.content)), purified: rc.purified);
     _content[i] = out;
     return out;
   }
@@ -357,7 +368,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
         final style = _style;
         final size = _size;
         if (style == null || size == null || gen != _gen) return;
-        final calc = CalculateChapter(style: style, imageSizeOf: _imageSize);
+        final calc = CalculateChapter(style: style, imageSizeOf: (src) => imageSize(src, fontSize: style.fontSize));
         final pages = await calc.calculate(
           size: size,
           blocks: rc.content.blocks,
@@ -376,8 +387,11 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     return f;
   }
 
-  static Future<Size?> _imageSize(String src) async {
+  /// Layout size of an image block; a 段评 bubble (`dp:N`) is about one character high (the bubbles are 4:3).
+  @visibleForTesting
+  static Future<Size?> imageSize(String src, {double fontSize = 20}) async {
     if (src.startsWith(PdfFile.scheme)) return PdfFile.sizeOf(src);
+    if (src.startsWith('dp:')) return Size(fontSize * 4 / 3, fontSize);
     if (src.startsWith('http') || src.startsWith('data:')) return null;
     try {
       final m = await ImageService.readSizes([src]);
@@ -538,6 +552,8 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     if (!_inited || _pages[_ci] == null) return;
     try {
       await _api.saveProgress(chapterIndex: _ci, pos: chapterProgress, chapterTitle: chapterTitle);
+      // a listening 时光源 gets `saveRead` with every saved progress (0xe078d4)
+      SourceEvents.fire(SourceEvents.saveRead, _api.book);
     } catch (e) {
       _logLine('不能保存 $e');
     }
