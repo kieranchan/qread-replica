@@ -3,8 +3,9 @@
 //   * privacy agreement on first launch (`privacy_agreement_agreed` = "true", dialog 0x8eb3b0, check 0x10bd05c)
 //   * "continue reading" when the last reading ended less than 5 minutes ago (`last_open_time`, 0x10bdd44 / dialog 0x8eb8ec)
 //   * 沉浸光感 level asked once after the agreement (0x10bd05c → dialog 0x8e950c)
-// Not ported: the update check (发现新版本: no update service for the replica) and the TTS shared-resource migration; app links
-// (`linkinit`) are started by init/wiring.dart.
+//   * the update check (0x10bcc40 → 发现新版本 0x8e9194) through [MainPage.updateCheck] (set by init/wiring.dart, our own server)
+// Not ported: the TTS shared-resource migration; app links (`linkinit`) are started by init/wiring.dart.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -76,6 +77,9 @@ class MainPage extends StatefulWidget {
   static final ValueNotifier<bool> showBottom = ValueNotifier<bool>(true);
 
   static const privacyKey = 'privacy_agreement_agreed';
+
+  /// The start-up update check (the 关于 page's, set by init/wiring.dart); started without waiting after the start-up prompts.
+  static Future<Object?> Function(BuildContext context)? updateCheck;
   static const lastOpenKey = 'last_open_time';
 
 
@@ -132,6 +136,8 @@ class _MainPageState extends State<MainPage> {
       await _immersiveLight();
       if (!mounted) return;
     }
+    final check = MainPage.updateCheck;
+    if (check != null) unawaited(check(context).catchError((Object _) => null));
     await _continueReading();
   }
 

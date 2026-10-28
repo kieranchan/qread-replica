@@ -119,8 +119,8 @@ void main() {
         );
     await tester.pumpWidget(bar(false));
     await tester.pump();
-    // 章节进度 slot, and the showProgress text (default 1 = 章节进度) before the battery (0x6344a8)
-    expect(find.text('2/9'), findsNWidgets(2));
+    // 章节进度 slot only: the battery item (0x6344a8) draws the level and the battery, no progress text
+    expect(find.text('2/9'), findsOneWidget);
     expect(find.text('76%'), findsOneWidget); // 外置百分比电池
     expect(find.text(clockText()), findsOneWidget);
     await tester.pumpWidget(bar(true));

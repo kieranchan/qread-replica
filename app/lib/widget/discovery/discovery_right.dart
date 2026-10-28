@@ -23,6 +23,7 @@ import '../../pages/search/search_page.dart';
 import '../../pages/search/source_filter.dart';
 import '../../pages/web/webview.dart';
 import '../../qread/qread.dart';
+import '../../qread/qread_jobs.dart';
 import '../../util/source/baswebview.dart';
 import '../../util/source/source.dart' as ts;
 import '../../util/webbook/model/book_source.dart';
@@ -60,11 +61,18 @@ class DiscoveryRightPageState extends BasePage<DiscoveryRightPage> {
     _refresh = ExploreRefresh.stream.listen((url) {
       if (mounted && url == widget.source.bookSourceUrl) reload();
     });
+    // the 轻阅读 backend's `refreshExplore` job (0xf1ab48, hook 0x1ea4) reloads the open backend source's entries
+    QreadHooks.refreshExplore = _backendRefresh;
     reload();
+  }
+
+  Future<void> _backendRefresh() async {
+    if (mounted && widget.source.isqread) await reload();
   }
 
   @override
   void dispose() {
+    if (QreadHooks.refreshExplore == _backendRefresh) QreadHooks.refreshExplore = null;
     _refresh?.cancel();
     super.dispose();
   }

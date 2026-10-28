@@ -20,6 +20,7 @@ import '../pages/bookshelf_page.dart';
 import '../pages/discovery_page.dart';
 import '../pages/discovery_page_new.dart';
 import '../pages/exploration/exploration_page.dart';
+import '../pages/about_page.dart';
 import '../pages/main_page.dart';
 import '../pages/read/read_page.dart';
 import '../pages/read/reader_ai.dart';
@@ -29,6 +30,7 @@ import '../pages/rss_page.dart';
 import '../pages/search/search_book_page.dart';
 import '../pages/setting/extras_routes.dart';
 import '../pages/web/web_hooks.dart';
+import '../qread/qread_jobs.dart';
 import '../read/api/read_storage_root.dart';
 import '../service/app_links_service.dart';
 import '../widget/book/intro_html_flutter.dart';
@@ -115,6 +117,14 @@ abstract class Wiring {
     await AppLinksService.init(null);
     // book intros with <usehtml> are rendered by flutter_html as in the original
     useFlutterHtmlIntro();
+
+    // start-up update check (发现新版本, answered by our server's check_update)
+    MainPage.updateCheck = AboutPage.remindOnStart;
+    // 轻阅读 backend device jobs (qread/qread_jobs.dart): logout refreshes the tabs, openurl hands legado:// / yuedu:// links to
+    // the app-link dispatcher, refreshBookInfo saves the book open in the reader on the shelf again (0xe6477c → BookSelfN lock)
+    QreadHooks.onLogout = MainTabs.changed;
+    QreadHooks.openAppLink = (u) => AppLinksService.handle(Uri.parse(u));
+    QreadHooks.refreshBookInfo = BookSelfN.updateInfo;
 
     MainTabs.builders.addAll({
       '书架': (_) => const BookshelfPage(),

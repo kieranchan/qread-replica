@@ -12,6 +12,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../../qread/qread_jobs.dart';
 import '../../util/toast.dart';
 import '../../util/webbook/model/base_source.dart';
 import '../web/webview.dart';
@@ -79,12 +80,35 @@ class _SourceLoginDialogState extends State<SourceLoginDialog> {
   @override
   void initState() {
     super.initState();
-    final saved = widget.source.getLoginInfoMap().map;
+    _fill(widget.source.getLoginInfoMap().map);
+    // the 轻阅读 backend's device jobs (0x1e90 / 0x1e94): reLoginView reloads the saved values, upLoginData fills in a JSON object
+    QreadHooks.reLoginView = _reload;
+    QreadHooks.upLoginData = _upLoginData;
+  }
+
+  void _reload() {
+    if (mounted) setState(() => _fill(widget.source.getLoginInfoMap().map));
+  }
+
+  void _upLoginData(String data) {
+    try {
+      final m = jsonDecode(data);
+      if (m is Map && mounted) setState(() => _fill(m));
+    } catch (_) {}
+  }
+
+  void _fill(Map<dynamic, dynamic> saved) {
     for (final r in widget.rows) {
       final name = '${r['name'] ?? ''}';
       final type = '${r['type'] ?? 'text'}';
       if (type == 'text' || type == 'password') {
-        _fields[name] = TextEditingController(text: '${saved[name] ?? r['default'] ?? ''}');
+        final text = '${saved[name] ?? r['default'] ?? ''}';
+        final c = _fields[name];
+        if (c == null) {
+          _fields[name] = TextEditingController(text: text);
+        } else {
+          c.text = text;
+        }
       } else if (type == 'toggle' || type == 'select') {
         final chars = r['chars'] is List ? (r['chars'] as List).map((e) => '$e').toList() : <String>[];
         _choice[name] = '${saved[name] ?? r['default'] ?? (chars.isEmpty ? '' : chars.first)}';
@@ -94,6 +118,8 @@ class _SourceLoginDialogState extends State<SourceLoginDialog> {
 
   @override
   void dispose() {
+    if (QreadHooks.reLoginView == _reload) QreadHooks.reLoginView = null;
+    if (QreadHooks.upLoginData == _upLoginData) QreadHooks.upLoginData = null;
     for (final c in _fields.values) {
       c.dispose();
     }
