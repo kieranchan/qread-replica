@@ -135,10 +135,84 @@ void main() {
     await finish(tester);
   });
 
-  testWidgets('video player shell', (tester) async {
+  testWidgets('video player: in-app playback, drag to seek, speed, progress kept per episode', (tester) async {
+    await tester.runAsync(setUpReader);
+    final fake = _FakeVideo();
+    ReaderVideoController.create = (url, headers) => fake;
+    addTearDown(() => ReaderVideoController.create = PluginVideoController.new);
     await tester.pumpWidget(app(const VideoPlayerPage(url: 'https://example.com/v.mp4', title: '第1集')));
-    expect(find.text(VideoPlayerPage.unsupported), findsOneWidget);
+    await tester.pump();
+    await tester.pump();
+    expect(fake.calls, ['init', 'play']);
+    expect(find.text('第1集'), findsOneWidget);
+    final s = tester.state<VideoPlayerPageState>(find.byType(VideoPlayerPage));
+    await tester.timedDragFrom(const Offset(200, 300), const Offset(100, 0), const Duration(milliseconds: 300));
+    await tester.pump();
+    expect(fake.position, const Duration(seconds: 30)); // 10 s + 100 px * 0.2 s
+    await s.setSpeed(1.5);
+    expect(fake.speed, 1.5);
+    await s.toggle();
+    expect(fake.calls.last, 'pause');
+    await tester.pumpWidget(const SizedBox());
+    expect(Storage.getInt(VideoPlayerPage.progressKey('https://example.com/v.mp4')), 30000);
+
+    // a second open resumes there
+    final again = _FakeVideo();
+    ReaderVideoController.create = (url, headers) => again;
+    await tester.pumpWidget(app(const VideoPlayerPage(url: 'https://example.com/v.mp4')));
+    await tester.pump();
+    await tester.pump();
+    expect(again.calls, ['init', 'seek 30000', 'play']);
     await tester.pumpWidget(app(const VideoPlayerPage(url: 'bad url')));
     expect(find.textContaining('无效的视频地址'), findsOneWidget);
   });
+}
+
+class _FakeVideo implements ReaderVideoController {
+  final List<String> calls = [];
+  @override
+  Duration position = const Duration(seconds: 10);
+  double speed = 1;
+  bool playing = false;
+  final List<VoidCallback> _ls = [];
+
+  @override
+  Future<void> initialize() async => calls.add('init');
+  @override
+  Future<void> play() async {
+    playing = true;
+    calls.add('play');
+  }
+
+  @override
+  Future<void> pause() async {
+    playing = false;
+    calls.add('pause');
+  }
+
+  @override
+  Future<void> seekTo(Duration d) async {
+    position = d;
+    calls.add('seek ${d.inMilliseconds}');
+    for (final l in _ls) {
+      l();
+    }
+  }
+
+  @override
+  Future<void> setSpeed(double s) async => speed = s;
+  @override
+  Duration get duration => const Duration(minutes: 20);
+  @override
+  bool get isPlaying => playing;
+  @override
+  double get aspectRatio => 16 / 9;
+  @override
+  Widget view() => const ColoredBox(color: Colors.black);
+  @override
+  void addListener(VoidCallback l) => _ls.add(l);
+  @override
+  void removeListener(VoidCallback l) => _ls.remove(l);
+  @override
+  Future<void> dispose() async {}
 }
