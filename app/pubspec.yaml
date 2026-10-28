@@ -75,6 +75,7 @@ dependencies:
   liquid_glass_easy: ^5.1.0
   flutter_html: ^3.0.0
   package_info_plus: ^10.2.2
+  sherpa_onnx: 1.13.8
 
 # flutter_html 3.0.0 calls a function that html 0.15.7 removed (`matches`); pin the last version that has it.
 dependency_overrides:
