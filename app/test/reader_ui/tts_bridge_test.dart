@@ -8,6 +8,7 @@ import 'package:newread/data/background_music_manager.dart';
 import 'package:newread/data/tts.dart';
 import 'package:newread/models/bookchapter.dart';
 import 'package:newread/models/httptts.dart';
+import 'package:newread/pages/read/pages/audio_view.dart';
 import 'package:newread/pages/read/read_aloud.dart';
 import 'package:newread/pages/read/reader_speaker.dart';
 import 'package:newread/pages/read/tts_bridge.dart';
@@ -74,6 +75,13 @@ void main() {
     await BackgroundMusicManager.load(force: true);
   });
   tearDown(TtsBridge.reset);
+
+  test('chapter lyric key of the original (book_<url>_<index>_chapter_lyric)', () async {
+    expect(AudioLyrics.key('http://x/b', 3), 'book_http://x/b_3_chapter_lyric');
+    await AudioLyrics.write('http://x/b', 3, '[00:01.00]你好');
+    expect(await AudioLyrics.read('http://x/b', 3), '[00:01.00]你好');
+    expect(await AudioLyrics.read('http://x/b', 4), '');
+  });
 
   test('engine choice: default, ttsEngine, book engine when 引擎一致 is off', () async {
     expect(TtsBridge.engineFor('b1').id, TTSData.defaultEngine.id);

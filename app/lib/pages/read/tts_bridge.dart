@@ -46,6 +46,7 @@ abstract class TtsBridge {
     _installed = false;
     ReaderSpeaker.bookFactory = null;
     ReadAloudController.observers.removeWhere((o) => o is ListenBackgroundMusic || o is ListenMediaSession);
+    ListenMediaSession.backend = null;
     roleSplitter = null;
     speakWith = TtsController.speak;
     stopAll = TtsController.stop;
@@ -237,11 +238,20 @@ abstract class ListenMediaBackend {
 
 /// Mirrors the listening state into the system media session and forwards its buttons (play / pause / next / previous / stop).
 class ListenMediaSession implements ListenObserver {
-  final ListenMediaBackend backend;
+  /// The installed backend (the audio view uses it too); null before `TtsBridge.install()`.
+  static ListenMediaBackend? backend;
+
+  final ListenMediaBackend _backend;
   ReadAloudController? _c;
   (String, bool, bool)? _last;
 
-  ListenMediaSession(this.backend) {
+  ListenMediaSession(ListenMediaBackend b) : _backend = b {
+    backend = b;
+    _bind();
+  }
+
+  void _bind() {
+    final backend = _backend;
     backend.onCommand = (cmd) {
       final c = _c;
       if (c == null) return;
@@ -266,7 +276,8 @@ class ListenMediaSession implements ListenObserver {
     final state = (c.chapterTitle, c.active, c.paused);
     if (state == _last) return;
     _last = state;
-    unawaited(backend.update(title: c.chapterTitle, album: c.bookName, artUri: c.coverUrl, playing: c.active && !c.paused, active: c.active)
+    _bind(); // the audio view may have taken the buttons
+    unawaited(_backend.update(title: c.chapterTitle, album: c.bookName, artUri: c.coverUrl, playing: c.active && !c.paused, active: c.active)
         .catchError((_) {}));
   }
 }
