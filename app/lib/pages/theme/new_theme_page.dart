@@ -26,18 +26,6 @@ class NewThemePage extends StatefulWidget {
   final bool readOnly;
   const NewThemePage({super.key, this.theme, this.isLight = true, this.readOnly = false});
 
-  /// Page ids a style can be bound to when no page registered itself in `System.pagenames` (TODO(asm 0x1036e20)).
-  static const Map<String, String> knownPages = {
-    'bookshelf': '书架',
-    'discovery': '发现',
-    'rss': '订阅',
-    'exploration': '探索',
-    'me': '我的',
-    'fontsetting': '主题设置',
-    'wifi': 'Wi-Fi传书',
-    'setting': '设置',
-  };
-
   @override
   State<NewThemePage> createState() => _NewThemePageState();
 }
@@ -86,7 +74,8 @@ class _NewThemePageState extends State<NewThemePage> {
     ('tagText', 'TagText'),
   ];
 
-  Map<String, String> get _pages => {...NewThemePage.knownPages, ...System.pagenames};
+  /// page id -> display name of every page a style can be bound to (`System.pagenames`, 0x1036e20).
+  Map<String, String> get _pages => System.pageTitles;
 
   @override
   void dispose() {

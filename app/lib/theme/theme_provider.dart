@@ -25,7 +25,8 @@ import '../models/theme.dart';
 import '../storage/storage.dart';
 
 /// Fonts the theme pages offer. `默认字体` = the platform font; the three built-in names map to the families declared in pubspec
-/// (`boldface`, `circle`); `谷歌汉字` is the Noto Sans SC file the epub module ships.
+/// (`boldface`, `circle`); `谷歌汉字` is family `googlefont`, loaded at run time from the asset
+/// `lib/util/epub/assets/dist/NotoSansSC-Regular.ttf` (0xefa450: `导入谷歌字体 …`, the same file the epub view serves).
 abstract class AppFonts {
   static const String defaultName = '默认字体';
   static const String google = '谷歌汉字';
@@ -45,18 +46,32 @@ abstract class AppFonts {
       case circle:
         return 'circle';
       case google:
-        // TODO(asm 0x2b3644): the original loads lib/util/epub/assets/dist/NotoSansSC-Regular.ttf; the replica relies on the epub
-        // module to register it and falls back to the platform font otherwise.
-        return 'NotoSansSC';
+        return googleFamily;
       default:
         return name;
     }
   }
 
+  static const String googleFamily = 'googlefont';
+  static const String googleAsset = 'lib/util/epub/assets/dist/NotoSansSC-Regular.ttf';
+
   static final Set<String> _loaded = <String>{};
 
-  /// Registers a user font file with the engine (FontLoader) so `fontFamily: name` resolves. Built-ins need nothing.
+  /// Registers a user font file with the engine (FontLoader) so `fontFamily: name` resolves. `谷歌汉字` loads its asset once
+  /// (false when the asset is not bundled: the platform font is used); the pubspec families need nothing.
   static Future<bool> ensureLoaded(String name) async {
+    if (name == google) {
+      if (_loaded.contains(google)) return true;
+      try {
+        final data = await rootBundle.load(googleAsset);
+        await (FontLoader(googleFamily)..addFont(Future.value(data))).load();
+        _loaded.add(google);
+        debugPrint('导入谷歌字体 $googleAsset');
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
     if (name.isEmpty || builtin.contains(name) || _loaded.contains(name)) return true;
     final f = Fonts.byFamily(name);
     if (f == null) return false;
@@ -235,9 +250,15 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
   static const String regularFontKey = 'regularFont';
   static const String useDefaultCoverForAllKey = 'useDefaultCoverForAll';
 
-  /// Default covers chosen on the 主题设置 page (JSON list of paths). TODO(asm 0x8176c0): the original key of the cover list is
-  /// not certain; `bookimages2` (prefs string written by main_page) is the best candidate.
+  /// The user's own default covers (JSON list of paths): the 主题设置 page keeps them as `_bookImages` and writes them under
+  /// `bookimages2` (0x1098448 / 0x1098c74).
   static const String defaultCoverKey = 'bookimages2';
+
+  /// Prefs `appearanceFollowTheme` (0xf60710): JSON map {navFont, titleFont, regularFont, defaultCover} → bool, each true (follow
+  /// the applied theme) unless stored otherwise. The cover resolver 0xf60c88 uses the theme's `defaultCover` when following,
+  /// else the own list; empty → `lib/assets/images/no_cover.jpeg`; a value starting with `[` is a JSON list.
+  static const String followThemeKey = 'appearanceFollowTheme';
+  static const List<String> followItems = ['navFont', 'titleFont', 'regularFont', 'defaultCover'];
 
   /// Tab ids in the default bottom-bar order (`bottomBarTabs` default, 0xf62c0c), the index of the tab icon lists.
   static const List<String> tabNames = ['书架', '发现', '探索', '订阅', '我的'];
@@ -336,11 +357,38 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   // ------------------------------------------------------------------------------------------------ fonts
 
-  String _font(String key, String Function(ThemeModel) fromTheme) {
+  Map<String, bool> get followTheme {
+    // unset items follow the theme unless an own value exists (consistent with the original, where picking an own value is what
+    // turns following off; keeps choices made by earlier replica builds)
+    final out = {for (final k in followItems) k: k == 'defaultCover' ? ownCovers.isEmpty : Storage.getString(k).isEmpty};
+    try {
+      final v = jsonDecode(Storage.getString(followThemeKey));
+      if (v is Map) {
+        v.forEach((k, b) {
+          if (b is bool) out['$k'] = b;
+        });
+      }
+    } catch (_) {}
+    return out;
+  }
+
+  /// Whether [item] (`navFont` / `titleFont` / `regularFont` / `defaultCover`) follows the applied theme.
+  bool follows(String item) => followTheme[item] ?? true;
+
+  Future<void> setFollows(String item, bool v) async {
+    final m = followTheme..[item] = v;
+    await Storage.setString(followThemeKey, jsonEncode(m));
+    notifyListeners();
+  }
+
+  String _font(String key, String Function(ThemeModel) fromTheme) => _resolveFont(current, key, fromTheme);
+
+  /// Following: the theme's font (the own one when the theme has none); not following: the own font.
+  String _resolveFont(ThemeModel? t, String key, String Function(ThemeModel) fromTheme) {
     final own = Storage.getString(key);
-    if (own.isNotEmpty) return own;
-    final t = current;
-    return t == null ? '' : fromTheme(t);
+    final theirs = t == null ? '' : fromTheme(t);
+    if (follows(key)) return theirs.isNotEmpty ? theirs : own;
+    return own;
   }
 
   String get navFont => _font(navFontKey, (t) => t.navFont);
@@ -350,8 +398,10 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// The user's own choice ('' = 跟随主题).
   String ownFont(String key) => Storage.getString(key);
 
+  /// Picking a font stops following the theme for that item; picking '' (跟随主题) follows it again.
   Future<void> setOwnFont(String key, String name) async {
     await Storage.setString(key, name);
+    await setFollows(key, name.isEmpty);
     await AppFonts.ensureLoaded(name);
     notifyListeners();
   }
@@ -370,16 +420,30 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> setOwnCovers(List<String> paths) async {
     await Storage.setString(defaultCoverKey, paths.isEmpty ? '' : jsonEncode(paths));
-    notifyListeners();
+    await setFollows('defaultCover', paths.isEmpty);
   }
 
-  /// The covers used when a book has none: own covers, else the theme's, else the bundled `no_cover.jpeg`.
+  /// 0xf60c88: the covers used when a book has none — the theme's when following it, else the own list; the bundled
+  /// `no_cover.jpeg` when that is empty.
   List<String> get defaultCovers {
-    final own = ownCovers;
-    if (own.isNotEmpty) return own;
     final t = current;
-    if (t != null && t.defaultCover.isNotEmpty) return [t.defaultCover];
-    return const ['lib/assets/images/no_cover.jpeg'];
+    final theirs = t == null ? '' : t.defaultCover.trim();
+    List<String> list;
+    if (follows('defaultCover')) {
+      list = theirs.startsWith('[') ? _list(theirs) : (theirs.isEmpty ? <String>[] : [theirs]);
+      if (list.isEmpty) list = ownCovers;
+    } else {
+      list = ownCovers;
+    }
+    return list.isEmpty ? const ['lib/assets/images/no_cover.jpeg'] : list;
+  }
+
+  static List<String> _list(String s) {
+    try {
+      final v = jsonDecode(s);
+      if (v is List) return [for (final e in v) '$e'];
+    } catch (_) {}
+    return [];
   }
 
   /// true = every book shows the default cover; false = only when loading the cover failed (仅加载失败).
@@ -497,12 +561,7 @@ class ThemeProvider extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
-  String _fontFor(Brightness b, String key, String Function(ThemeModel) fromTheme) {
-    final own = Storage.getString(key);
-    if (own.isNotEmpty) return own;
-    final t = themeFor(b);
-    return t == null ? '' : fromTheme(t);
-  }
+  String _fontFor(Brightness b, String key, String Function(ThemeModel) fromTheme) => _resolveFont(themeFor(b), key, fromTheme);
 
   void _refreshAppbar() {
     final c = ThemeColors.of(current?.schemeConfig.surface);
