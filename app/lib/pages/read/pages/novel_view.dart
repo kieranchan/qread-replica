@@ -938,7 +938,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     var a = _aloud;
     if (a == null) {
       a = ReadAloudController(
-        speaker: ReaderSpeaker.create(),
+        speaker: ReaderSpeaker.create(bookUrl: widget.book.bookUrl),
         chapterAt: (i) async {
           if (i < 0 || i >= _chapters.length) return null;
           try {
@@ -949,6 +949,8 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
         },
         chapterCount: () => _chapters.length,
       );
+      a.bookName = widget.book.name;
+      a.coverUrl = widget.book.coverUrl;
       a.onSegment = _followAloud;
       a.onStopped = () {
         if (mounted) setState(() {});

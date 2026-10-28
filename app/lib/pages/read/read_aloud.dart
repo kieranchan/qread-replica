@@ -8,6 +8,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../read/api/readapi.dart';
+import '../../read/util/read.dart';
 import '../../storage/storage.dart';
 import 'reader_speaker.dart';
 
@@ -19,8 +20,32 @@ class AloudSegment {
   const AloudSegment(this.text, this.start, this.end);
 }
 
+/// Follows the state of listening: lock-screen controls, background music (registered by `TtsBridge.install()`).
+abstract class ListenObserver {
+  void listenChanged(ReadAloudController c);
+}
+
 class ReadAloudController extends ChangeNotifier {
+  /// Notified on every change of any controller.
+  static final List<ListenObserver> observers = [];
+
   final ReaderSpeaker speaker;
+
+  /// Book name and cover for the lock screen.
+  String bookName = '';
+  String coverUrl = '';
+
+  @override
+  void notifyListeners() {
+    // 0x1e04: while audio plays the screen-awake timer keeps renewing the activity
+    ReaderWakelock.keepAwake = active && !paused;
+    super.notifyListeners();
+    for (final o in List<ListenObserver>.of(observers)) {
+      try {
+        o.listenChanged(this);
+      } catch (_) {}
+    }
+  }
 
   /// Loads chapter [index] (null when it does not exist).
   final Future<ReadChapter?> Function(int index) chapterAt;
@@ -207,6 +232,11 @@ class ReadAloudController extends ChangeNotifier {
   void dispose() {
     _generation++;
     _cancelTimer();
+    if (active) {
+      active = false;
+      paused = false;
+      notifyListeners();
+    }
     speaker.onDone = null;
     speaker.onError = null;
     speaker.stop();
