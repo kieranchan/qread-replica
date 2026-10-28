@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:newread/common/app_dirs.dart';
 import 'package:newread/models/highlight_rule.dart';
 import 'package:newread/pages/highlight/highlight_rule_edit.dart';
+import 'package:newread/pages/read/pages/novel/theme_page.dart';
+import 'package:newread/pages/replace/replace_rule_help.dart';
 import 'package:newread/read/util/highlight_apply.dart';
 import 'package:newread/read/util/highlight_bg.dart';
 import 'package:newread/util/toast.dart';
@@ -83,8 +85,10 @@ void main() {
     HighlightRuleEdit.pickImage = () async => src.path;
     await tester.pumpWidget(const MaterialApp(home: HighlightRuleEdit()));
     await tester.tap(find.byKey(const ValueKey('hl_bg_upload')));
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
-    await tester.pump();
+    for (var i = 0; i < 100 && find.text('更换背景图').evaluate().isEmpty; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+    }
     expect(find.text('更换背景图'), findsOneWidget);
     expect(find.text('拖拽 4 条线划分九宫格'), findsOneWidget);
     expect(Directory(AppDirs.path('high')).listSync(), hasLength(1));
@@ -92,5 +96,26 @@ void main() {
     await tester.tap(find.text('移除'));
     await tester.pump();
     expect(find.text('上传背景图'), findsOneWidget);
+  });
+
+  testWidgets('净化帮助 shows the original texts', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: ReplaceRuleHelp()));
+    expect(find.text('轻悦时光替换净化规则'), findsOneWidget);
+    expect(find.text(ReplaceRuleHelp.ruleText), findsOneWidget);
+    expect(find.textContaining('@js:'), findsOneWidget);
+  });
+
+  testWidgets('取色: the centre pixel of the background image', (tester) async {
+    final rec = ui.PictureRecorder();
+    final c = Canvas(rec);
+    c.drawRect(const Rect.fromLTWH(0, 0, 9, 9), Paint()..color = const Color(0xFF000000));
+    c.drawRect(const Rect.fromLTWH(3, 3, 3, 3), Paint()..color = const Color(0xFF12AB34));
+    final png = await tester.runAsync(() async {
+      final img = await rec.endRecording().toImage(9, 9);
+      final d = await img.toByteData(format: ui.ImageByteFormat.png);
+      return d!.buffer.asUint8List();
+    });
+    final hex = await tester.runAsync(() => ThemePage.centerColor(png!));
+    expect(hex, '#12ab34');
   });
 }
