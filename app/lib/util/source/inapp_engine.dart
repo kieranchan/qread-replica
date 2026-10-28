@@ -29,6 +29,7 @@ class InAppWebViewEngineAdapter extends SourceJsEngine {
         javaScriptCanOpenWindowsAutomatically: false,
         useShouldOverrideUrlLoading: options.intercept,
         useOnLoadResource: options.intercept,
+        useShouldInterceptAjaxRequest: options.interceptAjax,
         mediaPlaybackRequiresUserGesture: false,
         allowsInlineMediaPlayback: true,
         sharedCookiesEnabled: true,
@@ -51,7 +52,14 @@ class InAppWebViewEngineAdapter extends SourceJsEngine {
         _handlers.forEach((name, h) => c.addJavaScriptHandler(handlerName: name, callback: (args) => h(args)));
         if (!created.isCompleted) created.complete(c);
       },
+      onLoadStart: (c, url) => onLoadStart?.call(url?.toString() ?? ''),
       onLoadStop: (c, url) => onLoadStop?.call(url?.toString() ?? ''),
+      onReceivedError: (c, request, error) => onLoadError?.call(request.url.toString()),
+      onReceivedHttpError: (c, request, response) => onLoadError?.call(request.url.toString()),
+      onAjaxReadyStateChange: (c, ajax) async {
+        onAjax?.call(AjaxEvent(ajax.url?.toString() ?? '', ajax.readyState?.toValue() ?? 0, ajax.responseText));
+        return null;
+      },
       onConsoleMessage: (c, m) => onConsole?.call(m.message),
       shouldOverrideUrlLoading: (c, action) async {
         final f = onNavigate;

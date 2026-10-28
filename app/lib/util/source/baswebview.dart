@@ -2,7 +2,7 @@
 // `window.flutter_inappwebview.callHandler(name, …)` bridge of a 时光源 page.
 //
 // Handlers of the original:
-//   * per runner (0xe8ad88): setHtml 0xea8320, refreshExplore 0xea822c, call 0xea80ac (the result channel of [Baswebview.evalCall]),
+//   * per runner (0xe8ad88): setHtml 0xea8320 (stores a new `html` for the source and reloads it), refreshExplore 0xea822c, call 0xea80ac (the result channel of [Baswebview.evalCall]),
 //     CookieJar 0xea7f70 (the page-ready signal, its argument is the page's `isCookieJar`), log 0x227f5c, text 0x227e74 (debug html
 //     of type 0 search / 1 info / 2 toc / 3 content), http 0xea7dcc (cookie jar as the page asked);
 //   * shared with the foreground browser pages (dispatcher 0xe8af80, [SourceHandlers.register]): http 0xea6d40 (only with
@@ -29,6 +29,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../common/common.dart';
+import '../../data/source.dart';
 import '../../data/user.dart';
 import '../chinese_utils.dart';
 import '../http.dart';
@@ -333,9 +334,14 @@ abstract class SourceHandlers {
           urlregex: _arg(a, 6),
         )));
     on('getdurChapterIndex', (a) => SourceUi.durChapterIndex?.call(_arg(a, 0)) ?? 0);
-    // TODO(asm 0xe8d650): the original watches the page's ajax requests; the replica answers the first request url matching
-    // `ajaxregex` (like `webViewGetSource`).
-    on('webviewajax', (a) => Webview.load(WebviewRequest(url: _arg(a, 0), body: _arg(a, 1), urlregex: _arg(a, 2))));
+    // webViewGetAjax(url, html, body, header, ajaxregex): the answer of the page's first finished XMLHttpRequest whose url matches
+    on('webviewajax', (a) => Webview.load(WebviewRequest(
+          url: _arg(a, 0),
+          html: _arg(a, 1),
+          body: _arg(a, 2),
+          headers: SourceHttp.headersOf(_arg(a, 3)),
+          ajaxregex: _arg(a, 4),
+        )));
     Future<String> browser(SourceBrowserRequest r) async => await SourceUi.openBrowser?.call(r) ?? '';
     on('startBrowser', (a) => browser(SourceBrowserRequest(url: _arg(a, 0), title: _arg(a, 1), headers: SourceHttp.headersOf(_arg(a, 2)), source: source)));
     on('startBrowserWithShouldOverrideUrlLoading', (a) => browser(SourceBrowserRequest(
@@ -360,8 +366,10 @@ abstract class SourceHandlers {
       await browser(SourceBrowserRequest(url: _arg(a, 0), title: _arg(a, 1), source: source, half: true));
       return null;
     });
+    // startBrowserDpwithHtml(url, html, title): 0xe8cde4 shows the html with `url` as its address
     on('startBrowserDpwithHtml', (a) async {
-      await browser(SourceBrowserRequest(url: source.bookSourceUrl, html: _arg(a, 0), title: _arg(a, 1), source: source, half: true));
+      final url = _arg(a, 0);
+      await browser(SourceBrowserRequest(url: url.isEmpty ? source.bookSourceUrl : url, html: _arg(a, 1), title: _arg(a, 2), source: source, half: true));
       return null;
     });
     on('openurl', (a) async {
@@ -386,7 +394,7 @@ abstract class SourceHandlers {
     });
     on('getLoginUser', (a) => UserSession.username);
     on('htmlToText', (a) => HtmlFormatter.stripTags(_arg(a, 0)));
-    on('getVerificationCode', (a) async => await SourceUi.verificationCode?.call(_arg(a, 0), SourceHttp.headersOf(_arg(a, 1))) ?? '');
+    on('getVerificationCode', (a) async => await SourceUi.verificationCode?.call(_arg(a, 0), SourceHttp.getheader(_arg(a, 0), _arg(a, 1))) ?? '');
     on('utf8ToGbkUrlEncoded', (a) => utf8ToGbkUrlEncoded(_arg(a, 0)));
   }
 }
@@ -426,11 +434,27 @@ abstract class Baswebview {
   /// Called when the page asks to refresh the discovery entries.
   Future<void> onRefreshExplore();
 
+  /// Drops this runner (重载书源线程): the next call loads the page again.
+  void reloadRunner();
+
+  /// 0xea8320 `setHtml(str)` (动态更新 html 代码，主要用于更新在线版地址): the stored source (not one of the bound backend) gets
+  /// [html] as its `html` when it differs, and the runner is dropped so that the next call loads the new page.
+  Future<void> setHtml(String html) async {
+    await Sourcedata.load();
+    final raw = Sourcedata.byUrl(source.bookSourceUrl);
+    if (raw == null || raw['isqread'] == true || '${raw['isqread']}' == 'true') return;
+    if ('${raw['html'] ?? ''}' == html) return;
+    await Sources.setField(source.bookSourceUrl, 'html', html);
+    reloadRunner();
+  }
+
   /// 0xe8ad88: the runner's own handlers, then the shared set.
   void registerHandlers() {
     final c = controller;
-    // TODO(asm 0xea8320): `setHtml` (editor debugging hook) is accepted and ignored.
-    c.addJavaScriptHandler('setHtml', (a) => null);
+    c.addJavaScriptHandler('setHtml', (a) async {
+      await setHtml(_arg(a, 0));
+      return null;
+    });
     c.addJavaScriptHandler('refreshExplore', (a) async {
       await onRefreshExplore();
       return '';

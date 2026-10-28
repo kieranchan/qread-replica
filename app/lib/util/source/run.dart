@@ -396,6 +396,9 @@ class SourceRun extends Baswebview {
   Future<String> runJs(String code) => call('(async function(){ return await eval(${_q(code)}); })()', findTimeout);
 
   @override
+  void reloadRunner() => unawaited(SourceRun.remove(source.bookSourceUrl));
+
+  @override
   Future<void> onRefreshExplore() async {
     await Storage.delete(Baswebview.exploreKey(source.bookSourceUrl));
     ExploreRefresh.notify(source.bookSourceUrl);

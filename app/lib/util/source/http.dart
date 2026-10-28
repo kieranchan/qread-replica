@@ -8,11 +8,18 @@
 // (0xea7274 `{url, body, myheader, move, isCookieJar, timeout}` -> `{success, cookie, responseData, error}`); the cookies of the
 // answer are saved for the url when the cookie jar is on. A failed request answers `Response(method, statusCode 0, error)`.
 //
+// A headers argument that is a JSON object goes through `getheader` (0xe8bfa8): the values become text and, for http urls, the
+// stored cookies of the url (the part before an `@js`, `http2` read as `https`) are merged into its `Cookie` header — also when the
+// page switched its cookie jar off (the jar then only stops keeping the answer's cookies).
+//
 // Replica: the app's HTTP client (util/http.dart: cookie jar, redirects, gzip/deflate, charset detection incl. GBK/GB18030/Big5).
-// `http2://` / `https2://` are sent as plain https (no HTTP/2 client here). TODO(asm 0xe8bfa8): header values starting with `@js`.
+// `http2://` / `https2://` are sent as plain https (no HTTP/2 client here).
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import '../http.dart';
+import '../legado/cookie_jar.dart';
 import 'response.dart';
 
 abstract class SourceHttp {
@@ -33,6 +40,36 @@ abstract class SourceHttp {
       }
     }
     if (v is Map) v.forEach((k, val) => out['$k'] = val is String ? val : (val == null ? '' : '$val'));
+    return out;
+  }
+
+  /// 0xe8bfa8 `getheader(url, headerJson)`: the header map of a JSON object text (values as text); for an http(s) [url] the
+  /// stored cookies of the url (cut at `@js`) are merged into `Cookie` (the page's own values win).
+  static Map<String, String> getheader(String url, Object? headers) {
+    var u = url;
+    final at = u.indexOf('@js');
+    if (at >= 0) u = u.substring(0, at);
+    final out = <String, String>{};
+    try {
+      final m = headers is Map ? headers : jsonDecode('$headers');
+      if (m is! Map) throw const FormatException('not a map');
+      m.forEach((k, v) => out['$k'] = v is String ? v : '$v');
+    } catch (e) {
+      debugPrint('getheader error $u,$headers');
+    }
+    if (u.startsWith('http')) {
+      var key = 'Cookie';
+      for (final k in out.keys) {
+        if (k.toLowerCase() == key.toLowerCase()) key = k;
+      }
+      final stored = CookieStore.getCookie(u.replaceAll('http2', 'https'));
+      final merged = CookieStore.cookieToMap(stored)..addAll(CookieStore.cookieToMap(out[key] ?? ''));
+      final text = CookieStore.mapToCookie(merged) ?? '';
+      if (text.isNotEmpty) {
+        out.remove(key);
+        out['Cookie'] = text;
+      }
+    }
     return out;
   }
 
@@ -59,7 +96,7 @@ abstract class SourceHttp {
   }) async {
     final m = method.trim().toLowerCase().isEmpty ? 'get' : method.trim().toLowerCase();
     try {
-      final h = headersOf(headers);
+      final h = headers is String && headers.trim().startsWith('{') ? getheader(url, headers) : headersOf(headers);
       if (m == 'post') {
         final key = h.keys.firstWhere((k) => k.toLowerCase() == 'content-type', orElse: () => '');
         if (contentType.trim().isNotEmpty) {
