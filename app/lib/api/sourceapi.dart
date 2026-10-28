@@ -9,10 +9,14 @@
 //   final chapters = await SourceApi.chapters(source, book);       // List<BookChapter>
 //   final text = await SourceApi.content(source, book, chapters[0], nextChapterUrl: chapters[1].getAbsoluteURL());
 // Persisted/UI models: `book.toModel()`, `chapter.toModel()`, `kind.toExplore()`.
+// 时光源 (sources whose `html` page runs in a web view, util/source/) take the same entry points: every call below hands them to
+// util/source/time_source_api.dart.
 import 'dart:async';
 import 'dart:typed_data';
 
 import '../util/http.dart';
+import '../util/source/source.dart';
+import '../util/source/time_source_api.dart';
 import '../util/webbook/debug.dart';
 import '../util/webbook/model/book.dart';
 import '../util/webbook/model/book_chapter.dart';
@@ -66,6 +70,7 @@ abstract class SourceApi {
   static void reloadSource(String sourceUrl) {
     cache.removeSource(sourceUrl);
     SharedJsScope.forget(sourceUrl);
+    TimeSourceApi.reload(sourceUrl);
   }
 
   /// A source JSON file may hold one source or an array.
@@ -82,7 +87,9 @@ abstract class SourceApi {
       final hit = cache.get(ck);
       if (hit != null) return hit;
     }
-    final r = await WebBook(source, debug: debug).searchBook(key, page: page);
+    final r = source.isTimeSource
+        ? await TimeSourceApi.search(source, key, page: page, debug: debug)
+        : await WebBook(source, debug: debug).searchBook(key, page: page);
     if (useCache) cache.put(ck, r);
     return r;
   }
@@ -121,12 +128,14 @@ abstract class SourceApi {
   }
 
   /// The discovery entries of [source] (`exploreUrl`, evaluated once and cached for JS rules).
-  static Future<List<ExploreKind>> exploreKinds(BookSource source, {bool refresh = false}) => source.exploreKinds(refresh: refresh);
+  static Future<List<ExploreKind>> exploreKinds(BookSource source, {bool refresh = false}) =>
+      source.isTimeSource ? TimeSourceApi.exploreKinds(source, refresh: refresh) : source.exploreKinds(refresh: refresh);
 
   /// Runs the `action` JavaScript of an explore kind (button / text / select / toggle) with `key` (the kind title) and `value`
   /// (what the user typed or chose; also stored with `source.put(key, value)` so rules read it back with `source.get(key)`).
   /// Returns the script result as text ('' for null / undefined).
   static Future<String> exploreAction(BookSource source, String action, {String key = '', String? value}) async {
+    if (source.isTimeSource) return TimeSourceApi.exploreAction(source, action, key: key, value: value);
     if (value != null && key.isNotEmpty) source.put(key, value);
     final r = await SourceJsExtensions(source).runJs(action, values: {'key': key, 'value': value, 'result': value});
     if (r == null) return '';
@@ -135,31 +144,37 @@ abstract class SourceApi {
   }
 
   /// One discovery page: [url] is an [ExploreKind.url].
-  static Future<List<SearchBook>> explore(BookSource source, String url, {int page = 1, DebugLog? debug}) =>
-      WebBook(source, debug: debug).exploreBook(url, page: page);
+  static Future<List<SearchBook>> explore(BookSource source, String url, {int page = 1, DebugLog? debug}) => source.isTimeSource
+      ? TimeSourceApi.explore(source, url, page: page, debug: debug)
+      : WebBook(source, debug: debug).exploreBook(url, page: page);
 
   /// Loads the detail page and fills [book] (returns the same object).
-  static Future<Book> bookInfo(BookSource source, Book book, {bool canReName = true, DebugLog? debug}) =>
-      WebBook(source, debug: debug).getBookInfo(book, canReName: canReName);
+  static Future<Book> bookInfo(BookSource source, Book book, {bool canReName = true, DebugLog? debug}) => source.isTimeSource
+      ? TimeSourceApi.bookInfo(source, book, debug: debug)
+      : WebBook(source, debug: debug).getBookInfo(book, canReName: canReName);
 
   /// The table of contents in reading order (apply `book.reverseCatalog` in the UI if the reader offers it).
-  static Future<List<BookChapter>> chapters(BookSource source, Book book, {bool runPreUpdateJs = false, DebugLog? debug}) =>
-      WebBook(source, debug: debug).getChapterList(book, runPreUpdate: runPreUpdateJs);
+  static Future<List<BookChapter>> chapters(BookSource source, Book book, {bool runPreUpdateJs = false, DebugLog? debug}) => source.isTimeSource
+      ? TimeSourceApi.chapters(source, book, debug: debug)
+      : WebBook(source, debug: debug).getChapterList(book, runPreUpdate: runPreUpdateJs);
 
   /// Chapter text with paragraphs separated by newlines (and `<img src="...">` tags for images).
-  static Future<String> content(BookSource source, Book book, BookChapter chapter, {String? nextChapterUrl, DebugLog? debug}) =>
-      WebBook(source, debug: debug).getContent(book, chapter, nextChapterUrl: nextChapterUrl);
+  static Future<String> content(BookSource source, Book book, BookChapter chapter, {String? nextChapterUrl, DebugLog? debug}) => source.isTimeSource
+      ? TimeSourceApi.content(source, book, chapter, debug: debug)
+      : WebBook(source, debug: debug).getContent(book, chapter, nextChapterUrl: nextChapterUrl);
 
   /// Applies the content rule's `imageDecode` script to downloaded image [bytes].
-  static Future<Uint8List> decodeImage(BookSource source, Book book, BookChapter? chapter, String imageUrl, Uint8List bytes) =>
-      WebBook(source).decodeImage(book, chapter, imageUrl, bytes);
+  static Future<Uint8List> decodeImage(BookSource source, Book book, BookChapter? chapter, String imageUrl, Uint8List bytes) => source.isTimeSource
+      ? TimeSourceApi.decodeImage(source, imageUrl, bytes)
+      : WebBook(source).decodeImage(book, chapter, imageUrl, bytes);
 
   /// Applies `coverDecodeJs` to downloaded cover [bytes].
   static Future<Uint8List> decodeCover(BookSource source, String coverUrl, Uint8List bytes, {Book? book}) =>
       WebBook(source).decodeCover(book, coverUrl, bytes);
 
   /// Runs the content rule's `payAction` script for a paid chapter (login/payment flows live in the script).
-  static Future<Object?> payAction(BookSource source, Book book, BookChapter chapter) => WebBook(source).payAction(book, chapter);
+  static Future<Object?> payAction(BookSource source, Book book, BookChapter chapter) =>
+      source.isTimeSource ? TimeSourceApi.payAction(source, book, chapter) : WebBook(source).payAction(book, chapter);
 
   /// Downloads a source file (JSON object or array) from [url] and parses it.
   static Future<List<BookSource>> importFromUrl(String url) async {
@@ -177,6 +192,7 @@ abstract class SourceApi {
   ///   * `--url` -> that chapter url only
   /// Errors end the run and are logged; the returned [DebugLog] holds all lines.
   static Future<DebugLog> debug(BookSource source, String key, {void Function(String line)? onLine, void Function(String step, String body)? onBody}) async {
+    if (source.isTimeSource) return TimeSourceApi.debug(source, key, onLine: onLine, onBody: onBody);
     final log = DebugLog(onLine: onLine, onBody: onBody);
     final web = WebBook(source, debug: log);
     try {

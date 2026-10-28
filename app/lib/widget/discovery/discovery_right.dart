@@ -6,7 +6,11 @@
 // `{bookSourceUrl, action, key, value}` to the bound 轻阅读 backend (0xfb824c), local sources run the action JavaScript in the engine
 // with Legado's semantics (`key` = the kind title, `value` = the input, kept with `source.put`). The result is an explore url shown
 // in the found page (`SearchPage(source, url)`), or, for kinds with `useShouldOverrideUrlLoading`, a page opened in the web view
-// (the two outcomes of 0xfb87b4); errors `发现按钮错误: `.
+// (the two outcomes of 0xfb87b4); errors `发现按钮错误: `. 时光源 entries come from the page's `getfinds()` (util/source/run.dart maps
+// their kinds: drop-downs and inputs store the value with `cache.set(title, value)` before the action runs, type 1 opens its url in
+// the source's browser page), and the page's `refreshExplore` reloads them.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../api/sourceapi.dart';
@@ -18,6 +22,8 @@ import '../../pages/search/book_search_service.dart';
 import '../../pages/search/search_page.dart';
 import '../../pages/web/webview.dart';
 import '../../qread/qread.dart';
+import '../../util/source/baswebview.dart';
+import '../../util/source/source.dart' as ts;
 import '../../util/webbook/model/book_source.dart';
 import '../../util/toast.dart';
 import '../base_page.dart';
@@ -44,10 +50,22 @@ class DiscoveryRightPageState extends BasePage<DiscoveryRightPage> {
 
   List<Explore> get kinds => _kinds ?? const [];
 
+  StreamSubscription<String>? _refresh;
+
   @override
   void initState() {
     super.initState();
+    // a 时光源 page asked for fresh entries (`refreshExplore`, 0xea822c)
+    _refresh = ExploreRefresh.stream.listen((url) {
+      if (mounted && url == widget.source.bookSourceUrl) reload();
+    });
     reload();
+  }
+
+  @override
+  void dispose() {
+    _refresh?.cancel();
+    super.dispose();
   }
 
   @override
@@ -58,8 +76,9 @@ class DiscoveryRightPageState extends BasePage<DiscoveryRightPage> {
 
   static bool isList(Explore k) => k.url.trim().isNotEmpty && k.type_ == ExploreKind.typeUrl;
 
-  /// Kinds that run an action instead of listing books.
-  static bool isAction(Explore k) => const {ExploreKind.typeButton, ExploreKind.typeText, ExploreKind.typeSelect, ExploreKind.typeToggle}.contains(k.type_);
+  /// Kinds that run an action instead of listing books (and 时光源 entries that open their url in the web view).
+  static bool isAction(Explore k) =>
+      const {ExploreKind.typeButton, ExploreKind.typeText, ExploreKind.typeSelect, ExploreKind.typeToggle, ExploreKind.typeWeb}.contains(k.type_);
 
   /// Values of the input kinds (text / select / toggle), per kind title.
   final Map<String, String> _values = {};
@@ -78,17 +97,30 @@ class DiscoveryRightPageState extends BasePage<DiscoveryRightPage> {
   Future<void> runAction(Explore k, {String? value}) async {
     try {
       String result;
+      Map<String, dynamic>? raw;
       if (widget.source.isqread) {
         final r = await Qread.post('/findaction', {'bookSourceUrl': widget.source.bookSourceUrl, 'action': k.action, 'key': k.title, 'value': value ?? ''});
         result = r == null ? '' : '$r';
       } else {
-        final raw = Sourcedata.byUrl(widget.source.bookSourceUrl);
+        raw = Sourcedata.byUrl(widget.source.bookSourceUrl);
         if (raw == null) throw StateError('书源不存在');
         result = await SourceApi.exploreAction(BookSource.fromJson(Map<String, dynamic>.from(raw)), k.action.isNotEmpty ? k.action : k.js, key: k.title, value: value);
       }
       if (!mounted) return;
       final t = result.trim();
       if (t.isEmpty) return;
+      if (ts.BaseSource.isTimeSource(raw)) {
+        // 时光源 actions do their work in the page (cache.set, refreshExplore …); only an url they answer is opened
+        if (t.startsWith('http://') || t.startsWith('https://')) {
+          await SourceUi.openBrowser?.call(SourceBrowserRequest(
+            url: t,
+            title: k.title,
+            source: ts.BaseSource.fromJson(raw!),
+            overrideUrlLoading: k.useShouldOverrideUrlLoading,
+          ));
+        }
+        return;
+      }
       if (k.useShouldOverrideUrlLoading && (t.startsWith('http://') || t.startsWith('https://'))) {
         await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => WebviewPage(url: t, title: k.title)));
       } else {
@@ -99,8 +131,22 @@ class DiscoveryRightPageState extends BasePage<DiscoveryRightPage> {
     }
   }
 
+  /// A 时光源 entry of type 1: its url in the source's browser page (with the page's shouldOverrideUrlLoading when asked).
+  Future<void> _openWeb(Explore k) async {
+    final raw = Sourcedata.byUrl(widget.source.bookSourceUrl);
+    if (raw == null || k.url.trim().isEmpty) return;
+    await SourceUi.openBrowser?.call(SourceBrowserRequest(
+      url: k.url.trim(),
+      title: k.title,
+      source: ts.BaseSource.fromJson(raw),
+      overrideUrlLoading: k.useShouldOverrideUrlLoading,
+    ));
+  }
+
   Future<void> _tapAction(Explore k) async {
     switch (k.type_) {
+      case ExploreKind.typeWeb:
+        await _openWeb(k);
       case ExploreKind.typeButton:
         await runAction(k);
       case ExploreKind.typeText:

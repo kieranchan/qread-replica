@@ -122,12 +122,12 @@ void main() {
     expect(Toast.log.last, '源URL不能为空');
   });
 
-  testWidgets('时光源 editor: says it cannot run here, new sources get the default html, save stores it', (t) async {
+  testWidgets('时光源 editor: no "cannot run" notice any more, new sources get the default html, save stores it', (t) async {
     await t.runAsync(() => Sourcedata.load());
     await t.pumpWidget(app(const EditSource(kind: SourceKind.sg)));
     await t.pump();
-    expect(find.byKey(const Key('sg_note')), findsOneWidget);
-    expect(find.text(sgUnsupportedNote), findsOneWidget);
+    expect(find.byKey(const Key('sg_note')), findsNothing);
+    expect(find.textContaining('此版本不支持运行时光源'), findsNothing);
     await t.enterText(find.byKey(const Key('sg_bookSourceName')), '我的时光源');
     await t.enterText(find.byKey(const Key('sg_bookSourceUrl')), 'https://my.sg');
     await act(t, () => t.tap(find.byKey(const Key('sg_save'))));

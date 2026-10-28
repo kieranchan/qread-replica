@@ -16,6 +16,7 @@ import '../read/api/book_content.dart';
 import '../read/api/readapi.dart';
 import '../read/local_book_importer.dart';
 import '../storage/storage.dart';
+import '../util/source/cache.dart';
 import '../util/toast.dart';
 import 'base_page.dart';
 
@@ -60,7 +61,8 @@ abstract class ShelfGroups {
 
 /// Per-book variable of the source engine (「设置书籍变量」, save 0x53a074 → 0xf709ac): books of the bound backend (`isqread`) send it
 /// to `/setbookVariable` `{bookurl, info}`; local books keep it in the file store under `book_<bookUrl>_custom` (阅读源, read by the
-/// engine as `book.getVariable("custom")` / `getCustomVariable()`) or under the book url itself (时光源).
+/// engine as `book.getVariable("custom")` / `getCustomVariable()`) or, for 时光源, in the source's cache under the book url itself
+/// (`Cache(<bookSourceUrl>).set(<bookUrl>, …)`, where the page reads it with `cache.get(bookurl)`).
 abstract class BookVariables {
   /// The file-store key for [book] ([legado]: its source is a 阅读源 / Legado source).
   static String key(String bookUrl, {bool legado = true}) => legado ? 'book_${bookUrl}_custom' : bookUrl;
@@ -72,7 +74,7 @@ abstract class BookVariables {
     return html.isEmpty || html.startsWith('@yuedu') || raw.containsKey('ruleSearch') || raw.containsKey('searchUrl');
   }
 
-  static Future<String> get(Book book) => Storage.read(key(book.bookUrl, legado: _isLegado(book)));
+  static Future<String> get(Book book) => _isLegado(book) ? Storage.read(key(book.bookUrl)) : Cache(book.origin).get(book.bookUrl);
 
   /// Engine side: the stored `custom` variable of a local book ('' when none).
   static Future<String> custom(String bookUrl) => Storage.read(key(bookUrl));
@@ -82,7 +84,8 @@ abstract class BookVariables {
       await Qread.post('/setbookVariable', {'bookurl': book.bookUrl, 'info': value});
       return;
     }
-    await Storage.write(key(book.bookUrl, legado: _isLegado(book)), value);
+    if (!_isLegado(book)) return Cache(book.origin).set(book.bookUrl, value);
+    await Storage.write(key(book.bookUrl), value);
   }
 }
 

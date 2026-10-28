@@ -1,6 +1,7 @@
 // init/glue_routes.dart — named routes that sit between areas (lead-owned): pages of one area call them, the implementation lives
 // in another area or needs pieces of several.
-//   source_login / source_variable (argument: source url)  -> the sources area's login / variable dialogs
+//   source_login / source_variable (argument: source url)  -> the sources area's login / variable dialogs (时光源 login: the page's
+//                                                            getloginurl() / login(), pages/source/sg_login.dart)
 //   config_import ({type: file|url|qr})                    -> 添加配置: replace rules, TTS engines, TXT rules, highlight rules,
 //                                                            book / RSS sources, exploration templates; detected by their fields
 //   qread_import                                           -> bind the own reading backend first (its shelf API is not ported)
@@ -15,8 +16,10 @@ import '../data/tts.dart';
 import '../data/txtrule.dart';
 import '../common/nav.dart';
 import '../pages/source/login_dialog.dart';
+import '../pages/source/sg_login.dart';
 import '../pages/source/source_setting.dart';
 import '../qread/qread.dart';
+import '../util/source/source.dart';
 import '../util/toast.dart';
 import '../util/webbook/model/book_source.dart';
 import '../widget/base_page.dart';
@@ -33,8 +36,13 @@ abstract class GlueRoutes {
           Toast.show('书源不存在', iserror: true);
           return true;
         }
-        final source = BookSource.fromJson(raw);
         if (!context.mounted) return true;
+        if (name == 'source_login' && BaseSource.isTimeSource(raw)) {
+          // 时光源: the page's getloginurl() / login() (pages/source/sg_login.dart, original 0xe5b940)
+          await showTimeSourceLogin(context, BaseSource.fromJson(raw));
+          return true;
+        }
+        final source = BookSource.fromJson(raw);
         if (name == 'source_login') {
           await showSourceLogin(context, source);
         } else {

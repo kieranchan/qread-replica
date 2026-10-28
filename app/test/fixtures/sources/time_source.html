@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>测试时光源</title>
+</head>
+<body>
+</body>
+<!-- A synthetic 时光源 written for the replica's tests (test/sources/time_source_support.dart mirrors these functions in Dart, the
+     host has no web view). It also runs on a device against the test server of time_source_test.dart. -->
+<script>
+  var isCookieJar = true;
+  function call() { return window.flutter_inappwebview.callHandler.apply(window.flutter_inappwebview, arguments); }
+  function ready() { call('CookieJar', isCookieJar); }
+  if (window.flutter_inappwebview) { ready(); } else { window.addEventListener('flutterInAppWebViewPlatformReady', ready); }
+
+  var http = {
+    Get: function (url, headers, follow) { return call('http', 'get', url, '', JSON.stringify(headers || {}), follow, ''); },
+    Post: function (url, headers, body, type, follow) { return call('http', 'post', url, body, JSON.stringify(headers || {}), follow, type); }
+  };
+  var cache = {
+    get: function (k) { return call('cache.get', k); },
+    set: function (k, v) { return call('cache.set', k, v); }
+  };
+  var baseurl = location.origin;
+
+  async function server() { return (await cache.get('server')) || baseurl; }
+
+  function toBook(s, b) {
+    return {
+      bookUrl: s + '/book/' + b.id, name: b.name, author: b.author, kind: b.kind, coverUrl: b.cover, intro: b.intro,
+      tocUrl: s + '/book/' + b.id, wordCount: b.words, type: 0, latestChapterTitle: b.last
+    };
+  }
+
+  async function search(key, page, env) {
+    var s = await server();
+    var r = await http.Get(s + '/search?key=' + encodeURIComponent(key) + '&page=' + page, {'X-Test': 'yes'}, true);
+    var list = JSON.parse(r.data).data;
+    return JSON.stringify(list.map(function (b) { return toBook(s, b); }));
+  }
+
+  async function info(bookurl) {
+    var r = await http.Get(bookurl + '/info', {}, true);
+    var b = JSON.parse(r.data);
+    var book = toBook(await server(), b);
+    book.bookUrl = bookurl;
+    book.intro = '@html:<p>' + b.intro + '</p>';
+    book.tocUrl = await call('base64encode', JSON.stringify({id: b.id}));
+    return JSON.stringify(book);
+  }
+
+  async function chapter(tocUrl, bookurl) {
+    var id = JSON.parse(await call('base64decode', tocUrl)).id;
+    var r = await http.Get((await server()) + '/catalog?id=' + id, {}, true);
+    return JSON.stringify(JSON.parse(r.data).map(function (c) {
+      return {name: c.title, chapterId: c.url, index: 0, isPay: false, isVip: !!c.vip, isVolume: false, tag: ''};
+    }));
+  }
+
+  async function content(url, bookurl, index) {
+    var r = await http.Get(url, {}, true);
+    return r.data;
+  }
+
+  async function getfinds() {
+    var s = await server();
+    return JSON.stringify([
+      {title: '线路', type: 2, chars: [s, s + '/v2'], default: s, action: "applyFilter('线路')"},
+      {title: '男频', url: s + '/find?c=male&page={{page}}'},
+      {title: '书源设置', url: s + '/settings.html', type: 1, width: 3},
+      {title: '筛选', type: 3, action: "applyFilter('筛选')"},
+      {title: '签到', type: 4, action: 'checkin()'},
+      {title: '分组'}
+    ]);
+  }
+
+  async function applyFilter(title) {
+    var v = await cache.get(title);
+    if (title == '线路') await cache.set('server', v);
+    await call('refreshExplore');
+  }
+
+  async function checkin() { return 'checked'; }
+
+  async function find(url, page) {
+    var s = await server();
+    var r = await http.Get(url.replace('{{page}}', page), {}, true);
+    return JSON.stringify(JSON.parse(r.data).data.map(function (b) { return toBook(s, b); }));
+  }
+
+  async function getloginurl() {
+    if ((await cache.get('loginmode')) == 'form') {
+      return JSON.stringify([{name: '账号', type: 'text'}, {name: '密码', type: 'password'}, {name: '检查', type: 'button', action: 'checkin()'}]);
+    }
+    return (await server()) + '/login.html';
+  }
+
+  async function login() {
+    var info = JSON.parse((await cache.get('LoginInfo')) || '{}');
+    var body = 'user=' + encodeURIComponent(info['账号'] || '') + '&pass=' + encodeURIComponent(info['密码'] || '');
+    await http.Post((await server()) + '/login', {}, body, '', true);
+    return '';
+  }
+
+  async function pay(bookurl, url) { return 'paid:' + url; }
+
+  async function imagedecrypt(url, image) {
+    var bin = atob(image), out = [];
+    for (var i = bin.length - 1; i >= 0; i--) out.push(bin.charCodeAt(i));
+    return out;
+  }
+
+  async function gethelp() { return '@html:<b>帮助</b>内容'; }
+
+  async function shouldOverrideUrlLoading(url) { return url.indexOf('/book/') < 0; }
+</script>
+</html>

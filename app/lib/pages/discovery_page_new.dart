@@ -12,6 +12,7 @@ import '../common/nav.dart';
 import '../data/source.dart';
 import '../models/source.dart';
 import '../storage/storage.dart';
+import '../util/source/source.dart';
 import '../widget/base_page.dart';
 import '../widget/discovery/discovery_right.dart';
 import '../widget/ui/q_popup_menu_button.dart';
@@ -37,7 +38,7 @@ abstract class DiscoveryPrefs {
       Storage.setString(selectedKey, jsonEncode({'bookSourceUrl': s.bookSourceUrl, 'isqread': s.isqread}));
 }
 
-/// Sources with explore rules (enabled + enabledExplore + exploreUrl).
+/// Sources with explore rules (enabled + enabledExplore + exploreUrl, or a 时光源 with its page's `getfinds()`).
 List<Source> exploreSources() => [for (final m in Sourcedata.exploreRaw) Source.fromJson(m)];
 
 class DiscoveryPageNew extends StatefulWidget {
@@ -160,7 +161,8 @@ class _DiscoveryPageState extends BasePage<DiscoveryPageNew> with AutomaticKeepA
             QPopupMenuButton<String>(
               items: [
                 const QPopupMenuItem(value: 're', title: '刷新', icon: Icons.refresh, sfSymbol: 'arrow.clockwise'),
-                if (s.loginUrl.isNotEmpty) const QPopupMenuItem(value: 'login', title: '登录', icon: Icons.login, sfSymbol: 'arrow.right.square'),
+                if (s.loginUrl.isNotEmpty || (s.login && BaseSource.isTimeSource(Sourcedata.byUrl(s.bookSourceUrl))))
+                  const QPopupMenuItem(value: 'login', title: '登录', icon: Icons.login, sfSymbol: 'arrow.right.square'),
                 const QPopupMenuItem(value: 'setVariable', title: '变量', icon: Icons.settings, sfSymbol: 'gear'),
                 const QPopupMenuItem(value: 'edit', title: '编辑', icon: Icons.edit, sfSymbol: 'pencil'),
               ],

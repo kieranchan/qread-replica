@@ -3,6 +3,7 @@
 //  * `LegadoPlatform` hooks of the engine -> these pages: `java.startBrowser` / `startBrowserAwait` / `webView` -> WebviewPage,
 //    `java.getVerificationCode` -> the captcha dialog (qread/verification_code.dart), toast / copyText, `reLoginView` -> the
 //    source login; `WebviewCookieManger.pushToWebView` -> the web view cookie store.
+//  * 时光源 page handlers (`SourceUi`) -> the source browser page (source_webview.dart), captcha, detail and search pages.
 //  * `legado://` / `yuedu://` / `qread://` import links -> the importers.
 //  * the bound 轻阅读 backend: state loaded, device channel connected when bound.
 //  * route names for `Nav.openNamed` ([openSourcesRoute]) and the `Nav.openSourceEdit` / `Nav.openRss` targets ([registerNav]).
@@ -14,9 +15,11 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../../common/nav.dart';
 import '../../data/rss.dart';
 import '../../data/source.dart';
+import '../../models/book.dart';
 import '../../qread/qread.dart';
 import '../../qread/verification_code.dart';
 import '../../util/cookiemanger.dart';
+import '../../util/source/baswebview.dart';
 import '../../util/toast.dart';
 import '../../util/webbook/model/book_source.dart';
 import '../../util/webbook/model/rss_source.dart';
@@ -32,6 +35,7 @@ import '../source/source_help.dart';
 import '../source/source_setting.dart';
 import 'bookmark_manager_page.dart';
 import 'chrome.dart';
+import 'source_webview.dart';
 import 'webview.dart';
 
 abstract class SourcesArea {
@@ -90,6 +94,7 @@ abstract class SourcesArea {
       final r = Rssdata.byUrl(key);
       if (r != null) return showSourceLogin(ctx, RssSource.fromJson(r));
     };
+    installTimeSourceHooks();
     WebviewCookieManger.pushToWebView = (url, cookie) async {
       final u = Uri.tryParse(url);
       if (u == null || u.host.isEmpty) return;
@@ -102,6 +107,37 @@ abstract class SourcesArea {
       } catch (e) {
         debugPrint('注入cookie失败:$e');
       }
+    };
+  }
+
+  /// What the 时光源 page handlers open (util/source/baswebview.dart `SourceUi`): the source browser page (startBrowser*, login
+  /// urls, discovery entries of type 1), the captcha dialog, the detail page (`addbook`), the search page (`searchbook`), the
+  /// screen size. Reader hooks (getReadBook, refreshContent, voice, …) are left to the reader area.
+  static void installTimeSourceHooks() {
+    SourceUi.openBrowser = (r) async {
+      final nav = _nav;
+      if (nav == null) return null;
+      return SourceWebviewPage.open(nav, r);
+    };
+    SourceUi.verificationCode = (url, headers) async {
+      final ctx = _nav?.context;
+      if (ctx == null) return null;
+      return showVerificationCodeDialog(ctx, url);
+    };
+    SourceUi.openBook = (sourceUrl, bookUrl) async {
+      final ctx = _nav?.context;
+      if (ctx == null || bookUrl.isEmpty) return;
+      await Nav.openBook(ctx, Book(bookUrl: bookUrl, origin: sourceUrl));
+    };
+    SourceUi.searchBook = (sourceUrl, key) async {
+      final ctx = _nav?.context;
+      if (ctx == null) return;
+      final s = Sourcedata.sourceByUrl(sourceUrl);
+      await Nav.openSearch(ctx, key: key, sources: s == null ? null : [s]);
+    };
+    SourceUi.screenSize = () {
+      final ctx = _nav?.context;
+      return ctx == null ? Size.zero : MediaQuery.sizeOf(ctx);
     };
   }
 
