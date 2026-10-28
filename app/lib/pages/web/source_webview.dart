@@ -18,7 +18,7 @@ import '../../util/source/baswebview.dart';
 import '../../util/source/inapp_engine.dart';
 import '../../util/source/js_engine.dart';
 import '../../util/source/run.dart';
-import 'webview.dart' show webNavigationPolicy;
+import 'webview.dart' show importFileUrl, isImportFileUrl, webNavigationPolicy;
 
 class SourceWebviewPage extends StatefulWidget {
   final SourceBrowserRequest request;
@@ -104,6 +104,11 @@ class _SourceWebviewPageState extends State<SourceWebviewPage> implements JsHand
     }
     final first = _firstNavigation;
     _firstNavigation = false;
+    // a link to a source / config file is imported instead of shown as raw text (see isImportFileUrl)
+    if (action.isForMainFrame && !(first && url == r.url) && isImportFileUrl(url)) {
+      await importFileUrl(url);
+      return NavigationActionPolicy.CANCEL;
+    }
     final s = r.source;
     if (r.overrideUrlLoading && s != null && action.isForMainFrame && !(first && url == r.url)) {
       try {

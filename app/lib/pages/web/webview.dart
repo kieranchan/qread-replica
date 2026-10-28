@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../service/app_links_service.dart';
 import '../../util/legado/cookie_jar.dart';
 import '../../util/toast.dart';
 import 'web_engine.dart';
@@ -23,11 +24,34 @@ const Set<String> _webSchemes = {'http', 'https', 'file', 'chrome', 'blob', 'dat
 /// Handles `legado://` / `yuedu://` / `qread://` import links; installed by the source manager (pages/source/source_setting.dart).
 Future<void> Function(BuildContext context, Uri uri)? importLinkHandler;
 
+/// A link to a source / config file (`http(s)://…/x.json`). Source sites link their files directly (e.g. 大灰狼's
+/// `…/sy/download/轻悦时光app-….json`); a web view would only show the raw text (garbled when the server sends no charset).
+bool isImportFileUrl(String url) {
+  final u = Uri.tryParse(url);
+  if (u == null || (u.scheme != 'http' && u.scheme != 'https')) return false;
+  String path;
+  try {
+    path = Uri.decodeComponent(u.path);
+  } catch (_) {
+    path = u.path;
+  }
+  return path.toLowerCase().endsWith('.json');
+}
+
+/// Downloads such a file and imports it by its content (sources, RSS, replace rules, TTS engines, TXT rules), the path of a
+/// `qread://…?src=<url>` link (AppLinksService, 0xe6ad38).
+Future<void> importFileUrl(String url) =>
+    AppLinksService.handle(Uri(scheme: 'qread', host: 'import', queryParameters: {'src': url}));
+
 /// The navigation policy of the browser pages (0xfcdba4 / 0xfd293c): web schemes load, import links go to the importer, every
 /// other scheme asks `外部跳转确认` and is handed to the system. Returns true when the web view may load [url].
 Future<bool> webNavigationPolicy(BuildContext context, String url) async {
   final uri = Uri.tryParse(url);
   if (uri == null || url == 'about:blank') return true;
+  if (isImportFileUrl(url)) {
+    await importFileUrl(url);
+    return false;
+  }
   final scheme = uri.scheme.toLowerCase();
   if (scheme.isEmpty || _webSchemes.contains(scheme)) return true;
   if (importSchemes.contains(scheme)) {
