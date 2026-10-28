@@ -18,6 +18,7 @@ import 'dart:convert';
 import '../api/userapi.dart' show CloudKind;
 import '../models/source.dart';
 import '../storage/storage.dart';
+import '../util/source/source.dart';
 import 'cloud_api.dart';
 import 'cloud_sync.dart';
 import 'list_store.dart';
@@ -70,9 +71,11 @@ abstract class Sourcedata {
   /// Enabled sources (Legado default for a missing flag is enabled).
   static List<Map<String, dynamic>> get enabledRaw => [for (final m in store.items) if (_on(m['enabled'])) m];
 
-  /// Sources that provide a discover page: `enabledExplore` and a non-empty `exploreUrl`.
-  static List<Map<String, dynamic>> get exploreRaw =>
-      [for (final m in store.items) if (_on(m['enabled']) && _on(m['enabledExplore']) && '${m['exploreUrl'] ?? ''}'.trim().isNotEmpty) m];
+  /// Sources that provide a discover page: `enabledExplore` and a non-empty `exploreUrl`, or a 时光源 (its page has `getfinds()`).
+  static List<Map<String, dynamic>> get exploreRaw => [
+        for (final m in store.items)
+          if (_on(m['enabled']) && _on(m['enabledExplore']) && ('${m['exploreUrl'] ?? ''}'.trim().isNotEmpty || BaseSource.isTimeSource(m))) m
+      ];
 
   /// All group names (split from `bookSourceGroup`), sorted.
   static List<String> get groups {

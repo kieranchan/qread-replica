@@ -47,6 +47,9 @@ class ExploreKind {
   /// Kind types (`type` is a number in the app's models; Legado writes the names): a list url, a section title, a button that
   /// runs `action`, a text input, a choice from `chars`, a toggle through `chars`.
   static const int typeUrl = 0, typeTitle = 1, typeButton = 2, typeText = 3, typeSelect = 4, typeToggle = 5;
+
+  /// A 时光源 entry of type 1: its url opens in the web view (util/source/run.dart maps the 时光源 kinds onto these numbers).
+  static const int typeWeb = 6;
   static const Map<String, int> typeNames = {
     'url': typeUrl, 'title': typeTitle, 'button': typeButton, 'text': typeText, 'select': typeSelect, 'toggle': typeToggle,
   };
