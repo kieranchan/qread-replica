@@ -81,6 +81,16 @@ class _ThemeItemWidgetState extends State<ThemeItemWidget> {
     widget.onChanged?.call();
   }
 
+  Widget _action(String label, String id, Future<void> Function() run, {Color? color}) => InkWell(
+        key: Key('theme_${id}_${t.id}'),
+        borderRadius: BorderRadius.circular(8),
+        onTap: run,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          child: Text(label, style: TextStyle(fontSize: 12, color: color ?? Theme.of(context).colorScheme.primary)),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -121,8 +131,10 @@ class _ThemeItemWidgetState extends State<ThemeItemWidget> {
               ]),
             ),
           ),
+          // as the original card (0x6cdcb0): title / author, a visible 应用 / 取消应用 button (取消应用 returns to the default theme),
+          // then the row 编辑 · 导出 · 查看 · 拷贝 · 删除
           Padding(
-            padding: const EdgeInsets.fromLTRB(10, 6, 0, 6),
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 0),
             child: Row(children: [
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -130,33 +142,28 @@ class _ThemeItemWidgetState extends State<ThemeItemWidget> {
                   Text(t.author.isEmpty ? '匿名' : t.author, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: cs.outline)),
                 ]),
               ),
-              PopupMenuButton<String>(
-                key: Key('theme_menu_${t.id}'),
-                onSelected: (v) {
-                  switch (v) {
-                    case 'apply':
-                      _toggleApply();
-                    case 'view':
-                      _edit(view: true);
-                    case 'edit':
-                      _edit();
-                    case 'copy':
-                      _copy();
-                    case 'export':
-                      _export();
-                    case 'delete':
-                      _delete();
-                  }
-                },
-                itemBuilder: (_) => [
-                  PopupMenuItem(value: 'apply', child: Text(applied ? '取消应用' : '应用')),
-                  const PopupMenuItem(value: 'view', child: Text('查看')),
-                  const PopupMenuItem(value: 'edit', child: Text('编辑')),
-                  const PopupMenuItem(value: 'copy', child: Text('拷贝')),
-                  const PopupMenuItem(value: 'export', child: Text('导出')),
-                  const PopupMenuItem(value: 'delete', child: Text('删除', style: TextStyle(color: Colors.red))),
-                ],
+              GestureDetector(
+                key: Key('theme_apply_${t.id}'),
+                onTap: _toggleApply,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: applied ? cs.surfaceContainerHighest : cs.primary,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(applied ? '取消应用' : '应用', style: TextStyle(fontSize: 12, color: applied ? cs.onSurface : cs.onPrimary)),
+                ),
               ),
+            ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(2, 0, 2, 2),
+            child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+              _action('编辑', 'edit', _edit),
+              _action('导出', 'export', _export),
+              _action('查看', 'view', () => _edit(view: true)),
+              _action('拷贝', 'copy', _copy),
+              _action('删除', 'delete', _delete, color: Colors.red),
             ]),
           ),
         ]),

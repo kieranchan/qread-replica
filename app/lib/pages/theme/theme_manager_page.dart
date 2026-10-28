@@ -69,7 +69,7 @@ class _ThemeManagerPageState extends State<ThemeManagerPage> with SingleTickerPr
     }
     return GridView.builder(
       padding: const EdgeInsets.all(12),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 200, childAspectRatio: 0.78, mainAxisSpacing: 8, crossAxisSpacing: 8),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 200, childAspectRatio: 0.66, mainAxisSpacing: 8, crossAxisSpacing: 8),
       itemCount: list.length,
       itemBuilder: (_, i) => ThemeItemWidget(key: ValueKey(list[i].id), theme: list[i], onChanged: () => setState(() {})),
     );
