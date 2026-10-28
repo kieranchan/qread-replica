@@ -147,6 +147,7 @@ class _SourceWebviewPageState extends State<SourceWebviewPage> implements JsHand
   void dispose() {
     _title.dispose();
     _progress.dispose();
+    _error.dispose();
     super.dispose();
   }
 
@@ -172,12 +173,48 @@ class _SourceWebviewPageState extends State<SourceWebviewPage> implements JsHand
       shouldOverrideUrlLoading: _shouldOverride,
       onProgressChanged: (c, p) => _progress.value = p / 100,
       onTitleChanged: (c, t) => _title.value = t ?? '',
+      onLoadStart: (c, url) {
+        if (_error.value != null) _error.value = null;
+      },
       onLoadStop: (c, url) async {
         _progress.value = 1;
         if (url != null) await WebCookies.pull(url.toString());
       },
+      // a failed main-frame load is shown instead of a silent white page (and logged for debugging)
+      onReceivedError: (c, request, error) {
+        if (request.isForMainFrame == false) return;
+        debugPrint('source browser: ${request.url} ${error.type} ${error.description}');
+        _progress.value = 1;
+        _error.value = '页面加载失败：${error.description}\n${request.url}';
+      },
     );
   }
+
+  final ValueNotifier<String?> _error = ValueNotifier<String?>(null);
+
+  Widget _body() => Stack(children: [
+        Positioned.fill(child: _web()),
+        ValueListenableBuilder<String?>(
+          valueListenable: _error,
+          builder: (c, e, _) => e == null
+              ? const SizedBox.shrink()
+              : Positioned.fill(
+                  child: ColoredBox(
+                    color: Theme.of(c).colorScheme.surface,
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(mainAxisSize: MainAxisSize.min, children: [
+                          Text(e, key: const Key('source_browser_error'), textAlign: TextAlign.center),
+                          const SizedBox(height: 16),
+                          OutlinedButton(onPressed: () => _c?.reload(), child: const Text('重试')),
+                        ]),
+                      ),
+                    ),
+                  ),
+                ),
+        ),
+      ]);
 
   @override
   Widget build(BuildContext context) {
@@ -206,7 +243,7 @@ class _SourceWebviewPageState extends State<SourceWebviewPage> implements JsHand
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _back();
       },
-      child: Scaffold(appBar: bar, body: _web()),
+      child: Scaffold(appBar: bar, body: _body()),
     );
   }
 }
