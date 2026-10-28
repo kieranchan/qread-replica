@@ -424,7 +424,8 @@ void main() {
       expect(await e.callHandler('id'), 'device-1');
       expect(await e.callHandler('getsourceurl'), 'https://src.test');
       expect(await e.callHandler('getsearch'), -1);
-      expect(await e.callHandler('getsvg'), isEmpty);
+      // the built-in 段评 bubbles for non-members (paragraph_comment_test.dart has the rest)
+      expect(await e.callHandler('getsvg'), hasLength(4));
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
       expect(await e.callHandler('device'), 'ios');
       debugDefaultTargetPlatformOverride = null;

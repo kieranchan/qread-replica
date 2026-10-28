@@ -29,20 +29,35 @@ enum IntroKind { web, html, text }
   return (IntroKind.text, t);
 }
 
-typedef IntroHtmlBuilder = Widget Function(BuildContext context, String html, void Function(String? url) onLinkTap);
+typedef IntroHtmlBuilder = Widget Function(BuildContext context, String html, void Function(String? url) onLinkTap,
+    {void Function(String js)? onClickJs});
+
+/// `<button>名称 @onclick:js</button>` of an html intro (0x5ad358): the label and the js, null without `@onclick`.
+(String, String)? introButton(String text) {
+  if (!text.contains('@onclick')) return null;
+  final parts = text.split('@onclick:');
+  return (parts.first.trim(), parts.length > 1 ? parts.sublist(1).join('@onclick:').trim() : '');
+}
 
 class IntroView extends StatefulWidget {
   final String intro;
-  const IntroView({super.key, required this.intro});
+
+  /// Runs the js of an `@onclick:` button (the detail page hands it to the book's source page).
+  final void Function(String js)? onClickJs;
+
+  const IntroView({super.key, required this.intro, this.onClickJs});
 
   /// Renders html intros; see the file comment.
   static IntroHtmlBuilder htmlBuilder = simpleHtml;
 
-  /// The built-in renderer: the text of the html with its structure (blocks, `<br>`, headings, bold / italic, links).
-  static Widget simpleHtml(BuildContext context, String html, void Function(String? url) onLinkTap) {
+  /// The built-in renderer: the text of the html with its structure (blocks, `<br>`, headings, bold / italic, links); a `<button>`
+  /// with `@onclick:` becomes a button running its js (one without is left out, as in the original).
+  static Widget simpleHtml(BuildContext context, String html, void Function(String? url) onLinkTap, {void Function(String js)? onClickJs}) {
     final base = DefaultTextStyle.of(context).style.merge(const TextStyle(fontSize: 14, height: 1.6));
-    final link = TextStyle(color: Theme.of(context).colorScheme.primary, decoration: TextDecoration.underline);
+    final scheme = Theme.of(context).colorScheme;
+    final link = TextStyle(color: scheme.primary, decoration: TextDecoration.underline);
     final spans = <InlineSpan>[];
+    var buttons = false;
     void block() {
       if (spans.isNotEmpty && !(spans.last is TextSpan && ((spans.last as TextSpan).text ?? '').endsWith('\n'))) spans.add(const TextSpan(text: '\n'));
     }
@@ -61,6 +76,20 @@ class IntroView extends StatefulWidget {
       }
       final tag = n.localName ?? '';
       if (tag == 'script' || tag == 'style') return;
+      if (tag == 'button') {
+        final b = introButton(n.text);
+        if (b == null) return;
+        buttons = true;
+        spans.add(WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: TextButton(
+            style: TextButton.styleFrom(backgroundColor: scheme.primary, foregroundColor: scheme.onPrimary),
+            onPressed: () => onClickJs?.call(b.$2),
+            child: Text(b.$1),
+          ),
+        ));
+        return;
+      }
       if (tag == 'br') {
         spans.add(const TextSpan(text: '\n'));
         return;
@@ -86,6 +115,8 @@ class IntroView extends StatefulWidget {
     while (spans.isNotEmpty && spans.last is TextSpan && (spans.last as TextSpan).text == '\n') {
       spans.removeLast();
     }
+    // SelectableText cannot hold widgets: with buttons the text is selectable through a SelectionArea
+    if (buttons) return SelectionArea(child: Text.rich(TextSpan(children: spans), key: const Key('intro_html')));
     return SelectableText.rich(TextSpan(children: spans), key: const Key('intro_html'));
   }
 
@@ -121,7 +152,7 @@ class _IntroViewState extends State<IntroView> {
         }
         return SizedBox(key: const Key('intro_web'), height: 320, child: web.build(context));
       case IntroKind.html:
-        return IntroView.htmlBuilder(context, content, _openLink);
+        return IntroView.htmlBuilder(context, content, _openLink, onClickJs: widget.onClickJs);
       case IntroKind.text:
         return SelectableText(content, key: const Key('intro_text'), style: const TextStyle(fontSize: 14, height: 1.6));
     }

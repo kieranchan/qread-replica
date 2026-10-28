@@ -114,5 +114,12 @@
   async function gethelp() { return '@html:<b>帮助</b>内容'; }
 
   async function shouldOverrideUrlLoading(url) { return url.indexOf('/book/') < 0; }
+
+  // 事件监听: long presses are consumed, everything else lets the app act
+  async function callbackjs(event, book) { return event.indexOf('long') == 0; }
+
+  // 筛选: a page for the search of this source, a data: page for the 男频 list only
+  async function filter() { return (await server()) + '/filter.html'; }
+  async function findfilter(url) { return url.indexOf('c=male') >= 0 ? 'data:text/html;base64,PGI+562b6YCJPC9iPg==' : ''; }
 </script>
 </html>

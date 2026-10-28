@@ -30,6 +30,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../common/common.dart';
 import '../../data/source.dart';
+import '../../data/svg.dart';
 import '../../data/user.dart';
 import '../chinese_utils.dart';
 import '../http.dart';
@@ -130,6 +131,9 @@ abstract class SourceUi {
   /// `getsearch`: the category chosen on the search page (-1 all, 0 小说, 1 听书, 2 漫画).
   static int Function()? searchType;
 
+  /// 选择气泡 (`showsvg` / `addsvg`): opens the bubble chooser; a non-empty [svg] opens its editor with that code.
+  static Future<void> Function(String svg)? chooseSvg;
+
   /// Reader hooks: `getReadBook` (the open book as JSON), `getdurChapterIndex`, `refreshContent`, `getDirectoryList`, `putLyric`.
   static Map<String, dynamic>? Function()? readBook;
   static int Function(String bookUrl)? durChapterIndex;
@@ -147,6 +151,7 @@ abstract class SourceUi {
     speak = null;
     screenSize = null;
     searchType = null;
+    chooseSvg = null;
     readBook = null;
     durChapterIndex = null;
     refreshContent = null;
@@ -237,10 +242,26 @@ abstract class SourceHandlers {
     on('getWidth', (a) => SourceUi.screenSize?.call().width ?? 0.0);
     on('getHeight', (a) => SourceUi.screenSize?.call().height ?? 0.0);
     on('getsearch', (a) => SourceUi.searchType?.call() ?? -1);
-    // TODO(asm 0xea64b8 / 0xea646c / 0xea53b8): the 段评 bubble store (Svgimage) is not ported; the page gets an empty list.
-    on('showsvg', (a) => null);
-    on('getsvg', (a) => const []);
-    on('addsvg', (a) => null);
+    // the 段评 bubbles (data/svg.dart): showsvg / addsvg(svg) (0xea64b8 / 0xea53b8 -> 0xea5444) pull the cloud list when 云端主题 is on
+    // and open 选择气泡 (addsvg: with its editor pre-filled, member only); getsvg (0xea646c) answers [{id, svg}]
+    Future<void> chooser(String svg) async {
+      try {
+        await Svg.pullCloud();
+      } catch (e) {
+        Toast.show('$e');
+      }
+      await SourceUi.chooseSvg?.call(svg);
+    }
+
+    on('showsvg', (a) async {
+      await chooser('');
+      return null;
+    });
+    on('getsvg', (a) => Svg.availableJson());
+    on('addsvg', (a) async {
+      await chooser(_arg(a, 0));
+      return null;
+    });
     on('refreshContent', (a) async {
       await SourceUi.refreshContent?.call();
       return null;

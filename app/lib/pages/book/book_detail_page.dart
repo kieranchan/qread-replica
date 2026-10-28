@@ -1,7 +1,8 @@
 // pages/book/book_detail_page.dart — 书籍详情 (`BookDetailPage`, `_BookDetailPageState extends BookApiPage`, 156 functions).
 //
-// Recovered layout and behaviour (pool strings in code order): blurred cover header with name / author (tap author →
-// SearchBookPage, `clickAuthor`), kind labels, intro (简介, widget/book/intro_view.dart: `<useweb>` / `@html:` / `<usehtml>` / text), info rows 类型：/ 编码：/
+// Recovered layout and behaviour (pool strings in code order): blurred cover header with name / author (long press → SearchBookPage;
+// with 事件监听 the taps / long presses on name, author and kind labels go to the 时光源 page first, util/source/source_events.dart),
+// 定制按钮 in the app bar, kind labels, intro (`@onclick:` buttons run their js in the source page) (简介, widget/book/intro_view.dart: `<useweb>` / `@html:` / `<usehtml>` / text), info rows 类型：/ 编码：/
 // 规则：/ 分组：/ 最新：/ 进度： with 「修改」 (选择书本类型 / 修改编码 / 修改目录规则 for local TXT), the 目录 row opening
 // BookCatalogPage, bottom buttons 加入书架 + 阅读; 「更多」 menu: 编辑书本, 关闭更新/开启更新, 更换书源, 重新载入, 阅读记录, 删除书本,
 // 书籍信息 (书源地址 / 书籍地址 + 「复制地址」 → 「地址已复制」), 本地缓存 (range dialog: 「请输入要缓存的章节范围：」 …, errors
@@ -19,6 +20,8 @@ import '../../models/book.dart';
 import '../../models/bookchapter.dart';
 import '../../read/local_book_importer.dart';
 import '../../storage/book_reading_time_storage.dart';
+import '../../util/source/image_meta.dart';
+import '../../util/source/source_events.dart';
 import '../../util/toast.dart';
 import '../../widget/book/intro_view.dart';
 import '../../widget/book/toc_cache.dart';
@@ -312,6 +315,30 @@ class _BookDetailPageState extends BookApiPage<BookDetailPage> {
     }
   }
 
+  /// 事件监听 (util/source/source_events.dart): [event] goes to the source page with a loading veil when the source listens;
+  /// true when the page consumed it.
+  Future<bool> _event(String event) async {
+    if (!SourceEvents.listens(_book.origin)) return false;
+    return withLoading(() => SourceEvents.send(_book.origin, event, _book));
+  }
+
+  /// Long press on the name / author (0xfb797c / 0xfb7668): the event first, then (not consumed) a search for [key].
+  Future<void> _longPressSearch(String event, String key) async {
+    if (await _event(event) || !mounted || key.isEmpty) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SearchBookPage(searchKey: key)));
+  }
+
+  /// 定制按钮 (0xfb49e8): `clickCustomButton` whether the source listens or not.
+  Future<void> _customButton() => withLoading(() => SourceEvents.send(_book.origin, SourceEvents.clickCustomButton, _book));
+
+  /// `@onclick:` buttons of an html intro (0x5ad5f0): the js runs in the page of the book's 时光源 (not for 轻阅读 sources).
+  Future<void> _introJs(String js) async {
+    final raw = Sourcedata.byUrl(_book.origin);
+    if (raw == null || raw['isqread'] == true || '${raw['isqread']}' == 'true') return;
+    debugPrint('run $js');
+    await ParagraphComments.click(js, sourceUrl: _book.origin);
+  }
+
   String sourceNameOf(String url) {
     final m = Sourcedata.byUrl(url);
     return m == null ? url : '${m['bookSourceName'] ?? url}';
@@ -338,6 +365,8 @@ class _BookDetailPageState extends BookApiPage<BookDetailPage> {
         title: const Text('书籍信息'),
         centerTitle: true,
         actions: [
+          if (!_local && SourceEvents.hasCustomButton(b.origin))
+            IconButton(key: const Key('detail_custom_button'), icon: const Icon(Icons.circle_outlined), onPressed: _customButton),
           QPopupMenuButton<String>(
             key: const Key('detail_more'),
             tooltip: '更多',
@@ -366,21 +395,29 @@ class _BookDetailPageState extends BookApiPage<BookDetailPage> {
           const SizedBox(width: 16),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(b.name, key: const Key('detail_name'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              GestureDetector(
+                onTap: () => _event(SourceEvents.clickBookName),
+                onLongPress: () => _longPressSearch(SourceEvents.longClickBookName, b.name),
+                child: Text(b.name, key: const Key('detail_name'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              ),
               const SizedBox(height: 6),
               InkWell(
-                onTap: b.author.isEmpty
-                    ? null
-                    : () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SearchBookPage(searchKey: b.author))),
+                key: const Key('detail_author'),
+                onTap: () => _event(SourceEvents.clickAuthor),
+                onLongPress: () => _longPressSearch(SourceEvents.longClickAuthor, b.author),
                 child: Text(b.author.isEmpty ? '未知' : b.author, style: TextStyle(color: scheme.primary)),
               ),
               const SizedBox(height: 6),
               Wrap(spacing: 6, runSpacing: 4, children: [
                 for (final k in b.kind.split(RegExp('[,，\\s]+')).where((s) => s.isNotEmpty).take(6))
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(color: scheme.secondaryContainer, borderRadius: BorderRadius.circular(6)),
-                    child: Text(k, style: const TextStyle(fontSize: 11)),
+                  GestureDetector(
+                    onTap: () => _event(SourceEvents.clickBookLabel),
+                    onLongPress: () => _event(SourceEvents.longClickBookLabel),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(color: scheme.secondaryContainer, borderRadius: BorderRadius.circular(6)),
+                      child: Text(k, style: const TextStyle(fontSize: 11)),
+                    ),
                   ),
                 if (b.wordCount.isNotEmpty) Text(b.wordCount, style: const TextStyle(fontSize: 12, color: Colors.grey)),
               ]),
@@ -398,7 +435,7 @@ class _BookDetailPageState extends BookApiPage<BookDetailPage> {
         const Divider(height: 24),
         const Text('简介', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
         const SizedBox(height: 6),
-        if (b.intro.isEmpty) Text(_loading ? '加载中' : '无', style: const TextStyle(height: 1.6)) else IntroView(intro: b.intro),
+        if (b.intro.isEmpty) Text(_loading ? '加载中' : '无', style: const TextStyle(height: 1.6)) else IntroView(intro: b.intro, onClickJs: _introJs),
         const Divider(height: 24),
         ListTile(
           key: const Key('detail_toc'),

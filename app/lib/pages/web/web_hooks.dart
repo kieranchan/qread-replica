@@ -135,6 +135,11 @@ abstract class SourcesArea {
       final s = Sourcedata.sourceByUrl(sourceUrl);
       await Nav.openSearch(ctx, key: key, sources: s == null ? null : [s]);
     };
+    SourceUi.chooseSvg = (svg) async {
+      final ctx = _nav?.context;
+      if (ctx == null) return;
+      await Nav.openNamed(ctx, 'choose_svg', arguments: {'svg': svg});
+    };
     SourceUi.screenSize = () {
       final ctx = _nav?.context;
       return ctx == null ? Size.zero : MediaQuery.sizeOf(ctx);
