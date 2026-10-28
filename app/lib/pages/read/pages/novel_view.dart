@@ -155,6 +155,8 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
   ReadAloudController? get aloud => _aloud;
   ReadLayoutStyle? get layoutStyle => _style;
 
+  void _aiError(String m) => Toast.show(m);
+
   void _logLine(String s) {
     _log.add('${clockText()} $s');
     if (_log.length > 300) _log.removeAt(0);
@@ -174,6 +176,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     if (ReadApi.log == _logLine) ReadApi.log = null;
+    if (ReadApi.aiError == _aiError) ReadApi.aiError = null;
     _setting.removeListener(_onSetting);
     _autoTimer?.cancel();
     ReaderWakelock.stop();
@@ -227,6 +230,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     }
     _api = ReadApi(widget.book, chapters: _chapters, loader: widget.loader, replaceRules: ReplaceData.rules);
     ReadApi.log ??= _logLine;
+    ReadApi.aiError = _aiError;
     final b = widget.book;
     var start = widget.chapterIndex ?? b.durChapterIndex;
     var progress = widget.chapterIndex == null || widget.chapterIndex == b.durChapterIndex ? b.durChapterPos : 0.0;

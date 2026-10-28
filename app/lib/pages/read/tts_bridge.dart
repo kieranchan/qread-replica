@@ -8,9 +8,12 @@
 //     `AudioPlayerHandler` in util/audio/audio_player_handler.dart).
 // `TtsBridge.install()` is called once by the app (lead wiring).
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:crypto/crypto.dart';
 
+import '../../ai/read.dart';
 import '../../data/background_music_manager.dart';
 import '../../data/tts.dart';
 import '../../models/httptts.dart';
@@ -34,6 +37,7 @@ abstract class TtsBridge {
 
   static void install({ListenMediaBackend? media}) {
     ReaderSpeaker.bookFactory = (bookUrl) => TtsBridgeSpeaker(bookUrl: bookUrl);
+    roleSplitter ??= aiRoles;
     if (_installed) return;
     _installed = true;
     ReadAloudController.observers.add(ListenBackgroundMusic.instance);
@@ -50,6 +54,13 @@ abstract class TtsBridge {
     roleSplitter = null;
     speakWith = TtsController.speak;
     stopAll = TtsController.stop;
+  }
+
+  /// The AI role analysis of the AI module (`AiRead.rolesFor`: cached per paragraph, the 多角色 model, else the quote heuristic).
+  static Future<List<AiZLine>?> aiRoles(String bookUrl, String text) async {
+    final key = '$bookUrl#${md5.convert(utf8.encode(text))}';
+    final lines = await AiRead.rolesFor(key, {'0': text});
+    return [for (final r in lines) AiZLine(id: r.id, str: r.str, ispb: r.ispb, name: r.name, gender: r.gender, personality: r.personality)];
   }
 
   /// The engine for [bookUrl] (see the file comment).

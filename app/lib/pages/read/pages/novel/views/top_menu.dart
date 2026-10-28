@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../../common/nav.dart';
+import '../../../../../data/bookself.dart';
 import '../../../../../data/replace.dart';
 import '../../../../../models/book.dart';
 import '../../../../../models/bookchapter.dart';
@@ -128,12 +129,17 @@ abstract class TopMenuActions {
     await host.reloadChapter();
   }
 
+  /// Ai净化 (0x95a13c -> 0x10e8814): switches the book's `useai` on the shelf (0x10e8aa8) and reloads the chapter; `ReadApi.purify` then
+  /// sends chapters without a stored result to the purify model (at most `concurrent` at a time) and keeps the answer per chapter.
   static Future<void> aiPurify(BuildContext context, ReaderHost host) async {
-    // TODO(asm 0x95a13c): the AI purification job (purify model, `purifyConcurrent`) belongs to the AI area; the reader only switches
-    // `Book.useai`, which makes `ReadApi.purify` use stored AI results.
-    host.book.useai = !host.book.useai;
-    Toast.show(host.book.useai ? '已开启Ai净化' : '已关闭Ai净化');
-    await host.reloadChapter();
+    try {
+      host.book.useai = !host.book.useai;
+      await BookSelfN.setUseAi(host.book.bookUrl, host.book.useai);
+      await host.reloadChapter();
+      Toast.show('操作成功');
+    } catch (e) {
+      Toast.show('设置失败:$e');
+    }
   }
 
   static Future<void> effectivePurify(BuildContext context, ReaderHost host) async {
