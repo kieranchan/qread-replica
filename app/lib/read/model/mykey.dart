@@ -1,5 +1,7 @@
-// read/model/mykey.dart — key of a laid-out chapter in the page cache (class 1485 `Mykey`, 3 slots).
-// TODO(asm class 1485): the original's slots are not named; the natural key of a layout is (book, chapter, layout signature).
+// read/model/mykey.dart — key of a laid-out chapter in the page cache.
+// The original class 1485 `Mykey` (3 slots) is the scroll list's item key: created by the list controller (0x25096c / 0x2509f0) as
+// (String '' , LabeledGlobalKey<State>, bool false) to measure an item's widget. This port's scroll view does not measure items that
+// way, so the name holds the layout cache key (book, chapter, layout signature) instead.
 class Mykey {
   final String bookUrl;
   final int chapterIndex;

@@ -28,11 +28,17 @@ typedef BlockDecorator = List<TextDeco> Function(Content block, int chapterIndex
 /// Long press on the text: chapter index, chapter-text offset under the finger, global position.
 typedef TextLongPress = void Function(int chapterIndex, int offset, Offset globalPosition);
 
-/// Formats the 章节进度 item of a status slot: `showProgress` picks chapter pages, book percent or both. TODO(asm 0x6344a8): the
-/// original's use of `showProgress` inside the slot row was not traced; the 全文进度 item always shows the percent.
+/// Slot item 章节进度 (0x632f5c, item 3): `<page>/<pages>`, `分页中` while the chapter is still being paginated (no page count yet).
+String chapterProgressText(int pageNum, int totalPage) => totalPage <= 0 ? '分页中' : '$pageNum/$totalPage';
+
+/// Slot item 全文进度 (0x632f5c, item 4): the book percent with two decimals.
+String bookProgressText(double bookProgress) => '${(bookProgress * 100).clamp(0, 100).toStringAsFixed(2)}%';
+
+/// The `showProgress` text (显示进度: 不显示 / 章节进度 / 全文进度 / 章节进度和全文进度). The original reads `showProgress` only in the
+/// battery items (0x6344a8: 0 = the battery alone, otherwise this text stands before it); the progress slot items ignore it.
 String progressText(int mode, {required int pageNum, required int totalPage, required double bookProgress}) {
-  final chapter = '$pageNum/$totalPage';
-  final book = '${(bookProgress * 100).clamp(0, 100).toStringAsFixed(1)}%';
+  final chapter = chapterProgressText(pageNum, totalPage);
+  final book = bookProgressText(bookProgress);
   return switch (mode) {
     ProgressMode.hidden => '',
     ProgressMode.chapter => chapter,
@@ -193,14 +199,17 @@ class ReaderStatusBar extends StatelessWidget {
       case SlotItem.time:
         return Text(clockText(), style: style);
       case SlotItem.batteryInside:
-        return BatteryIcon(color: style.color ?? color, height: fs * 0.9, percentInside: true);
       case SlotItem.batteryOutside:
-        return BatteryIcon(color: style.color ?? color, height: fs * 0.8, percentText: style);
-      case SlotItem.chapterProgress:
+        final battery = id == SlotItem.batteryInside
+            ? BatteryIcon(color: style.color ?? color, height: fs * 0.9, percentInside: true)
+            : BatteryIcon(color: style.color ?? color, height: fs * 0.8, percentText: style);
         final t = progressText(setting.showProgress, pageNum: pageNum, totalPage: totalPage, bookProgress: bookProgress);
-        return t.isEmpty ? null : Text(t, style: style);
+        if (t.isEmpty) return battery;
+        return Row(mainAxisSize: MainAxisSize.min, children: [Text(t, style: style), const SizedBox(width: 4), battery]);
+      case SlotItem.chapterProgress:
+        return Text(chapterProgressText(pageNum, totalPage), style: style);
       case SlotItem.bookProgress:
-        return Text(progressText(ProgressMode.book, pageNum: pageNum, totalPage: totalPage, bookProgress: bookProgress), style: style);
+        return Text(bookProgressText(bookProgress), style: style);
       case SlotItem.title:
         return Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: style);
       case SlotItem.bookName:

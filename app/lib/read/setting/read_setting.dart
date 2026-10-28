@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 
 import '../../common/common.dart';
 import '../../data/ground.dart';
+import '../../data/highlight.dart';
 import '../../models/back_ground.dart';
 import '../../pages/read/pages/novel/views/turn.dart';
 import '../../storage/storage.dart';
@@ -123,8 +124,8 @@ class ReadSetting extends ChangeNotifier {
   /// `Common.backgroundimages` (0x6627ec): `lib/assets/bg/1.jpg` .. `14.jpg`.
   static final List<String> builtinImages = [for (var i = 1; i <= 14; i++) 'lib/assets/bg/$i.jpg'];
 
-  /// Ids `builtinColors.length ..` select a built-in image. TODO(asm 0x10162d4): the original id layout of the image swatches is not
-  /// recovered; user styles use ids from [userIdBase] up.
+  /// Ids `builtinColors.length ..` select a built-in image; user styles use ids from [userIdBase] up.
+  /// TODO(asm 0x10162d4): that function only opens ThemePage and reloads (排版更新成功); the original's swatch id layout is not in it.
   static int get imageIdBase => builtinColors.length;
   static int get userIdBase => builtinColors.length + builtinImages.length;
 
@@ -722,6 +723,8 @@ class ReadSetting extends ChangeNotifier {
       columns: columnsFor(size),
       // Pages are drawn with Text widgets (selectable); the per-page line stretch of the painter is not used.
       stretchPages: false,
+      // highlight rules with font size / line height / family are measured with the text (0xf0caec)
+      metricRules: RuleMetric.fromRules(HighlightData.enabled),
     );
   }
 

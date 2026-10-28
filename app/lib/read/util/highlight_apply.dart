@@ -3,10 +3,10 @@
 // Original: `highlight_apply.dart` (0xf0caec, applies `HighlightRule`s of `HighlightData` to the paragraph text with the day/night colours,
 // font weight/style, decoration and a background image drawn as nine-patch). This port builds the [TextSpan] of a [Content] block with
 // the same styles the layout engine measured with (see `ReadTextBuilder.span`) and splits the runs at every decoration boundary.
-// Only properties that do not move line breaks are applied (colour, background, decoration incl. 波浪线 `underline wavy`, weight, italic)
-// plus the rule's background image, drawn as a nine-patch behind the range (highlight_bg.dart). `fontSize` / `lineHeight` /
-// `fontFamily` of a rule would change the pagination and are not applied: the layout engine measures the plain text.
-// TODO(asm 0xf0caec): rule font size / line height need the rules inside CalculateChapter's measurement.
+// The decorations here are the properties that do not move line breaks (colour, background, decoration incl. 波浪线 `underline wavy`,
+// weight, italic) plus the rule's background image, drawn as a nine-patch behind the range (highlight_bg.dart). `fontSize` /
+// `lineHeight` / `fontFamily` of a rule are measured by CalculateChapter (runs tagged `rule:N`, ReadLayoutStyle.metricRules) and
+// drawn through the same run styles; a block holding such runs uses the growing strut ([strutOf]).
 import 'package:flutter/painting.dart';
 
 import '../../models/highlight_rule.dart';
@@ -225,6 +225,6 @@ abstract class HighlightApply {
     final isTitle = c.lines.isNotEmpty && c.lines.first.paragraphIndex < 0;
     final runs = ReadTextBuilder.runsOf(c);
     final first = runs.isEmpty ? <String>{} : runs.first.styles;
-    return style.strut(scale: isTitle ? 1.0 : ReadLayoutStyle.scaleFor(first), title: isTitle);
+    return style.strut(scale: isTitle ? 1.0 : ReadLayoutStyle.scaleFor(first), title: isTitle, grow: !isTitle && style.hasRuleRuns(runs));
   }
 }

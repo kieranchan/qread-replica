@@ -3,9 +3,11 @@
 // `bookSourceUrl`, `isQRead`, `exploreUrl`, `categories` [{title, exploreUrl}], `count`, `countPerCategory`, `itemWidth`,
 // `gap`), the book loader and the section frame.
 //
-// TODO(asm 0x647e58): `fromJson` finds the enum value by a string compare with `json['type']`; the 7 `ComponentType` objects in
-// the pool keep only their index (objs.txt, names stripped), so the stored strings are unknown: the replica writes the Dart enum
-// name and also accepts the index.
+// `ExplorationComponent.fromJson` (0x647cdc) stores the enum's `name` under `type` and finds it again with
+// `values.firstWhere((t) => t.name == json['type'], orElse: () => recommendCard)` (0x647e58 / 0x647e4c). Index order from the
+// type-label switch of the edit page (0x643ff4: 0 推荐卡片, 1 排行榜, 2 宫格, 3 左右滑动, 4 网络排行榜, 5 多分类排行榜, 6 错位瀑布流); the 7
+// names are the strings recommendCard / ranking / grid / horizontalScroll / networkRanking / multiCategoryRanking / staggeredWaterfall
+// of the app binary (objs.txt only keeps the indexes).
 import 'package:flutter/material.dart';
 
 import '../../data/source.dart';
@@ -18,9 +20,9 @@ import '../image/cached_cover_image.dart';
 
 enum ComponentType {
   recommendCard('推荐卡片', 3),
+  ranking('排行榜', 10),
   grid('宫格', 6),
   horizontalScroll('左右滑动', 10),
-  ranking('排行榜', 10),
   networkRanking('网络排行榜', 10),
   multiCategoryRanking('多分类排行榜', 5),
   staggeredWaterfall('错位瀑布流', 10);
@@ -29,15 +31,8 @@ enum ComponentType {
   final int defaultCount;
   const ComponentType(this.label, this.defaultCount);
 
-  static ComponentType of(Object? v) {
-    if (v is int && v >= 0 && v < values.length) return values[v];
-    final s = '$v';
-    for (final t in values) {
-      if (t.name == s || 'ComponentType.${t.name}' == s || t.label == s) return t;
-    }
-    final i = int.tryParse(s);
-    return i != null && i >= 0 && i < values.length ? values[i] : ComponentType.grid;
-  }
+  /// 0x647e58: the value whose name is [v], else 推荐卡片 (0x647e4c).
+  static ComponentType of(Object? v) => values.firstWhere((t) => t.name == v, orElse: () => ComponentType.recommendCard);
 }
 
 /// Typed view of a component's config map.

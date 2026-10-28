@@ -15,7 +15,9 @@
 //     the background → `本地TTS：后台空闲 20 秒，销毁实例释放内存` (0x2bf950); a recycled instance or a system memory warning
 //     (`_MemoryPressureGuard`) starts a cool-down during which synthesis fails with `内存超限冷却中`; worker events are logged as
 //     `本地TTS：检测到内存风险，回收实例（<reason>）` and `本地TTS：rss=<n>MB，实例增长=<n>MB` (0x20e250).
-// TODO(asm 0xe96f68): the original's memory threshold for recycling is not decoded; [maxGrowthMb] is a guess.
+// Memory (worker loop 0xe96f68): after each synthesis the worker only reports `{event: rss, rss, delta}` (ProcessInfo.currentRss
+// ~/ 1048576, delta against the rss when the instance was made); no code of the original sends `recycled` (only this handler, 0x20e250,
+// knows it), so there is no size threshold: [maxGrowthMb] is 0 (off) and only memory warnings recycle the instance.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -80,7 +82,8 @@ abstract class LocalTtsManager {
   static Duration destroyTimeout = const Duration(seconds: 10);
   static Duration backgroundIdle = const Duration(seconds: 20);
   static Duration memoryCooldown = const Duration(seconds: 30);
-  static int maxGrowthMb = 1500;
+  /// Recycle the instance when it grew more than this many MB (0 = never, as the original).
+  static int maxGrowthMb = 0;
 
   /// Where the messages of the original's debugPrint calls go.
   static void Function(String message) log = (m) => debugPrint(m);

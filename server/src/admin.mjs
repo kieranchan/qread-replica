@@ -8,6 +8,7 @@ import { loadConfig } from './config.mjs';
 import { openDb } from './db.mjs';
 import { Service } from './service.mjs';
 import { fmtDate } from './util.mjs';
+import { parseUpdate, updateFile } from './userapi.mjs';
 
 const HELP = `qread admin
   create-user <username> <email> [--password P | --random] [--days N]
@@ -21,6 +22,8 @@ const HELP = `qread admin
   add-category <name>
   add-theme --name N [--category C] [--zip F] [--layout F] [--image F] [--author A] [--mode day|night] [--version V] [--desc T] [--id ID]
   set-static <down|qq> <file.json>
+  set-update <file.json> | set-update --clear | show-update
+                                 release for check_update: {"version":"1.0.1","build":2,"notes":"…","url":"https://…","platform":"ios"}
 `;
 
 function parseArgs(argv) {
@@ -147,6 +150,25 @@ export function run(argv, { cfg = loadConfig(), out = console.log } = {}) {
         fs.mkdirSync(path.join(cfg.dataDir, 'static'), { recursive: true });
         fs.copyFileSync(a[1], path.join(cfg.dataDir, 'static', `${a[0]}.json`));
         out('ok');
+        break;
+      }
+      case 'set-update': {
+        const f = updateFile(cfg.dataDir);
+        if (opt.clear) {
+          fs.rmSync(f, { force: true });
+          out('cleared: check_update answers "no update"');
+          break;
+        }
+        if (!a[0]) throw new Error('set-update <file.json>');
+        const rel = parseUpdate(JSON.parse(fs.readFileSync(a[0], 'utf8')));
+        fs.mkdirSync(path.dirname(f), { recursive: true });
+        fs.writeFileSync(f, JSON.stringify(rel, null, 2));
+        out(`update set: ${rel.version || '(no version)'} build ${rel.build}${rel.platform ? ' for ' + rel.platform : ''} -> ${rel.url}`);
+        break;
+      }
+      case 'show-update': {
+        const f = updateFile(cfg.dataDir);
+        out(fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '(none)');
         break;
       }
       default:

@@ -15,7 +15,7 @@ Five tabs in the original's default order (`bottomBarTabs`): 书架 · 发现 ·
 | Data layer | `storage/`, `data/`, `common/`, `init/appinit.dart`, `models/` | prefs as text + file store `<root>/item/<md5>.txt`, every list manager, three-way cloud sync |
 | Book-source engine | `util/webbook/`, `util/legado/`, `util/html/`, `util/http.dart`, `api/sourceapi.dart`, `api/rssapi.dart` | Legado rules (CSS/jsoup, XPath, JSONPath, regex, JS via JavaScriptCore on iOS / Dart interpreter on the host), search, explore, info, toc, content, RSS, debugger |
 | 时光源 runtime | `util/source/`, `pages/web/source_webview.dart`, `pages/source/sg_login.dart` | the original's own sources: the source's `html` page runs in a HeadlessInAppWebView per source (reused, dropped after 5 idle minutes), the page's `callHandler` bridge (http, cache, cookie, webview, browser, captcha, …), search / 发现 / info / toc / content / pay / imagedecrypt through `SourceApi`, login (`getloginurl()` page or form + `login()`) |
-| Reading core | `read/`, `util/epub/`, `util/image/`, `util/cahce/` | TXT (charset + TOC rules) / EPUB / MOBI import, layout + paging, per-book stores, progress, history, bookmarks, cache |
+| Reading core | `read/`, `util/epub/`, `util/image/`, `util/cahce/` | TXT (charset + TOC rules) / EPUB / MOBI + AZW3 (PalmDOC, Huffman/CDIC, KF8) import, layout + paging, per-book stores, progress, history, bookmarks, cache |
 | Reader UI | `pages/read/`, `pages/{txtrule,replace,highlight,image,video}/`, `widget/{read,pageflip}/` | paging modes, menus, settings, selection → highlight / note, listening (system TTS), AI chat sheet, comic / audio views, rule pages |
 | Shelf / search / discovery | `pages/bookshelf_page.dart`, `pages/discovery_page*.dart`, `pages/{book,search,history,exploration}/`, `widget/` | shelf (groups, grid/list, import, batch edit, cloud sync), detail, catalog, change source, downloads, multi-source search, discovery, 探索 templates |
 | Sources / RSS / web | `pages/source/`, `pages/rss*`, `pages/web/`, `pages/scanner/`, `qread/` | source manager + editors + debugger (+ local debug server :5858), 订阅 tab, in-app browser, binding to the user's own 轻阅读 backend |
@@ -31,7 +31,8 @@ highlight backgrounds, camera QR scanning, app links / open-with, Big5 + GB18030
 original), backup devices on the owner's server, alternate home-screen icons.
 
 Not available (pages keep the original strings and say so): the browser reading mode (it needs qread.xyz services), 时光源 pages
-encrypted with `@aes` (the key is a constant of the original), Baidu/Weiyun drives (vendor credentials), the Edge voice (its client token is not copied), app update check.
+encrypted with `@aes` (the key is a constant of the original), Baidu/Weiyun drives (vendor credentials), the Edge voice (its client token is not copied). The update check (关于 page and main-page start-up) asks the owner's server, which
+answers from `qread-admin set-update`.
 The remaining approximations are marked `TODO(asm 0x…)` with what was checked.
 
 ## Tests

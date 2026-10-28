@@ -4,7 +4,7 @@
 //                                                            getloginurl() / login(), pages/source/sg_login.dart)
 //   config_import ({type: file|url|qr})                    -> 添加配置: replace rules, TTS engines, TXT rules, highlight rules,
 //                                                            book / RSS sources, exploration templates; detected by their fields
-//   qread_import                                           -> bind the own reading backend first (its shelf API is not ported)
+//   qread_import                                           -> 导入后端: upload txt / epub to the bound backend (bind it first)
 //   viewlog                                                -> the in-app message log
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +19,7 @@ import '../pages/source/login_dialog.dart';
 import '../pages/source/sg_login.dart';
 import '../pages/source/source_setting.dart';
 import '../qread/qread.dart';
+import '../qread/qread_jobs.dart';
 import '../util/source/source.dart';
 import '../util/toast.dart';
 import '../util/webbook/model/book_source.dart';
@@ -58,8 +59,8 @@ abstract class GlueRoutes {
           Toast.show('请先绑定轻阅读后端');
           if (context.mounted) await Nav.openNamed(context, 'qread_login');
         } else {
-          // TODO(asm 0xf75494): the original pulls the shelf of the bound backend; that API is not ported.
-          Toast.show('当前版本暂不支持从后端导入书架');
+          // 导入后端 (0xf75494 → 0xf77e50): local txt / epub files uploaded to the backend's shelf (qread/qread_jobs.dart)
+          await QreadImport.run();
         }
         return true;
       case 'viewlog':

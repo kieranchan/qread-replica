@@ -9,8 +9,10 @@
 // source offset: `end - start == str.length` always holds for the source part.
 import '../../models/_json.dart';
 
-/// Style tokens carried by [CLine.style] (space separated). `style` is a String in the original JSON (`"style": ""`); the
-/// token names are this port's (the original's CSS-ish values were not recoverable: TODO(asm 0x23df10)).
+/// Style tokens carried by [CLine.style] (space separated). `style` is a String in the original JSON (`"style": ""`). In the original
+/// it is the raw `style` attribute of the chapter's `<span style=…>` markup (0x23e740 cuts `<span\s+[^>]*>` … `</span>` into runs with
+/// str / style / href / noteref, 0x23df10 builds the CLines; highlight rules add `rule:N`, 0xf0caec). This port's runs come from
+/// ChapterContent blocks, so it keeps tokens instead of CSS text; `rule:N` is the same marker.
 abstract class CLineStyle {
   static const String bold = 'bold';
   static const String italic = 'italic';
@@ -27,6 +29,9 @@ abstract class CLineStyle {
   static const String center = 'center';
   static const String right = 'right';
   static const String image = 'image';
+
+  /// `rule:N`: the run is a match of metric highlight rule N (the original's `<span style='rule:N'>`, 0xf0caec).
+  static const String rulePrefix = 'rule:';
 
   static Set<String> parse(String style) => style.isEmpty ? <String>{} : style.split(RegExp(r'\s+')).where((s) => s.isNotEmpty).toSet();
 }

@@ -9,7 +9,7 @@ contacted or reproduced.
 src/server.mjs   HTTP entry (routes below)            src/admin.mjs   admin CLI (SQLite directly, no HTTP admin)
 src/userapi.mjs  account / membership / cloud calls   src/service.mjs  domain logic (users, tokens, vip, codes, blobs)
 src/themes.mjs   theme plaza                          src/pages.mjs    会员中心 page    src/backup.mjs  nightly backup
-test/api.test.mjs  20 end-to-end tests (in-memory DB)   tools/smoke.mjs  smoke test against a deployed server
+test/*.test.mjs   end-to-end tests (in-memory DB)   tools/smoke.mjs  smoke test against a deployed server
 deploy/          systemd units, Caddy site block, bootstrap + deploy scripts
 ```
 
@@ -46,14 +46,17 @@ avatar/theme URLs), `QREAD_REGISTER` (`invite` | `closed`), `QREAD_MAIL` (`off`;
 * **Web page**: `GET /` (and `/vip`) is the 会员中心 page: opened by the app with `?tockenid=` it shows the status and the activation-code box; opened in a
   browser it first asks for username/password. `POST /diag` receives the app's self-check results (`admin list-diag`).
 * **Other**: `/images/*` (avatars, uploads), `/static/down.json`, `/static/qq.json` (`admin set-static`), `/healthz`, `/api/allocate` (stub: the
-  compatibility-engine allocator is not provided), `check_update` (always "no update").
+  compatibility-engine allocator is not provided).
+* **Update check**: `check_update?platform=&version=<build>&t=` answers `{code: 0, updateUrl, description}` when the release set with
+  `admin set-update <file.json>` (`version`, `build`, `notes`, `url`, optional `platform`) has a higher `build` than the app sends, else
+  `{code: -1}` (no update). `set-update --clear` removes it, `show-update` prints it; the file lives in `<data>/static/update.json`.
 * **Not implemented / unknown**: `autopos` payload semantics beyond what `docs/API.md` records, the `yuan` HTML proxy, the Edge TTS page, the bound 轻阅读 `/api/5` backend. Unknown
   endpoints answer 404 and are logged (`{"unsupported": name}`) so missing calls show up in the journal.
 
 ## Admin CLI
 `node src/admin.mjs help` (on the VM: `qread-admin help`). Typical: `create-user <name> <email> --random --days 3650`,
 `make-codes vip 30 --count 5`, `make-codes invite --count 3 --valid-days 7`, `grant <user> <days>`, `list-users`, `delete-user <user>`,
-`add-theme --name … --zip … --image …`.
+`add-theme --name … --zip … --image …`, `set-update release.json`.
 
 ## Deploy (Korean VM, shared with the td2 game server)
 (set `QREAD_SSH_TARGET=user@host` or `deploy/target.env`, git-ignored) `bash deploy/deploy.sh --bootstrap` the first time (service user `qread`, `/var/lib/qread`, `/etc/qread/qread.env`, units, a

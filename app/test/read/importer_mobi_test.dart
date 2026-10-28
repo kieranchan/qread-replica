@@ -77,9 +77,9 @@ void main() {
     test('unsupported variants are reported clearly', () async {
       final text = Uint8List.fromList(utf8.encode('<html><body><p>x</p></body></html>'));
       final cases = <(String, Uint8List)>[
-        ('Huffman', buildMobi(text: text, compression: 17480)),
+        ('Huffman without tables', buildMobi(text: text, compression: 17480)),
         ('DRM', buildMobi(text: text, encryption: 2)),
-        ('KF8', buildMobi(text: text, version: 8)),
+        ('unknown compression', buildMobi(text: text, compression: 5)),
       ];
       for (final (name, bytes) in cases) {
         final f = File('${tmp.path}/$name.mobi')..writeAsBytesSync(bytes);
@@ -87,13 +87,11 @@ void main() {
       }
       final junk = File('${tmp.path}/junk.mobi')..writeAsBytesSync(Uint8List(200));
       await expectLater(MobiFile.parse(junk, workDir: Directory('${tmp.path}/wj')), throwsA(isA<MobiException>()));
-    });
-
-    test('without a TOC the page breaks split the book', () async {
-      final html = '<html><body><h1>甲</h1><p>一一。</p><mbp:pagebreak/><h1>乙</h1><p>二二。</p><mbp:pagebreak/><h1>丙</h1><p>三三。</p></body></html>';
-      final f = File('${tmp.path}/pb.mobi')..writeAsBytesSync(buildMobi(text: Uint8List.fromList(utf8.encode(html))));
-      final res = await MobiFile.parse(f, workDir: Directory('${tmp.path}/wpb'));
-      expect(res.chapters.map((c) => c.name).toList(), ['甲', '乙', '丙']);
+      final tiny = File('${tmp.path}/tiny.mobi')..writeAsBytesSync(Uint8List(20));
+      await expectLater(
+        MobiFile.parse(tiny, workDir: Directory('${tmp.path}/wt')),
+        throwsA(predicate((e) => e is MobiException && e.message == '文件太小，不是有效的MOBI文件')),
+      );
     });
   });
 

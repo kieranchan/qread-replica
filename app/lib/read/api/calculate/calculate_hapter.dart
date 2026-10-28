@@ -13,8 +13,13 @@
 // pages <-> character offsets (the original's progress is a 0..1 fraction `durChapterPos`, stored with 1/10000 resolution:
 // 0xeae13c multiplies by 10000).
 //
+// Highlight rules with a font size / line height / family ([ReadLayoutStyle.metricRules]) are part of the measurement, as in the
+// original, which wraps their matches in `<span style='rule:N'>` before laying the chapter out (0xf0caec): the runs of a paragraph
+// are split at the matches and tagged `rule:N`, the paragraph is measured with a strut that only sets the minimum line height, and
+// each line keeps its own height (the drawing uses the same styles and strut, see HighlightApply / ReadTextBuilder).
+//
 // The engine is deterministic: the same blocks, size and [ReadLayoutStyle] always give the same pages, so results can be
-// cached under a [Mykey].
+// cached.
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -112,7 +117,7 @@ class CalculateChapter {
         b.addImage(_imageContent(run, index, area, imageSizes[run.href] ?? fallbackImageSize));
       } else {
         final lines = _layoutParagraph(block, index, area.width);
-        if (lines != null) b.addParagraph(lines.lines, lines.lineHeight, index);
+        if (lines != null) b.addParagraph(lines.lines, lines.heights, index);
       }
       index++;
     }
@@ -149,13 +154,59 @@ class CalculateChapter {
         ],
       ));
     }
-    return _Measured(lines, lh);
+    return _Measured(lines, lh, List<double>.filled(lines.length, lh));
+  }
+
+  /// Splits [runs] where metric highlight rules match the paragraph text and tags the matched pieces `rule:N` (later rules win
+  /// where matches overlap, like the colour decorations).
+  List<CLine> _ruleRuns(List<CLine> runs) {
+    final rules = style.metricRules;
+    if (rules.isEmpty) return runs;
+    final text = runs.map((r) => r.str).join();
+    final marks = List<int>.filled(text.length, -1);
+    var any = false;
+    for (var i = 0; i < rules.length; i++) {
+      for (final m in rules[i].matches(text)) {
+        for (var k = m.start; k < m.end && k < text.length; k++) {
+          marks[k] = i;
+          any = true;
+        }
+      }
+    }
+    if (!any) return runs;
+    final out = <CLine>[];
+    var pos = 0;
+    for (final r in runs) {
+      final s = r.str;
+      var a = 0;
+      for (var j = 1; j <= s.length; j++) {
+        if (j < s.length && marks[pos + j] == marks[pos + a]) continue;
+        final mark = marks[pos + a];
+        out.add(CLine(
+          str: s.substring(a, j),
+          style: mark < 0 ? r.style : '${r.style} ${CLineStyle.rulePrefix}$mark'.trim(),
+          type: r.type,
+          id: a == 0 ? r.id : '',
+          start: r.start < 0 ? -1 : r.start + a,
+          end: r.start < 0 ? -1 : r.start + j,
+          isfirst: r.isfirst && a == 0,
+          href: r.href,
+          noteref: r.noteref,
+          ish: r.ish,
+          prefix: a == 0 ? r.prefix : '',
+        ));
+        a = j;
+      }
+      pos += s.length;
+    }
+    return out;
   }
 
   /// Null when the paragraph has no visible text.
   _Measured? _layoutParagraph(CalcuPages block, int paragraphIndex, double width) {
-    final runs = block.runs.where((r) => r.str.isNotEmpty).toList();
+    final runs = _ruleRuns(block.runs.where((r) => r.str.isNotEmpty).toList());
     if (runs.isEmpty) return null;
+    final grow = style.hasRuleRuns(runs);
 
     final tokens = runs.first.styles;
     final heading = runs.first.ish || tokens.contains(CLineStyle.h1) || tokens.contains(CLineStyle.h2) || tokens.contains(CLineStyle.h3);
@@ -184,18 +235,21 @@ class CalculateChapter {
       textDirection: TextDirection.ltr,
       textAlign: TextAlign.left,
       textScaler: TextScaler.noScaling,
-      strutStyle: style.strut(scale: scale),
+      strutStyle: style.strut(scale: scale, grow: grow),
     )..layout(maxWidth: width);
     final ranges = _lineRanges(tp, flatText.length);
     final lh = _lineHeight(tp, style.fontSize * scale * style.lineHeight);
+    final metrics = grow ? tp.computeLineMetrics() : const <LineMetrics>[];
     tp.dispose();
 
     final lines = <Line>[];
+    final heights = <double>[];
     for (var li = 0; li < ranges.length; li++) {
       final r = ranges[li];
       lines.add(Line(paragraphIndex: paragraphIndex, clines: _slice(flatText, segs, r.start, r.end)));
+      heights.add(grow && li < metrics.length && metrics[li].height > 0 ? metrics[li].height : lh);
     }
-    return _Measured(lines, lh);
+    return _Measured(lines, lh, heights);
   }
 
   /// Source runs on one line of the flat paragraph.
@@ -398,7 +452,10 @@ class CalculateChapter {
 class _Measured {
   final List<Line> lines;
   final double lineHeight;
-  const _Measured(this.lines, this.lineHeight);
+
+  /// Height of every line (all [lineHeight] unless metric rules made some taller).
+  final List<double> heights;
+  const _Measured(this.lines, this.lineHeight, this.heights);
 }
 
 class _Seg {
@@ -437,24 +494,29 @@ class _PageBuilder {
     }
   }
 
-  void addParagraph(List<Line> lines, double lh, int paragraphIndex) {
+  void addParagraph(List<Line> lines, List<double> heights, int paragraphIndex) {
     var i = 0;
     while (i < lines.length) {
       final gap = i == 0 ? _gap : 0.0;
       final avail = area.height - _used - gap;
-      var n = (avail / lh + 1e-6).floor();
+      var n = 0;
+      var h = 0.0;
+      while (i + n < lines.length && h + heights[i + n] <= avail + 1e-6) {
+        h += heights[i + n];
+        n++;
+      }
       if (n < 1) {
         if (_cur.contents.isEmpty) {
           n = 1; // page smaller than one line: force progress
+          h = heights[i];
         } else {
           _closePage(last: false);
           continue;
         }
       }
-      final take = math.min(n, lines.length - i);
-      final chunk = lines.sublist(i, i + take);
-      _place(Content(lines: chunk, height: take * lh, type: CLineType.text, line: take), gap);
-      i += take;
+      final chunk = lines.sublist(i, i + n);
+      _place(Content(lines: chunk, height: h, type: CLineType.text, line: n), gap);
+      i += n;
       if (i < lines.length) _closePage(last: false);
     }
   }

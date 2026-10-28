@@ -119,7 +119,8 @@ void main() {
         );
     await tester.pumpWidget(bar(false));
     await tester.pump();
-    expect(find.text('2/9'), findsOneWidget);
+    // 章节进度 slot, and the showProgress text (default 1 = 章节进度) before the battery (0x6344a8)
+    expect(find.text('2/9'), findsNWidgets(2));
     expect(find.text('76%'), findsOneWidget); // 外置百分比电池
     expect(find.text(clockText()), findsOneWidget);
     await tester.pumpWidget(bar(true));
@@ -130,7 +131,7 @@ void main() {
     await s.setFen(DividerMode.header);
     await tester.pumpWidget(bar(true));
     expect(find.text('测试书'), findsOneWidget);
-    expect(find.text('25.0%'), findsOneWidget);
+    expect(find.text('25.00%'), findsOneWidget);
     expect(find.byType(Container), findsOneWidget); // the divider line
   });
 

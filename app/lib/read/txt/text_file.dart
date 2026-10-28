@@ -4,13 +4,14 @@
 // Import: detect the charset (BOM, UTF-16 NUL pattern, strict UTF-8 check, else GBK), split the file into lines at the byte
 // level, find chapter titles with the user's `TxtTocRule`s and describe every chapter by a byte range of the *file*
 // (`BookChapter.start` / `BookChapter.end`; exclusive). Reading a chapter later decodes just that range, so a 20 MB novel
-// never has to be held in memory by the reader. If no rule finds at least [minRuleMatches] titles the file is cut into
-// pieces of about [fixedChars] characters at line boundaries (the "no TOC rule" fallback).
+// never has to be held in memory by the reader. If no rule finds a title the file is cut into pieces of about [fixedChars]
+// characters at line boundaries (the "no TOC rule" fallback).
 //
-// What the original does that this port approximates: rule selection (here: first enabled rule, in list order, with at least
-// two matching lines), volume detection ([isVolumeTitle]) and the default rule set ([defaultRules]; the user's rules come from
-// data/txtrule). Rules are applied to single lines (every TOC rule of the original app is anchored `^..$`);
-// patterns spanning lines are not supported. TODO(asm 0x258c48): exact rule-selection order of the original.
+// Rule selection as the original (0xee01f8 → 0x259668): the first [sampleBytes] bytes are decoded, every enabled rule counts its
+// matches there (multi-line regex), the rule with the most matches wins (at least [minRuleMatches]); the rules are walked from the
+// last to the first and a later one only loses on fewer matches, so ties go to the rule higher in the list. Volume detection
+// ([isVolumeTitle]) and the default rule set ([defaultRules]; the user's rules come from data/txtrule) are this port's. Rules are
+// applied to single lines (every TOC rule of the original app is anchored `^..$`); patterns spanning lines are not supported.
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -44,8 +45,11 @@ abstract class TextFile {
   /// Chapter size of the fallback split (characters, measured as `fixedChars * bytesPerChar` bytes).
   static const int fixedChars = 10000;
 
-  /// A rule must find at least this many title lines to be used.
-  static const int minRuleMatches = 2;
+  /// A rule must find at least this many title lines in the sample to be used (0x259668 starts its best count at 1).
+  static const int minRuleMatches = 1;
+
+  /// Bytes of the file the rules are tried on (0xee01f8: 512000).
+  static const int sampleBytes = 512000;
 
   /// Common Chinese web-novel chapter patterns, used when the caller has no rule list (the user's list lives in data/txtrule).
   static final List<TxtTocRule> defaultRules = [
@@ -124,16 +128,31 @@ abstract class TextFile {
       candText.add(t);
     }
 
-    for (final rule in rules) {
+    // 0x259668: most matches in the sample wins; walked backwards with `>=`, so ties keep the rule higher in the list
+    final sampleEnd = dataStart + sampleBytes;
+    TxtTocRule? best;
+    RegExp? bestRe;
+    var bestCount = minRuleMatches;
+    for (final rule in rules.reversed) {
       final re = toDartRegExp(rule.rule);
       if (re == null) continue;
+      var count = 0;
+      for (var k = 0; k < candText.length && starts[candLine[k]] < sampleEnd; k++) {
+        if (re.hasMatch(candText[k])) count++;
+      }
+      if (count >= bestCount) {
+        bestCount = count;
+        best = rule;
+        bestRe = re;
+      }
+    }
+    if (best != null && bestRe != null) {
       final hits = <int>[]; // indexes into cand*
       for (var k = 0; k < candText.length; k++) {
-        if (re.hasMatch(candText[k])) hits.add(k);
+        if (bestRe.hasMatch(candText[k])) hits.add(k);
       }
-      if (hits.length < minRuleMatches) continue;
       return (
-        ruleName: rule.name,
+        ruleName: best.name,
         chapters: _chaptersFromTitles(bytes, enc, starts, [for (final k in hits) (candLine[k], candText[k])], dataStart, dataEnd, bookUrl),
       );
     }

@@ -179,11 +179,14 @@ void main() {
     expect(searchText('abc', '', 0, ''), isEmpty);
   });
 
-  test('footer progress text', () {
+  test('footer progress text: slot items 章节进度 / 全文进度 (0x632f5c) and the showProgress text of the battery items (0x6344a8)', () {
+    expect(chapterProgressText(2, 3), '2/3');
+    expect(chapterProgressText(1, 0), '分页中');
+    expect(bookProgressText(0.12345), '12.35%');
     expect(progressText(ProgressMode.hidden, pageNum: 1, totalPage: 3, bookProgress: 0.5), '');
     expect(progressText(ProgressMode.chapter, pageNum: 2, totalPage: 3, bookProgress: 0.5), '2/3');
-    expect(progressText(ProgressMode.book, pageNum: 2, totalPage: 3, bookProgress: 0.123), '12.3%');
-    expect(progressText(ProgressMode.both, pageNum: 2, totalPage: 3, bookProgress: 0.5), '2/3  50.0%');
+    expect(progressText(ProgressMode.book, pageNum: 2, totalPage: 3, bookProgress: 0.123), '12.30%');
+    expect(progressText(ProgressMode.both, pageNum: 2, totalPage: 3, bookProgress: 0.5), '2/3  50.00%');
   });
 
   test('scroll-mode controller keeps chapter windows in order', () {
