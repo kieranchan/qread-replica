@@ -3,7 +3,7 @@
 // Off unless the file `<documents>/.qa_driver` exists. That file can only be written by the app itself or, for this sideloaded
 // development build, by the paired computer (`pymobiledevice3 apps push`); its first line is a token every request must carry
 // (`k=<token>`). When on, a small HTTP server listens on 127.0.0.1:8765 only; the computer reaches it through usbmux
-// (`tools/phone.py drive ...`). Requests (GET, coordinates in logical pixels):
+// (`phone/phone.py` at the repository root, see app/README.md). Requests (GET, coordinates in logical pixels):
 //   /size                       screen size and pixel ratio
 //   /texts                      visible texts with their rectangles (`hit` = a tap at the centre reaches that text)
 //   /sem                        semantics labels with rectangles and actions (buttons, icons with tooltips)

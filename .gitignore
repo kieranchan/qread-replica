@@ -23,3 +23,6 @@
 
 # agent worktrees
 /worktrees/
+
+# python caches (phone/)
+__pycache__/

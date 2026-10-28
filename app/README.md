@@ -63,6 +63,23 @@ a demo site served inside the test (`integration_test/demo_site.dart`, text writ
 detail → add to shelf → reader (page turn, menus) → shelf → 发现 / 探索 / 订阅. Screenshots of every step are the
 `ui-screenshots` artifact (14 days).
 
+## Testing on the owner's iPhone (USB, remote taps)
+`phone/phone.py` (repository root; usage in its header) drives the sideloaded replica from this PC: screenshots, the visible texts
+and buttons with their positions, taps, long presses, drags, typing, back. iOS accessibility presses do not reach Flutter buttons,
+so the taps go through the app's QA driver `lib/dev/qa_driver.dart`: it is off unless `phone.py qa-on` puts the file
+`<documents>/.qa_driver` into the app container over USB (the file holds a token every request must carry; the server listens on
+127.0.0.1:8765 only, reached through usbmux). `phone.py qa-off` removes the file again; do that when the check is done.
+```bash
+tools/idevice-venv/Scripts/pymobiledevice3 mounter auto-mount     # once per phone boot, for screenshots
+MSYS_NO_PATHCONV=1 tools/idevice-venv/Scripts/python phone/phone.py qa-on
+MSYS_NO_PATHCONV=1 tools/idevice-venv/Scripts/python phone/phone.py texts
+MSYS_NO_PATHCONV=1 tools/idevice-venv/Scripts/python phone/phone.py tapt 发现
+MSYS_NO_PATHCONV=1 tools/idevice-venv/Scripts/python phone/phone.py shot shot.png
+MSYS_NO_PATHCONV=1 tools/idevice-venv/Scripts/python phone/phone.py qa-off
+```
+Ask the owner before driving the phone, and only take screenshots while the replica is in front. Files of the app container can
+be read with `pymobiledevice3 apps pull <bundle> /Documents/item/<md5 of the store key>.txt <local file>` (settings, sources).
+
 ## iOS
 No Mac here: `.github/workflows/ios-unsigned.yml` builds `flutter build ios --release --no-codesign` on a macOS runner (Xcode 26.3)
 and uploads `newread-unsigned.ipa`; install with Sideloadly. Repository: private `kieranchan/qread-replica` (root = `qread/`).
