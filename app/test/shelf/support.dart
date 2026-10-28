@@ -97,6 +97,16 @@ Future<ShelfEnv> pumpPage(WidgetTester t, Widget page, {List<Book>? books, FakeB
 
 /// Lets real async work (file IO) started from the fake-async test zone finish: every IO step completes in real time but its
 /// continuation only runs on the next pump, so alternate short real waits with pumps.
+/// Like [settle], but keeps going until [done] holds (or [timeout] of real time passes), then settles once more.
+Future<void> settleUntil(WidgetTester t, bool Function() done, {Duration timeout = const Duration(seconds: 10)}) async {
+  final end = DateTime.now().add(timeout);
+  while (!done() && DateTime.now().isBefore(end)) {
+    await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await t.pump();
+  }
+  await settle(t, rounds: 5);
+}
+
 Future<void> settle(WidgetTester t, {int rounds = 25}) async {
   for (var i = 0; i < rounds; i++) {
     await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 8)));

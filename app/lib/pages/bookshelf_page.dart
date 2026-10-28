@@ -357,7 +357,7 @@ class BookshelfPageState extends BookApiPage<BookshelfPage> with AutomaticKeepAl
       case AddBookType.progress:
         await _importProgress();
       case AddBookType.backup:
-        await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const BackbookPage()));
+        await BackbookPage.open(context); // 备份导入: pick a backup device first (AutoDeviceManagementDialog)
       case AddBookType.remote:
         await Nav.openNamed(context, 'wifi_page');
       case AddBookType.backend:

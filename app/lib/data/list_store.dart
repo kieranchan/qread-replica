@@ -31,6 +31,9 @@ class ListStore<T> {
   List<T> items = <T>[];
   bool loaded = false;
 
+  /// Called after every successful [save] (the original schedules the device backup of sources / RSS from its save functions).
+  void Function()? onSaved;
+
   ListStore(this.key, {required this.fromJson, required this.toJson, this.defaults, this.label = ''});
 
   /// Forgets the in-memory list so the next [load] reads from disk again (tests, logout).
@@ -73,6 +76,7 @@ class ListStore<T> {
   Future<bool> save() async {
     try {
       await Storage.write(key, jsonEncode([for (final e in items) toJson(e)]));
+      onSaved?.call();
       return true;
     } catch (e) {
       debugPrint('$label保存失败 $e');

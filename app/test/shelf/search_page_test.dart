@@ -46,7 +46,8 @@ void main() {
     });
     addTearDown(env.dispose);
     await t.pumpWidget(app(const SearchBookPage(searchKey: '斗破苍穹')));
-    await settle(t);
+    // wait for the state, not a fixed time: under a loaded full-suite run the real async work can take longer than settle()
+    await settleUntil(t, () => find.text('已搜索 2/2').evaluate().isNotEmpty && find.byKey(const Key('book_a2')).evaluate().isNotEmpty);
 
     expect(engine.calls, ['search:斗破苍穹']);
     expect(find.text('已搜索 2/2'), findsOneWidget);
@@ -61,10 +62,12 @@ void main() {
     expect(find.byKey(const Key('book_a2')), findsNothing);
 
     // read the file directly: Storage.read would wait on the lock tail of the fake zone (see support.dart)
-    expect(File(Storage.itemPath(SearchPrefs.historyKey)).readAsStringSync(), contains('斗破苍穹'));
+    final history = File(Storage.itemPath(SearchPrefs.historyKey));
+    await settleUntil(t, () => history.existsSync() && history.readAsStringSync().contains('斗破苍穹'));
+    expect(history.readAsStringSync(), contains('斗破苍穹'));
 
     await t.tap(find.byKey(const Key('book_a1')));
-    await settle(t);
+    await settleUntil(t, () => find.byKey(const Key('detail_name')).evaluate().isNotEmpty && engine.calls.contains('info:a1'));
     expect(find.byKey(const Key('detail_name')), findsOneWidget);
     expect(engine.calls, contains('info:a1'));
   });
