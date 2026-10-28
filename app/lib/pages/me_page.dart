@@ -328,7 +328,8 @@ class _MePageState extends State<MePage> {
   Future<void> _feedback() async {
     final text = await Dialogs.input(context, '问题反馈', hint: '请输入您的问题或建议...', maxLines: 5);
     if (text == null || text.trim().isEmpty) return;
-    // TODO(asm 0x516414): the original mails a fixed support address; the replica has none and leaves the recipient empty.
+    // TODO(asm 0x516414): the original mails its operator's support address; deliberately not copied (own server only), the recipient
+    // stays empty.
     final uri = Uri(scheme: 'mailto', query: 'subject=${Uri.encodeComponent('轻悦时光的问题')}&body=${Uri.encodeComponent(text)}');
     try {
       if (!await launchUrl(uri)) throw StateError('mailto');
