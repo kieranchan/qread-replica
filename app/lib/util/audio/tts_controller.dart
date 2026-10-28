@@ -5,7 +5,10 @@
 // A normal engine is a page (util/audio/tts_page.dart) whose `getttsurl` names the backend in `method` (dispatcher 0xe953c4):
 //   data → base64 body · volcano → ai/volcano_tts.dart · mimo / mimoclone / mimovoicedesign → ai/mimo_tts.dart
 //   edge → the Microsoft Edge voice (needs the Edge client token the porting rules forbid copying: unavailable here)
-//   bdtts / bdttsclone → sherpa-onnx local models (`您好，本地引擎仅支持会员使用。` for non-members; not in this build)
+//   bdtts / bdttsclone → sherpa-onnx local models (util/audio/local/): `url` = model name, `body` = voice id (bdtts) or the reference
+//     WAV data URI with `headers.refText` (bdttsclone). Member gate as the original (0xe959d4): for bdtts a non-member hears
+//     `您好，本地引擎仅支持会员使用。` spoken by the model instead of the text, unless the call carries a [debug] callback (the 试听
+//     path of the engine list, 0xe90260); bdttsclone has no gate in the original.
 //   anything else → an HTTP request (get / post) whose reply is the audio.
 // [TtsKind] is the replica's classification for the pages (derived from the page, not stored). Engines saved by earlier replica
 // builds (Legado HttpTTS maps, `tp` 2 / 3 / 4 for Volcano / MiMo / local) keep working.
@@ -18,6 +21,7 @@ import '../../common/app_dirs.dart';
 import '../../data/tts.dart';
 import '../../data/user.dart';
 import '../../models/httptts.dart';
+import 'local/local_tts_manager.dart';
 import 'http_tts.dart';
 import 'my_audio_player.dart';
 import 'system_tts.dart';
@@ -72,11 +76,15 @@ class TtsUnavailable implements Exception {
 
 abstract class TtsController {
   static const String localVipOnly = '您好，本地引擎仅支持会员使用。';
+  /// Kept for callers of earlier builds; the local engine is part of this build now.
   static const String localMissing = '当前版本不包含本地引擎（sherpa-onnx）';
   static const String edgeMissing = '大声朗读（微软 Edge 语音）在当前版本中不可用';
 
   static SystemTtsBackend? _system;
   static Myaudioplayer? _player;
+
+  /// Bumped by [stop]; audio synthesized for an earlier generation is not played.
+  static int _gen = 0;
 
   static SystemTtsBackend get system => _system ??= SystemTtsBackend.create();
 
@@ -89,23 +97,26 @@ abstract class TtsController {
   static bool isSystem(HttpTts e) => e.id == TTSData.defaultEngine.id || e.id == TTSData.legacySystemId;
 
   /// Speaks [text] with [engine]; completes when finished. [speed] is the app's rate (10 = normal); [voice] a voice id/name.
-  static Future<void> speak(HttpTts engine, String text, {int speed = 10, String voice = ''}) async {
+  /// [debug] is the original's log callback of the 试听 path (it also lifts the local-engine member gate, see the file comment).
+  static Future<void> speak(HttpTts engine, String text, {int speed = 10, String voice = '', void Function(String message)? debug}) async {
     if (isSystem(engine)) {
       return system.speak(text, voice: voice, rate: (speed / 20).clamp(0.1, 1.0).toDouble());
     }
     if (TtsKind.of(engine) == TtsKind.multiRole) {
       final narr = TTSData.byId(engine.narrationEngineId) ?? TTSData.defaultEngine;
       if (narr.id == engine.id) throw const TtsUnavailable('请选择旁白朗读引擎');
-      return speak(narr, text, speed: speed, voice: engine.narrationVoiceId);
+      return speak(narr, text, speed: speed, voice: engine.narrationVoiceId, debug: debug);
     }
-    final audio = await synthesize(engine, text, speed: speed, voice: voice);
-    if (audio.bytes.isEmpty) return;
+    final gen = _gen;
+    final audio = await synthesize(engine, text, speed: speed, voice: voice, debug: debug);
+    if (audio.bytes.isEmpty || gen != _gen) return; // stopped while synthesizing (local models take seconds)
     return playBytes(audio.bytes, ext: audio.ext);
   }
 
   /// The audio [engine] produces for [text] (normal engines only; the system voice and multi-role setups have no bytes).
   /// [juese] / [gender] (`male` / `female` / `unknown`) are passed to `getttsurl` for multi-role reading.
-  static Future<TtsAudio> synthesize(HttpTts engine, String text, {int speed = 10, String voice = '', String juese = '', String gender = ''}) async {
+  static Future<TtsAudio> synthesize(HttpTts engine, String text,
+      {int speed = 10, String voice = '', String juese = '', String gender = '', void Function(String message)? debug}) async {
     if (isSystem(engine)) throw const TtsUnavailable('系统朗读不生成音频');
     switch (engine.tp) {
       case 1:
@@ -116,18 +127,19 @@ abstract class TtsController {
       case 3:
         return run(TtsPageRequest('mimo', '', const {}, voice.isNotEmpty ? voice : '${engine.html['voice'] ?? ''}'), text);
       case 4:
-        return run(const TtsPageRequest('bdtts', '', {}, ''), text);
+        return run(const TtsPageRequest('bdtts', '', {}, ''), text, debug: debug);
     }
     final page = TTSData.pageOf(engine);
     if (page.isEmpty) {
       return HttpTtsRunner.synthesize(engine.html, text, speed: speed, voice: voice);
     }
     final req = await TtsPages.request(page, text, speechRate: speed * 5, juese: juese, gender: gender);
-    return run(req, text);
+    return run(req, text, debug: debug);
   }
 
   /// Dispatches one `getttsurl` result (0xe953c4).
-  static Future<TtsAudio> run(TtsPageRequest r, String text, {String volcanoAppId = '', String volcanoToken = ''}) async {
+  static Future<TtsAudio> run(TtsPageRequest r, String text,
+      {String volcanoAppId = '', String volcanoToken = '', void Function(String message)? debug}) async {
     switch (r.method) {
       case 'data':
         final bytes = base64Decode(r.body.contains(',') && r.body.startsWith('data:') ? r.body.substring(r.body.indexOf(',') + 1) : r.body);
@@ -145,9 +157,14 @@ abstract class TtsController {
       case 'mimovoicedesign':
         return TtsAudio(await MimoTTS.voiceDesign(text, description: r.body, instruction: r.url), 'audio/wav');
       case 'bdtts':
+        final voiceId = int.tryParse(r.body.trim()) ?? 0;
+        final say = UserSession.isvip || debug != null ? text : localVipOnly;
+        return TtsAudio(await LocalTtsEngine.instance.synthesize(r.url, voiceId, say), 'audio/wav');
       case 'bdttsclone':
-        if (!UserSession.isvip) throw const TtsUnavailable(localVipOnly);
-        throw const TtsUnavailable(localMissing);
+        return TtsAudio(
+            await LocalTtsEngine.instance
+                .synthesize(r.url, 0, text, referenceAudioDataUri: r.body, referenceText: r.headers['refText'] ?? ''),
+            'audio/wav');
     }
     final res = await TtsPages.fetch(r);
     final bytes = Uint8List.fromList(res.bytes);
@@ -170,6 +187,7 @@ abstract class TtsController {
   }
 
   static Future<void> stop() async {
+    _gen++;
     await _system?.stop();
     await _player?.stop();
   }

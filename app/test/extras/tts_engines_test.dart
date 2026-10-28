@@ -89,9 +89,10 @@ void main() {
       expect(data.bytes, [0x49, 0x44, 0x33, 1]);
       expect(data.ext, 'mp3');
       await expectLater(TtsController.synthesize(pageEngine(TtsPages.edgePage('v')), 'x'), throwsA(predicate((e) => '$e' == TtsController.edgeMissing)));
-      await expectLater(TtsController.synthesize(pageEngine(TtsPages.localPage('m', '1')), 'x'), throwsA(predicate((e) => '$e' == '您好，本地引擎仅支持会员使用。')));
+      // local engines run through util/audio/local (gate and synthesis: test/extras/local_tts_test.dart); no model here
+      await expectLater(TtsController.synthesize(pageEngine(TtsPages.localPage('m', '1')), 'x'), throwsA(predicate((e) => '$e' == '本地模型不存在：m')));
       await UserSession.apply(Userinfo(username: 'u', vip: '2030-01-01', tockenid: 't', email: 'e@x.io', nickname: 'u', avatarUrl: '', isvip: true));
-      await expectLater(TtsController.synthesize(pageEngine(TtsPages.localPage('m', '1')), 'x'), throwsA(predicate((e) => '$e' == TtsController.localMissing)));
+      await expectLater(TtsController.synthesize(pageEngine(TtsPages.localPage('m', '1')), 'x'), throwsA(predicate((e) => '$e' == '本地模型不存在：m')));
       final host = FakeHost();
       final old = TtsPageHost.create;
       TtsPageHost.create = () => host;

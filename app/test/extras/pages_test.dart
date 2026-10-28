@@ -179,12 +179,15 @@ void main() {
       expect(Toast.log, containsAll(['仅会员可编辑', '仅会员可导入']));
     });
 
-    testWidgets('TTS: local engine gate; multi-role needs an AI model', (t) async {
+    testWidgets('TTS: the local engine sheet opens for everyone (gate in synthesis); multi-role needs an AI model', (t) async {
       await t.pumpWidget(app(const TTsSetting()));
       expect(find.text('系统默认'), findsWidgets);
       await t.tap(find.byKey(const Key('tts_local')));
-      await t.pump();
-      expect(Toast.log, contains(TTsSetting.localGate));
+      await t.pumpAndSettle();
+      expect(find.text('本地引擎 · 模型管理'), findsOneWidget);
+      expect(find.text(TTsSetting.localGate), findsOneWidget);
+      Navigator.of(t.element(find.text('本地引擎 · 模型管理'))).pop();
+      await t.pumpAndSettle();
       await t.tap(find.byKey(const Key('tts_add')));
       await t.pumpAndSettle();
       expect(find.text('请选择新建引擎类型'), findsOneWidget);
@@ -251,12 +254,15 @@ void main() {
     expect(TTSData.engines.map((e) => e.name), contains('御姐-温柔'));
   });
 
-  testWidgets('members pass the local-engine gate and get the not-in-this-build message', (t) async {
+  testWidgets('the 新建引擎 dialog\'s 本地引擎 opens the model manager', (t) async {
     await signIn(vip: true);
     await t.pumpWidget(app(const TTsSetting()));
-    await t.tap(find.byKey(const Key('tts_local')));
-    await t.pump();
-    expect(Toast.log, contains('当前版本不包含本地引擎（sherpa-onnx）'));
+    await t.tap(find.byKey(const Key('tts_add')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('tts_new_local')));
+    await t.pumpAndSettle();
+    expect(find.text('本地引擎 · 模型管理'), findsOneWidget);
+    expect(find.text('尚未导入模型包\n\n点右上角「导入模型包」选择 zip 模型文件'), findsOneWidget);
   });
 
   testWidgets('AI models: add through the editor, completions url rule, check hook', (t) async {
