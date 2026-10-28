@@ -16,6 +16,7 @@ import 'package:newread/data/tts.dart';
 import 'package:newread/data/user.dart';
 import 'package:newread/data/webdav.dart';
 import 'package:newread/models/ai_model_config.dart';
+import 'package:newread/models/book.dart';
 import 'package:newread/models/theme.dart';
 import 'package:newread/models/userinfo.dart';
 import 'package:newread/pages/me_page.dart';
@@ -349,9 +350,17 @@ void main() {
     await BookReadingTimeStorage.addReading('book-a', 600, day: today);
     await BookReadingTimeStorage.addReading('book-b', 1200, day: today.subtract(const Duration(days: 3)));
     await BookReadingTimeStorage.addReading('book-a', 60, day: today.subtract(const Duration(days: 40)));
+    await BookSelfN.addAll([
+      Book(bookUrl: 'u1', name: '读到一半', totalChapterNum: 10, durChapterIndex: 3),
+      Book(bookUrl: 'u2', name: '读完了', totalChapterNum: 10, durChapterIndex: 10),
+      Book(bookUrl: 'u3', name: '有声书', totalChapterNum: 10, durChapterIndex: 1)..type_ = 1,
+    ]);
     final s = await ReadingStats.load(today: today);
-    expect(s.totalSeconds, 1860);
-    expect(s.books, 2);
+    expect(s.totalSeconds, 1800, reason: '累计时长 sums the last 30 days (0x10df938)');
+    expect(s.books, 1, reason: 'in progress: type != 1 and durChapterIndex < totalChapterNum');
+    expect(await BookReadingTimeStorage.readingTimeRange(today.subtract(const Duration(days: 30)), today), {'2026-10-28': 600, '2026-10-25': 1200});
+    expect(await BookReadingTimeStorage.bookRecords('book-a'), {'2026-10-28': 600, '2026-09-18': 60});
+    expect(await BookReadingTimeStorage.bookSeconds('book-a'), 660);
     expect(s.days.length, 30);
     expect(s.days.last.$2, 600);
     expect(s.days[26].$2, 1200);

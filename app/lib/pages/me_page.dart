@@ -66,13 +66,10 @@ class MePage extends StatefulWidget {
   static const String showDailyGoalKey = 'showDailyGoal';
   static const String showRecentReadKey = 'showRecentRead';
 
-  /// Default goal in minutes when nothing is stored. TODO(asm 0x10be2a8): the original default is not recovered.
+  /// Default goal in minutes when nothing is stored (0x10be2a8 → closure 0x8ebf9c: `int.tryParse(dailyReadingGoal) ?? 30`).
   static const int defaultGoal = 30;
 
-  static int get dailyGoal {
-    final v = int.tryParse(Storage.getString(dailyGoalKey).trim());
-    return v == null || v <= 0 ? defaultGoal : v;
-  }
+  static int get dailyGoal => int.tryParse(Storage.getString(dailyGoalKey).trim()) ?? defaultGoal;
 
   @override
   State<MePage> createState() => _MePageState();
