@@ -100,8 +100,10 @@ abstract class TimeSourceApi {
     return book;
   }
 
-  /// `chapter(tocUrl, bookurl)`.
+  /// `chapter(tocUrl, bookurl)`. A book whose toc url is not known yet (empty, or still the book url a search result carries) gets
+  /// its `info()` first, as the detail page would: pages often hand the real toc url out of `info()` only.
   static Future<List<BookChapter>> chapters(BookSource s, Book book, {DebugLog? debug}) async {
+    if (book.tocUrl.isEmpty || book.tocUrl == book.bookUrl) await bookInfo(s, book, debug: debug);
     final tocUrl = book.tocUrl.isNotEmpty ? book.tocUrl : book.bookUrl;
     final list = await (await runOf(s)).chapter(tocUrl, book.bookUrl, log: _log(debug), text: _text(debug));
     return [

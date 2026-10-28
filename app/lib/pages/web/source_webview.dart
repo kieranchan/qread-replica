@@ -129,6 +129,7 @@ class _SourceWebviewPageState extends State<SourceWebviewPage> implements JsHand
     _done = true;
     final url = (await _c?.getUrl())?.toString() ?? r.url;
     await WebCookies.pull(url);
+    await WebCookies.pullAll();
     final html = await _html();
     if (mounted) Navigator.of(context).pop(html);
   }

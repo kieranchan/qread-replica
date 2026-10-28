@@ -131,6 +131,10 @@ abstract class WebCookies {
   /// Takes every cookie the web views hold for [url] (HttpOnly ones too) into the store (after a page loaded).
   static Future<void> Function(String url) pull = _pull;
 
+  /// Takes every cookie of every site the web views know into the store (when a login / browser page closes: the page may have
+  /// logged in through requests to other hosts than its own, e.g. an API server of the source). iOS / macOS only.
+  static Future<void> Function() pullAll = _pullAll;
+
   static Future<void> _push(String url) async {
     final u = Uri.tryParse(url);
     if (u == null || u.host.isEmpty || !u.scheme.startsWith('http')) return;
@@ -143,6 +147,22 @@ abstract class WebCookies {
       } catch (err) {
         debugPrint('注入cookie失败:$err');
       }
+    }
+  }
+
+  static Future<void> _pullAll() async {
+    if (defaultTargetPlatform != TargetPlatform.iOS && defaultTargetPlatform != TargetPlatform.macOS) return;
+    try {
+      final byHost = <String, List<String>>{};
+      for (final c in await CookieManager.instance().getAllCookies()) {
+        var host = (c.domain ?? '').trim();
+        if (host.startsWith('.')) host = host.substring(1);
+        if (host.isEmpty || c.name.isEmpty) continue;
+        (byHost[host] ??= []).add('${c.name}=${c.value}');
+      }
+      byHost.forEach((host, pairs) => CookieStore.replaceCookie('https://$host', pairs.join(';')));
+    } catch (e) {
+      debugPrint('读取webview cookie失败:$e');
     }
   }
 
