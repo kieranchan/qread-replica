@@ -7,8 +7,10 @@
 //     配置ai大模型。`) plus the engine kinds of 0x606390: 火山引擎 (字节跳动 · 21 款音色), MiMo引擎 (小米 MiMo · 预置/克隆/音色设计),
 //     本地引擎 (sherpa-onnx 离线模型 · 无需联网); 大声朗读 (the Edge voice) is not offered (Edge client token, porting rule 4).
 //     Volcano / MiMo engines are pages with the user's own credentials (pages/tts/vendor_engines.dart).
-//   * 本地引擎 section (0x606e08): member-only (`本地引擎仅 VIP 可用`), `尚未导入模型包…`, `删除模型会保留由它生成的全部朗读引擎。`
-//     This build has no sherpa-onnx runtime: members see `当前版本不包含本地引擎（sherpa-onnx）`; no model downloads.
+//   * 本地引擎 opens the model manager sheet (pages/tts/local/local_engine_sheet.dart, 0x606d14): import / download sherpa-onnx model
+//     packages, voices → page engines, clone engines, per-model synthesis settings. As in the original the sheet has no member check
+//     (it only shows `本地引擎仅 VIP 可用`); the gate is in synthesis (util/audio/tts_controller.dart). 试听 passes the original's debug
+//     callback (0xfe19f8 → 0xe90260), which lets non-members hear local engines here.
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -20,7 +22,8 @@ import '../../storage/setting.dart';
 import '../../theme/widgets.dart';
 import '../../util/audio/tts_controller.dart';
 import '../../util/toast.dart';
-import '../../util/vip.dart';
+import '../../util/audio/local/local_tts_manager.dart';
+import 'local/local_engine_sheet.dart';
 import 'multi_role_edit.dart';
 import 'tts_edit.dart';
 import 'tts_help.dart';
@@ -48,6 +51,9 @@ class _ReplaceRuleSettingState extends State<TTsSetting> {
     TTSData.load().then((_) {
       if (mounted) setState(() {});
     });
+    LocalTtsManager.load().then((_) {
+      if (mounted) setState(() {});
+    }, onError: (_) {});
   }
 
   @override
@@ -66,7 +72,7 @@ class _ReplaceRuleSettingState extends State<TTsSetting> {
     }
     setState(() => _playing = e.id);
     try {
-      await TtsController.speak(e, TTsSetting.sample);
+      await TtsController.speak(e, TTsSetting.sample, debug: (m) => debugPrint(m));
     } catch (err) {
       Toast.show('$err', iserror: true);
     } finally {
@@ -128,8 +134,7 @@ class _ReplaceRuleSettingState extends State<TTsSetting> {
       case TtsKind.mimo:
         await VendorEngines.mimo(context);
       case TtsKind.local:
-        if (!Vip.require(TTsSetting.localGate)) return;
-        Toast.show(TtsController.localMissing);
+        await LocalEngineSheet.show(context);
       case TtsKind.edge:
         Toast.show(TtsController.edgeMissing);
     }
@@ -149,7 +154,6 @@ class _ReplaceRuleSettingState extends State<TTsSetting> {
         if (TTSData.pageOf(e).isEmpty) return VendorEngines.mimoKey(context);
         await Get.to(() => EditTts(engine: e));
       case TtsKind.local:
-        if (!Vip.require(TTsSetting.localGate)) return;
       case TtsKind.edge:
         await Get.to(() => EditTts(engine: e));
     }
@@ -253,21 +257,18 @@ class _ReplaceRuleSettingState extends State<TTsSetting> {
 
   Widget _localSection() {
     final cs = Theme.of(context).colorScheme;
+    final n = LocalTtsManager.models.length;
     return SectionCard(title: '本地引擎', children: [
       ListTile(
         key: const Key('tts_local'),
         leading: const Icon(Icons.memory_outlined),
-        title: const Text('sherpa-onnx 离线模型'),
-        subtitle: const Text('尚未导入模型包\n\n点右上角「导入模型包」选择 zip 模型文件'),
-        trailing: const Icon(Icons.lock_outline),
-        onTap: () {
-          if (!Vip.require(TTsSetting.localGate)) return;
-          Toast.show(TtsController.localMissing);
+        title: const Text('sherpa-onnx 离线模型 · 无需联网'),
+        subtitle: Text(n == 0 ? '尚未导入模型包' : '已导入 $n 个模型', style: TextStyle(fontSize: 12, color: cs.outline)),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () async {
+          await LocalEngineSheet.show(context);
+          if (mounted) setState(() {});
         },
-      ),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-        child: Text('删除模型会保留由它生成的全部朗读引擎。', style: TextStyle(fontSize: 12, color: cs.outline)),
       ),
     ]);
   }

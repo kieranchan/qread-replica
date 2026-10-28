@@ -3,7 +3,8 @@
 // 角色列表 (n) with 添加 (`暂无角色` / `点击上方"添加"按钮创建角色`; role dialog: name, 性别 男/女/未知, engine `引擎: …`), delete
 // (`确定要删除该角色吗？`) and 从角色库导入 (the AI character library of a book, `所选角色均已存在`, `已导入 n 个角色`).
 // Save checks `请选择旁白朗读引擎` / `请选择男性朗读引擎` / `请选择女性朗读引擎` / `角色 x 为选择朗读引擎` and stores an `HttpTts` with
-// tp = 多角色 (global) or the per-book setup when [bookUrl] is given (`Tts.saveForBook`).
+// tp = 多角色 (global) or the per-book setup when [bookUrl] is given (`Tts.saveForBook`). Engines of more than one local model ask
+// first (`混用多个本地模型` / `当前混用了多个本地模型（…），朗读时可能因反复加载模型而严重卡顿。仍要保存吗？`).
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -13,6 +14,7 @@ import '../../storage/setting.dart';
 import '../../theme/widgets.dart';
 import '../../util/audio/tts_controller.dart';
 import '../../util/toast.dart';
+import 'local/local_engines.dart';
 
 class MultiRoleEdit extends StatefulWidget {
   final HttpTts? engine;
@@ -120,6 +122,13 @@ class _MultiRoleEditState extends State<MultiRoleEdit> {
       if (r.engineId.isEmpty) return Toast.show('角色 ${r.name} 为选择朗读引擎', iserror: true);
     }
     await TTSData.load();
+    // several local models in one setup reload the models over and over (0x104543c)
+    final models = LocalEngines.modelsOf([e.narrationEngineId, e.defaultMaleDialogueEngineId, e.defaultFemaleDialogueEngineId, for (final r in _roles) r.engineId]);
+    if (models.length > 1) {
+      if (!mounted) return;
+      final go = await Dialogs.confirm(context, '混用多个本地模型', '当前混用了多个本地模型（${models.join('、')}），朗读时可能因反复加载模型而严重卡顿。仍要保存吗？');
+      if (!go) return;
+    }
     if (widget.bookUrl.isEmpty && TTSData.engines.any((x) => x.name == e.name && x.id != e.id)) return Toast.show('名称已存在', iserror: true);
     e
       ..tp = TtsKind.multiRole.tp

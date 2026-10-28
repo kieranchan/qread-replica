@@ -6,18 +6,26 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
-import 'package:flutter/widgets.dart' show AppLifecycleState;
+import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
 import 'package:newread/common/common.dart';
+import 'package:newread/data/tts.dart';
 import 'package:newread/data/user.dart';
 import 'package:newread/models/httptts.dart';
 import 'package:newread/models/userinfo.dart';
+import 'package:newread/pages/tts/local/local_engines.dart';
+import 'package:newread/pages/tts/tts_setting.dart';
+import 'package:newread/theme/widgets.dart';
+import 'package:newread/util/audio/my_audio_player.dart';
 import 'package:newread/util/audio/local/local_tts_downloads.dart';
 import 'package:newread/util/audio/local/local_tts_files.dart';
 import 'package:newread/util/audio/local/local_tts_manager.dart';
 import 'package:newread/util/audio/local/local_tts_worker.dart';
 import 'package:newread/util/audio/tts_controller.dart';
 import 'package:newread/util/audio/tts_page.dart';
+import 'package:newread/util/toast.dart';
 import 'package:path/path.dart' as p;
 
 import '../support/env.dart';
@@ -86,6 +94,52 @@ String wavUri(Float32List samples, int rate) => 'data:audio/wav;base64,${base64E
 
 Future<void> signIn({required bool vip}) => UserSession.apply(Userinfo(
     username: 'u', vip: vip ? '2030-01-01' : '', tockenid: 't', email: 'e@x.io', nickname: 'u', avatarUrl: '', isvip: vip));
+
+/// Serves files from memory to Dio (widget tests: flutter_test answers every real HTTP request with 400).
+class MemoryAdapter implements HttpClientAdapter {
+  final Map<String, List<int>> files;
+  final List<String> seen = [];
+  MemoryAdapter(this.files);
+
+  @override
+  Future<ResponseBody> fetch(RequestOptions o, Stream<Uint8List>? requestStream, Future<void>? cancelFuture) async {
+    seen.add(o.uri.path);
+    final b = files[o.uri.path];
+    if (b == null) return ResponseBody.fromString('not found', 404);
+    return ResponseBody.fromBytes(Uint8List.fromList(b), 200, headers: {
+      Headers.contentLengthHeader: ['${b.length}'],
+    });
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+/// A silent player (no just_audio on the host).
+class SilentAudio implements AudioBackend {
+  final List<String> played = [];
+  String _src = '';
+  @override
+  Future<void> setSource(String pathOrUrl) async => _src = pathOrUrl;
+  @override
+  Future<void> play() async => played.add(_src);
+  @override
+  Future<void> pause() async {}
+  @override
+  Future<void> stop() async {}
+  @override
+  Future<void> setVolume(double v) async {}
+  @override
+  Future<void> setSpeed(double v) async {}
+  @override
+  Future<void> setLoop(bool loop) async {}
+  @override
+  bool get playing => false;
+  @override
+  Future<void> get completed async {}
+  @override
+  Future<void> dispose() async {}
+}
 
 /// Waits until a request is in flight at the worker.
 Future<void> waitPending() async {
@@ -297,7 +351,24 @@ void main() {
       expect(LocalTtsDownloads.fileName('https://x/a%20b.zip'), 'a b.zip');
     });
 
+    test('server/deploy/down.json: the original format, official k2-fsa release files only, each one the app can import', () {
+      final raw = jsonDecode(File(p.join('..', 'server', 'deploy', 'down.json')).readAsStringSync()) as Map;
+      final list = LocalTtsDownloads.parse(raw);
+      expect(list.length, raw.length);
+      expect(list.length, greaterThanOrEqualTo(5));
+      for (final url in list.values) {
+        expect(url, startsWith('https://github.com/k2-fsa/sherpa-onnx/releases/download/'));
+        expect(url, isNot(contains('qread')));
+        expect(LocalTtsDownloads.isDirect(url), isTrue, reason: url);
+      }
+      expect(list.values.where(LocalTtsFiles.isVocoderFile).length, 2, reason: 'matcha / zipvoice vocoders');
+    });
+
     test('fetched from the own server (Common.apiBase + static/down.json), downloaded with progress', () async {
+      // the widget tests of this file install flutter_test's HTTP mock (400 for everything): use real sockets here
+      final overrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = overrides);
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final seen = <String>[];
       var reply = '{"模型A": "http://127.0.0.1:${server.port}/files/m.zip"}';
@@ -441,6 +512,171 @@ void main() {
       expect(w.samples.first, closeTo(0.02, 0.001));
       await expectLater(TtsController.synthesize(pageEngine(TtsPages.localPage('gone', '0')), 'x'),
           throwsA(predicate((e) => '$e' == '本地模型不存在：gone')));
+    });
+  });
+
+  group('model manager sheet', () {
+    // one backend for the group: the preview player of LocalEngines is static and keeps the backend it was made with
+    final audio = SilentAudio();
+    final oldPick = DeviceIo.pickFile;
+    final oldAudio = AudioBackend.create;
+    setUp(() {
+      audio.played.clear();
+      Toast.log.clear();
+      AudioBackend.create = () => audio;
+    });
+    tearDown(() {
+      DeviceIo.pickFile = oldPick;
+      AudioBackend.create = oldAudio;
+    });
+
+    Widget app() => const GetMaterialApp(home: TTsSetting());
+
+    /// Lets real IO / isolates run until [done] holds.
+    Future<void> until(WidgetTester t, bool Function() done) async {
+      bool spinning() =>
+          find.byType(CircularProgressIndicator).evaluate().isNotEmpty || find.byType(LinearProgressIndicator).evaluate().isNotEmpty;
+      for (var i = 0; i < 300 && (!done() || spinning()); i++) {
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await t.pump(const Duration(milliseconds: 20)); // Dio needs fake time to move
+      }
+      if (!spinning()) await t.pumpAndSettle();
+      expect(done(), isTrue,
+          reason: 'last toasts: ${Toast.log.reversed.take(3).toList()}; texts: '
+              '${find.byType(Text).evaluate().map((e) => (e.widget as Text).data).whereType<String>().take(40).toList()}');
+    }
+
+    bool toast(String prefix) => Toast.log.any((m) => m.startsWith(prefix));
+
+    testWidgets('download from down.json (progress dialog) → voices → engine; settings; delete keeps engines', (t) async {
+      final rec = RecordingEngine();
+      LocalTtsEngine.instance = rec;
+      final net = MemoryAdapter({
+        '/static/down.json': utf8.encode(jsonEncode({'vits 中文': 'http://models.test/files/vits-zh.zip', '网盘': 'https://pan.example.com/s/abc'})),
+        '/files/vits-zh.zip': vitsZip(),
+      });
+      LocalTtsDownloads.dio = Dio()..httpClientAdapter = net;
+      final oldBase = Common.apiBase;
+      Common.apiBase = 'http://own.test/';
+      addTearDown(() {
+        Common.apiBase = oldBase;
+        LocalTtsDownloads.dio = null;
+      });
+
+      await t.pumpWidget(app());
+      await t.tap(find.byKey(const Key('tts_local')));
+      await t.pumpAndSettle();
+      expect(find.text('本地引擎仅 VIP 可用'), findsOneWidget);
+      await t.tap(find.byKey(const Key('local_download')));
+      await until(t, () => find.byKey(const Key('local_down_vits 中文')).evaluate().isNotEmpty);
+      expect(find.byKey(const Key('local_down_网盘')), findsOneWidget);
+      await t.tap(find.byKey(const Key('local_down_vits 中文')));
+      await until(t, () => toast('已导入模型：vits-zh（2 款音色，'));
+      expect(find.byKey(const Key('local_model_vits-zh')), findsOneWidget);
+      expect(find.text('2 款音色 · 导入于 ${LocalEngines.date(LocalTtsManager.byName('vits-zh')!.importTime)}'), findsOneWidget);
+      expect(Directory(p.join(dev.dir.path, 'cache', 'local_tts_download')).listSync(), isEmpty, reason: 'download removed after import');
+      expect(net.seen, ['/static/down.json', '/files/vits-zh.zip']);
+
+      await t.tap(find.byKey(const Key('local_engines_vits-zh')));
+      await t.pumpAndSettle();
+      expect(find.text('vits-zh · 2 款音色'), findsOneWidget);
+      await t.tap(find.byKey(const Key('local_filter_lang_en')));
+      await t.pumpAndSettle();
+      expect(find.byKey(const Key('local_voice_0')), findsNothing);
+      await t.tap(find.byKey(const Key('local_play_2')));
+      await until(t, () => audio.played.isNotEmpty);
+      expect(rec.calls.single, 'vits-zh|2|${LocalEngines.previewEn}||', reason: 'previews are not gated');
+      expect(p.basename(audio.played.single), 'bdtts_preview.wav');
+
+      await t.tap(find.byKey(const Key('local_voice_2')));
+      await t.pumpAndSettle();
+      await t.enterText(find.byKey(const Key('local_engine_name')), 'Bob 本地');
+      await t.tap(find.byKey(const Key('local_engine_name_ok')));
+      await until(t, () => toast('已添加：Bob 本地'));
+      expect(TTSData.byId('bdtts_vits-zh_2')!.name, 'Bob 本地');
+      expect(TtsPages.literal(TTSData.pageOf(TTSData.byId('bdtts_vits-zh_2')!))!.toJson(), {'method': 'bdtts', 'url': 'vits-zh', 'headers': {}, 'body': '2'});
+      expect(find.text('已添加'), findsOneWidget);
+      await t.tap(find.byKey(const Key('local_voice_2')));
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const Key('local_engine_name_ok')));
+      await until(t, () => toast('该音色引擎已存在'));
+      Navigator.of(t.element(find.text('vits-zh · 2 款音色'))).pop();
+      await t.pumpAndSettle();
+
+      await t.tap(find.byKey(const Key('local_settings_vits-zh')));
+      await t.pumpAndSettle();
+      expect(find.text('vits-zh\n合成设置'), findsOneWidget);
+      expect(find.text('流匹配步数（仅克隆模型）'), findsNothing);
+      await t.tap(find.byKey(const Key('local_threads_1')));
+      await t.pumpAndSettle();
+      expect(find.text('当前：1 线程'), findsOneWidget);
+      await t.tap(find.byKey(const Key('local_settings_save')));
+      await until(t, () => toast('设置已保存'));
+      expect(LocalTtsManager.byName('vits-zh')!.numThreads, 1);
+
+      await t.tap(find.byKey(const Key('local_delete_vits-zh')));
+      await t.pumpAndSettle();
+      expect(find.text('确定删除模型「vits-zh」吗？\n由它生成的全部朗读引擎会被保留。'), findsOneWidget);
+      await t.tap(find.byKey(const Key('dialog_confirm')));
+      await until(t, () => toast('已删除模型，由它生成的朗读引擎已保留'));
+      expect(find.text('尚未导入模型包\n\n点右上角「导入模型包」选择 zip 模型文件'), findsOneWidget);
+      expect(TTSData.byId('bdtts_vits-zh_2'), isNotNull, reason: 'engines stay');
+    });
+
+    testWidgets('import from Files; a clone model: reference WAV, words required, engine created', (t) async {
+      final rec = RecordingEngine();
+      LocalTtsEngine.instance = rec;
+      await t.runAsync(() => LocalTtsManager.importShared(writeTo(scratch, 'vocos_24khz.onnx', [1]).path));
+      final zip = writeTo(scratch, 'clone.zip', ZipEncoder().encode(Archive()
+        ..add(_f('tts.json', jsonEncode({'name': 'clone', 'engine': 'zipvoice', 'voices': []})))
+        ..add(_f('tokens.txt'))
+        ..add(_f('lexicon.txt'))
+        ..add(_f('encoder.onnx'))
+        ..add(_f('decoder.onnx'))));
+      final wav = writeTo(scratch, 'me.wav', LocalTtsFiles.wavBytes(Float32List(16000 * 4), 16000));
+      File? next = zip;
+      DeviceIo.pickFile = ({List<String>? extensions, bool image = false}) async => next;
+
+      await t.pumpWidget(app());
+      await t.tap(find.byKey(const Key('tts_local')));
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const Key('local_import')));
+      await until(t, () => toast('已导入模型：clone（0 款音色，'));
+      expect(find.text('克隆模型 · 上传音频即可克隆音色 · 导入于 ${LocalEngines.date(LocalTtsManager.byName('clone')!.importTime)}'), findsOneWidget);
+
+      await t.tap(find.byKey(const Key('local_engines_clone')));
+      await t.pumpAndSettle();
+      expect(find.text('参考音频：未选择'), findsOneWidget);
+      next = wav;
+      await t.tap(find.byKey(const Key('local_clone_pick')));
+      await until(t, () => find.text('参考音频：me.wav（4.0 秒）').evaluate().isNotEmpty);
+      await t.tap(find.byKey(const Key('local_clone_create')));
+      await t.pumpAndSettle();
+      expect(Toast.log.last, '请先填写参考音频中说的文字');
+      await t.enterText(find.byKey(const Key('local_clone_text')), '今天天气很好');
+      await t.tap(find.byKey(const Key('local_clone_preview')));
+      await until(t, () => audio.played.isNotEmpty);
+      expect(rec.calls.single, startsWith('clone|0|${LocalEngines.previewClone}|data:audio/wav;base64,'));
+      expect(p.basename(audio.played.single), 'bdtts_clone_preview.wav');
+      await t.tap(find.byKey(const Key('local_clone_create')));
+      await until(t, () => toast('已添加：克隆音色'));
+      final e = TTSData.engines.singleWhere((x) => x.name == '克隆音色');
+      final r = TtsPages.literal(TTSData.pageOf(e))!;
+      expect((r.method, r.url, r.headers['refText']), ('bdttsclone', 'clone', '今天天气很好'));
+      expect(LocalTtsFiles.readWav(LocalTtsFiles.dataUriBytes(r.body)).samples.length, 16000 * 4);
+      expect(LocalEngines.modelsOf([e.id, 'nope']), ['clone']);
+
+      await t.tap(find.byKey(const Key('local_settings_clone')));
+      await t.pumpAndSettle();
+      expect(find.text('流匹配步数（仅克隆模型）'), findsOneWidget);
+      await t.ensureVisible(find.byKey(const Key('local_steps_16')));
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const Key('local_steps_16')));
+      await t.pumpAndSettle();
+      expect(find.text('当前：16 步'), findsOneWidget);
+      await t.tap(find.byKey(const Key('local_settings_save')));
+      await until(t, () => toast('设置已保存'));
+      expect(LocalTtsManager.byName('clone')!.numSteps, 16);
     });
   });
 }

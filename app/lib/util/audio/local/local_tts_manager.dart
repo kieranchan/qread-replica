@@ -90,8 +90,8 @@ abstract class LocalTtsManager {
 
   // ---------------------------------------------------------------- state
 
-  static final _Lock _lock = _Lock();
-  static final _Lock _synthLock = _Lock();
+  static _Lock _lock = _Lock();
+  static _Lock _synthLock = _Lock();
   static List<LocalTtsModel> _models = [];
   static bool _loaded = false;
 
@@ -360,6 +360,8 @@ abstract class LocalTtsManager {
   /// Stops everything and forgets the registry in memory (tests, sign-out).
   static Future<void> reset() async {
     _kill();
+    _lock = _Lock();
+    _synthLock = _Lock();
     _failAll('已取消');
     _idle?.cancel();
     _idle = null;
