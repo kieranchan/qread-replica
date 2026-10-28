@@ -83,6 +83,9 @@ abstract class TtsController {
   static SystemTtsBackend? _system;
   static Myaudioplayer? _player;
 
+  /// Bumped by [stop]; audio synthesized for an earlier generation is not played.
+  static int _gen = 0;
+
   static SystemTtsBackend get system => _system ??= SystemTtsBackend.create();
 
   /// Forgets cached backends (tests swap the factories).
@@ -104,8 +107,9 @@ abstract class TtsController {
       if (narr.id == engine.id) throw const TtsUnavailable('请选择旁白朗读引擎');
       return speak(narr, text, speed: speed, voice: engine.narrationVoiceId, debug: debug);
     }
+    final gen = _gen;
     final audio = await synthesize(engine, text, speed: speed, voice: voice, debug: debug);
-    if (audio.bytes.isEmpty) return;
+    if (audio.bytes.isEmpty || gen != _gen) return; // stopped while synthesizing (local models take seconds)
     return playBytes(audio.bytes, ext: audio.ext);
   }
 
@@ -183,6 +187,7 @@ abstract class TtsController {
   }
 
   static Future<void> stop() async {
+    _gen++;
     await _system?.stop();
     await _player?.stop();
   }

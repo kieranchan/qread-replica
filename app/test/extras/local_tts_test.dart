@@ -1,6 +1,7 @@
 // 本地引擎 (sherpa-onnx offline models): model package import / validation / registry with tiny fake model folders, the engine
 // config, WAV in/out, down.json parsing, the worker isolate protocol and watchdogs with a fake synthesizer (no native library),
 // engine selection in the TTS dispatcher and the original member gate.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -154,9 +155,13 @@ HttpTts pageEngine(String page) => HttpTts(id: 'e', name: 'e', html: {'page': pa
 /// A recording engine for the dispatcher tests.
 class RecordingEngine implements LocalTtsEngine {
   final List<String> calls = [];
+
+  /// When set, synthesis waits for it (a slow model).
+  Completer<void>? gate;
   @override
   Future<Uint8List> synthesize(String model, int voiceId, String text, {String referenceAudioDataUri = '', String referenceText = ''}) async {
     calls.add('$model|$voiceId|$text|$referenceAudioDataUri|$referenceText');
+    if (gate != null) await gate!.future;
     return LocalTtsFiles.wavBytes(Float32List(8), 16000);
   }
 }
@@ -502,6 +507,30 @@ void main() {
       await signIn(vip: true);
       await TtsController.synthesize(local, '正文');
       expect(rec.calls.last, 'vits-zh|2|正文||');
+    });
+
+    test('stop while a local model synthesizes: the late audio is not played', () async {
+      final rec = RecordingEngine()..gate = Completer<void>();
+      LocalTtsEngine.instance = rec;
+      final audio = SilentAudio();
+      final oldAudio = AudioBackend.create;
+      AudioBackend.create = () => audio;
+      TtsController.reset();
+      addTearDown(() {
+        AudioBackend.create = oldAudio;
+        TtsController.reset();
+      });
+      await signIn(vip: true);
+      final engine = pageEngine(TtsPages.localPage('vits-zh', '0'));
+      final speaking = TtsController.speak(engine, '第一段');
+      await Future<void>.delayed(Duration.zero);
+      await TtsController.stop();
+      rec.gate!.complete();
+      await speaking;
+      expect(audio.played, isEmpty);
+      rec.gate = null;
+      await TtsController.speak(engine, '第二段');
+      expect(p.basename(audio.played.single), '_tts_play.wav');
     });
 
     test('end to end: a member, a page engine of an imported model, the worker', () async {
