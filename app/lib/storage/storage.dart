@@ -222,15 +222,16 @@ abstract class Storage {
     }
     await tmp.writeAsString(value, flush: true);
     await marker.create();
-    // TODO(asm 0xe073ec): the original calls sub_ca3dc4 (copy or rename) here and then deletes tmp/tmp2 when tmp still exists.
+    // 0xe073ec: the original moves tmp over the target (sub_ca3dc4, a `_File` op), then deletes the leftovers when they exist
+    // (sync `_File._exists` + `delete(recursive:)`); a failure only shows `写入文件失败: $e` there, here it reaches the caller.
     await tmp.rename(path);
     if (marker.existsSync()) await marker.delete();
     if (tmp.existsSync()) await tmp.delete();
   }
 
   /// `_read` 0xe66eb0. A marker with its tmp file means a write finished but was not moved into place: tmp wins.
-  /// TODO(asm 0xe66eb0): with a marker but no tmp the original returns null; the replica falls back to [path] (the move
-  /// happened, only the marker deletion was lost).
+  /// Deliberate deviation: with a marker but no tmp the original returns null (0xe67078: marker exists, tmp missing -> null), which
+  /// loses the file whose move succeeded and only the marker deletion was lost; the replica reads [path] in that case.
   static Future<String> readFile(String path) async {
     final tmp = File('$path.tmp');
     final marker = File('$path.tmp2');
