@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../read/model/mypage.dart';
 import '../../../../read/model/page.dart';
+import '../../../../read/pdf/pdf_file.dart';
 import '../../../../read/setting/read_layout_style.dart';
 import '../../../../read/setting/read_setting.dart';
 import '../../../../read/util/content_painter.dart';
@@ -64,6 +65,7 @@ class PageBody extends StatelessWidget {
   });
 
   Widget _image(String href, BoxFit fit) {
+    if (href.startsWith(PdfFile.scheme)) return PdfPageView(src: href, fit: fit);
     if (href.startsWith('http')) return Image.network(href, fit: fit, errorBuilder: (_, _, _) => const SizedBox());
     if (href.isEmpty) return const SizedBox();
     return Image.file(File(href), fit: fit, errorBuilder: (_, _, _) => const SizedBox());
@@ -327,5 +329,28 @@ class ContentPage extends StatelessWidget {
         ),
       );
     });
+  }
+}
+
+/// A PDF page (`pdf:<file>,<page>`), rendered once and then read from its cached PNG.
+class PdfPageView extends StatelessWidget {
+  final String src;
+  final BoxFit fit;
+  const PdfPageView({super.key, required this.src, this.fit = BoxFit.contain});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = PdfFile.parseSrc(src);
+    if (s == null) return const SizedBox();
+    return FutureBuilder<File>(
+      future: PdfFile.pageFile(s.$1, s.$2),
+      builder: (context, snap) {
+        final f = snap.data;
+        if (f == null) {
+          return snap.hasError ? Center(child: Text('渲染第 ${s.$2 + 1} 页失败')) : const Center(child: CircularProgressIndicator(strokeWidth: 2));
+        }
+        return Image.file(f, fit: fit, errorBuilder: (_, _, _) => const SizedBox());
+      },
+    );
   }
 }

@@ -104,7 +104,8 @@ void main() {
       expect(LocalBookImporter.formatOf('/a/b.TXT'), 'txt');
       expect(LocalBookImporter.formatOf('x.epub'), 'epub');
       expect(LocalBookImporter.formatOf('x.azw3'), 'mobi');
-      expect(() => LocalBookImporter.formatOf('x.pdf'), throwsA(isA<LocalBookException>()));
+      expect(LocalBookImporter.formatOf('x.pdf'), 'pdf'); // PDF books like the original
+      expect(() => LocalBookImporter.formatOf('x.doc'), throwsA(isA<LocalBookException>()));
       expect(LocalBookImporter.isSupported('a.mobi'), isTrue);
       expect(LocalBookImporter.isSupported('a.doc'), isFalse);
     });

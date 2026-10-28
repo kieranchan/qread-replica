@@ -27,6 +27,7 @@ import '../../../read/api/calculate/calculate_hapter.dart';
 import '../../../read/api/readapi.dart';
 import '../../../read/model/mypage.dart';
 import '../../../read/model/page.dart';
+import '../../../read/pdf/pdf_file.dart';
 import '../../../read/setting/read_layout_style.dart';
 import '../../../read/setting/read_setting.dart';
 import '../../../read/util/chapter_content.dart';
@@ -374,6 +375,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
   }
 
   static Future<Size?> _imageSize(String src) async {
+    if (src.startsWith(PdfFile.scheme)) return PdfFile.sizeOf(src);
     if (src.startsWith('http') || src.startsWith('data:')) return null;
     try {
       final m = await ImageService.readSizes([src]);
