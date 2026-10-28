@@ -220,6 +220,9 @@ abstract class Bookdata {
 
   static String encode() => jsonEncode([for (final b in _books) b.toJson()]);
 
+  /// Called after the shelf was written (the original schedules the device backup there when 云端书架 is off, 0xe64c00).
+  static void Function()? onSaved;
+
   /// 0xe64c00: writes the shelf; [need] false skips scheduling the cloud sync (used by the sync itself).
   static Future<bool> save({bool need = true}) async {
     var ok = true;
@@ -230,6 +233,7 @@ abstract class Bookdata {
       ok = false;
     }
     if (need) scheduleSync();
+    if (ok) onSaved?.call();
     return ok;
   }
 

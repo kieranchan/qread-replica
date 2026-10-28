@@ -1,9 +1,15 @@
 // init/wiring.dart — lead-owned glue between the page areas: points the `Nav` hooks (common/nav.dart) and the start-up hooks of each
 // area at the real implementations. Each area stays importable on its own; only this file (and main.dart) knows all of them.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../common/app_dirs.dart';
 import '../common/nav.dart';
+import '../data/bookself.dart';
+import '../data/cloud/auto_backup.dart';
+import '../data/rss.dart';
+import '../data/source.dart';
 import '../pages/book/shelf_routes.dart';
 import '../pages/bookshelf_page.dart';
 import '../pages/discovery_page.dart';
@@ -66,6 +72,11 @@ abstract class Wiring {
     // shelf: loads the shelf and routes reader progress into it (ReadApi.onProgress)
     await ShelfRoutes.init();
     await ExtrasInit.init();
+    // device backups (书架备份 / 书源备份): debounced uploads after every save, re-opened at start-up as the original does
+    Bookdata.onSaved = AutoBackup.scheduleBooks;
+    Sourcedata.store.onSaved = AutoBackup.scheduleSources;
+    Rssdata.store.onSaved = AutoBackup.scheduleRss;
+    unawaited(AutoBackup.reopen());
     // sources / RSS / browser: engine hooks (browser, webview, captcha, toast, cookies), import links, own-backend binding;
     // sets Nav.openSourceEdit / Nav.openRss
     await SourcesArea.init();

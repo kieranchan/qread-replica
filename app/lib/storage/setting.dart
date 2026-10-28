@@ -30,8 +30,7 @@ abstract class Setting {
     'aiUrl', 'aiKey', 'aiModel', 'purifyUrl', 'purifyKey', 'purifyModel', 'purifyConcurrent',
   ];
 
-  /// The configured models; the legacy keys are migrated (ids `legacy_default` / `legacy_purify`, names `默认模型` /
-  /// `正文净化模型`) when the new list is absent.
+  /// The configured models; the legacy keys are migrated (0x2a54c8, see [_migrateLegacy]) when the new list is absent.
   static List<AiModelConfig> getAiModels() {
     final text = Storage.getString(aiModelListKey);
     if (text.isNotEmpty) {
@@ -45,9 +44,10 @@ abstract class Setting {
     return _migrateLegacy();
   }
 
-  /// 0x2a54c8: builds configs from the legacy keys. TODO(asm 0x2a54c8): the original also creates `legacy_role`
-  /// (多角色分析模型); the field wiring of that record is not recoverable from the decompilation, the replica marks the
-  /// default model as the role-analysis model instead.
+  /// 0x2a54c8: builds configs from the legacy single-model keys. A group counts when any of its url / key / model is set. When both
+  /// groups are set and identical, one `legacy_default` (默认模型) serves both roles; otherwise the AI group becomes `legacy_role`
+  /// (多角色分析模型, role analysis only) and the purify group `legacy_purify` (正文净化模型, purify only). `purifyConcurrent` is a
+  /// bool in the original (sub_d52bc: true / 1 / "true"); the model keeps it as 1 / 0.
   static List<AiModelConfig> _migrateLegacy() {
     final url = Storage.getString('aiUrl');
     final key = Storage.getString('aiKey');
@@ -55,15 +55,19 @@ abstract class Setting {
     final pUrl = Storage.getString('purifyUrl');
     final pKey = Storage.getString('purifyKey');
     final pModel = Storage.getString('purifyModel');
-    final concurrent = Storage.getInt('purifyConcurrent', 1);
-    final hasDefault = url.isNotEmpty && model.isNotEmpty;
-    final hasPurify = pUrl.isNotEmpty && pModel.isNotEmpty;
+    final c = Storage.getString('purifyConcurrent').trim();
+    final concurrent = (c == 'true' || c == '1' || c == '1.0') ? 1 : 0;
+    final hasAi = url.isNotEmpty || key.isNotEmpty || model.isNotEmpty;
+    final hasPurify = pUrl.isNotEmpty || pKey.isNotEmpty || pModel.isNotEmpty;
+    if (hasAi && hasPurify && url == pUrl && key == pKey && model == pModel) {
+      return [
+        AiModelConfig(id: 'legacy_default', name: '默认模型', url: url, key: key, model: model, isRoleAnalysis: true, isPurify: true, concurrent: concurrent),
+      ];
+    }
     return [
-      if (hasDefault)
-        AiModelConfig(
-            id: 'legacy_default', name: '默认模型', url: url, key: key, model: model, isRoleAnalysis: true, isPurify: !hasPurify, concurrent: concurrent),
+      if (hasAi) AiModelConfig(id: 'legacy_role', name: '多角色分析模型', url: url, key: key, model: model, isRoleAnalysis: true, isPurify: false, concurrent: 0),
       if (hasPurify)
-        AiModelConfig(id: 'legacy_purify', name: '正文净化模型', url: pUrl, key: pKey, model: pModel, isPurify: true, concurrent: concurrent),
+        AiModelConfig(id: 'legacy_purify', name: '正文净化模型', url: pUrl, key: pKey, model: pModel, isRoleAnalysis: false, isPurify: true, concurrent: concurrent),
     ];
   }
 
@@ -137,11 +141,11 @@ abstract class Setting {
 
   // ------------------------------------------------------------------------------- AI characters and chat sessions
 
-  /// Per-book key of the character library. TODO(asm 0xf04f58): the original builds the key as `"$static…"` from one
-  /// static string (0x2480) that is not recoverable; the replica uses `ai_characters_<bookKey>`.
+  /// Per-book key of the character library. TODO(asm 0xf04f58): the original key is `"${static 0x2480}$bookKey"`; no code writes
+  /// that static (a snapshot-initialised constant blutter does not dump, not in the pool), so the replica uses `ai_characters_<bookKey>`.
   static String characterKey(String bookKey) => 'ai_characters_$bookKey';
 
-  /// Per-book key of the chat sessions. TODO(asm 0x108e3f4): see [characterKey] (static 0x2474).
+  /// Per-book key of the chat sessions. TODO(asm 0x108e3f4): same pattern with static 0x2474 (never written, not dumped).
   static String chatSessionKey(String bookKey) => 'ai_chat_sessions_$bookKey';
 
   /// 0xf04f58: `[]` when nothing is stored; a parse error is logged (`AI角色库读取失败 …`) and gives `[]`.

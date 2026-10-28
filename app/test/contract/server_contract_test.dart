@@ -7,7 +7,12 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:newread/api/userapi.dart';
 import 'package:newread/common/common.dart';
+import 'package:newread/data/bookself.dart';
+import 'package:newread/data/cloud/auto_backup.dart';
+import 'package:newread/data/rss.dart';
+import 'package:newread/data/source.dart';
 import 'package:newread/data/user.dart';
+import 'package:newread/models/book.dart';
 import 'package:newread/storage/storage.dart';
 import 'package:newread/util/self_check.dart';
 import 'package:newread/util/toast.dart';
@@ -46,8 +51,8 @@ void main() {
   setUpAll(() async {
     if (skip != null) return;
     SharedPreferences.setMockInitialValues({});
-    await Storage.init();
     tmp = Directory.systemTemp.createTempSync('qread-contract-');
+    await Storage.init(root: Directory('${tmp.path}/app')); // the file store (shelf, sources) lives here, not in path_provider
     final port = await freePort();
     base = 'http://127.0.0.1:$port';
     env = {'QREAD_PORT': '$port', 'QREAD_HOST': '127.0.0.1', 'QREAD_DATA_DIR': tmp.path, 'QREAD_BASE_URL': base, 'QREAD_LOG': '0'};
@@ -149,6 +154,55 @@ void main() {
     for (final k in CloudKind.values) {
       expect(await UserApi.cloudUpdateUrl(k, 'x'), anyOf('', isNotEmpty));
     }
+  }, skip: skip);
+
+  test('device backups: openAuto -> PUT -> device list -> getBookSelf; newopenAuto2 -> sources / rss', () async {
+    AutoBackup.reset();
+    // st "1" (start-up) needs a registered device; the failure switches the backup off
+    await UserSession.setSwitch(PrefKeys.autoSyncEnabled, true);
+    await expectLater(UserApi.openAuto(st: '1'), throwsA(isA<ApiException>()));
+    expect(UserSession.autoSyncEnabled, isFalse);
+    final url = await UserApi.openAuto();
+    expect(url, startsWith('$base/autobackup/'));
+    expect(AutoBackup.booksUrl, url);
+    await Bookdata.load();
+    Bookdata.books
+      ..clear()
+      ..add(Book(name: '书一', author: '某人', bookUrl: 'https://example.com/b1'));
+    await AutoBackup.backupBooks();
+    expect(Storage.getString(PrefKeys.lastSyncTime), matches(RegExp(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$')));
+    final devs = await UserApi.getAutoDevices(1);
+    expect(devs.single.appid, 'dart-test-1');
+    expect(devs.single.model, 'flutter-test');
+    Toast.log.clear();
+    final books = await UserApi.getBookSelf('dart-test-1');
+    expect(Toast.log, isEmpty);
+    expect(books.single.name, '书一');
+    expect(books.single.bookUrl, 'https://example.com/b1');
+    expect(await UserApi.getBookSelf('unknown-device'), isEmpty, reason: 'code != 0: an empty list, as the original');
+
+    final two = await UserApi.newopenAuto2();
+    expect(two.source, isNot(two.rss));
+    await expectLater(UserApi.downloadBackup(await UserApi.getRss('dart-test-1')), throwsA(predicate((e) => '$e'.contains('404'))));
+    await Sources.add({'bookSourceUrl': 'https://s.example', 'bookSourceName': '源S'});
+    await RssSources.add({'sourceUrl': 'https://r.example', 'sourceName': '订阅R'});
+    await AutoBackup.backupSources();
+    await AutoBackup.backupRss();
+    expect(await UserApi.downloadBackup(await UserApi.getSources('dart-test-1')), contains('https://s.example'));
+    expect(await UserApi.downloadBackup(await UserApi.getRss('dart-test-1')), contains('https://r.example'));
+    expect((await UserApi.getAutoDevices(2)).single.appid, 'dart-test-1');
+
+    // removed from another device: the next start-up re-open fails and the switch goes off
+    await UserApi.removeAutoDevice(1, 'dart-test-1');
+    await UserSession.setSwitch(PrefKeys.autoSyncEnabled, true);
+    await UserSession.setSwitch(PrefKeys.auto2SyncEnabled, true);
+    Toast.log.clear();
+    await AutoBackup.reopen();
+    expect(UserSession.autoSyncEnabled, isFalse);
+    expect(Toast.log, contains(startsWith('开启书架同步失败:')));
+    expect(Toast.log, contains('开启书源同步成功'));
+    await UserSession.setSwitch(PrefKeys.auto2SyncEnabled, false);
+    AutoBackup.reset();
   }, skip: skip);
 
   test('profile: nickname, avatar, devices, cleanuser', () async {

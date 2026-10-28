@@ -73,8 +73,8 @@ Five data kinds share one pattern: an **etag** getter, an **update-url** getter 
 Other cloud calls: `getItemJson` (`appid`, `item`, `t`; items include `tts_engines`, theme, marks, backgrounds, svg) and
 `setItemJsonFile?tockenid=&appid=&item=&t=` (multipart `file`) at `0xe6f7b8`/`0xe6ef90` and the twin pair
 `0xea5fd4`/`0xea5a98`; reading progress `addreads` (`appid`, `book`, `readchapter`) `0xecc0d0` and `autopos` (`st`, `appid`,
-`book`, `index`, `pos`, `bid`) `0xecd518`; `openAuto` (`st`, `appid`) `0xf223ac`; restore-from-backup lists **[infer]** `getBookSelf` `0xfa8894`,
-`getRss` `0x1050ff4`, `getSources` `0x105127c` (`appid`, `t`); `0xf226c4` (`st`, `appid`; keys `source`, `rss`).
+`book`, `index`, `pos`, `bid`) `0xecd518`. Device backups (`openAuto`, `newopenAuto2`, `getBookSelf`, `getSources`, `getRss`): see
+"Device backups" below.
 The generated table of all 49 functions with the pool strings in code order is `docs/API_FUNCTIONS.md`.
 
 ### More calls found in the second pass [code]
@@ -83,6 +83,27 @@ The generated table of all 49 functions with the pool strings in code order is `
 (→ `{code, updateUrl, description}`), `upload` (multipart image → `{code, url, message}`), `svgtopng`.
 Item names seen with `getItemJson`/`setItemJsonFile`: `tts_engines`, `exploration_templates_backup`, `ai_model_settings_v2`, `readitems`,
 `readtheme`, `svg`, `markname`.
+
+### Device backups (书架备份 / 书源备份) [code]
+Automatic backups of one device, separate from the cloud lists above. The server hands out **upload / download urls**; the app
+moves the data itself with the HTTP worker's `putCos` (Dio `PUT url` with the JSON text as body, `0xe13cdc`; 413 →
+`当前请求内容过多，超出服务器限制`, 403 → `当前请求被拦截，请联系管理员关闭防火墙`) and `get` (`0xe68198`, bytes; errors `网络错误:  <e>`).
+
+| Endpoint | Request | Reply `data` | Where |
+| --- | --- | --- | --- |
+| `openAuto` | `tockenid`, `appid` (this device), `st` (`"0"` = the user switches 书架备份 on, `"1"` = start-up re-open `0xf22200`), `t` | upload url of this device's bookshelf backup (String → static `0x1f4c`); failure: `autoSyncEnabled` off + `errorMsg` thrown | `0xf223ac` |
+| `newopenAuto2` | same | `{source, rss}` upload urls (statics `0x1f50` / `0x1f54`); failure: `auto2SyncEnabled` off | `0xf226c4` |
+| `getAutoDevice` / `getAuto2Device` | `tockenid`, `t` | `[{model, platform, appid}]` backup devices | `0x1051ddc` / `0x1052068` |
+| `removeAutoDevice` / `removeAuto2Device` | `tockenid`, `appid`, `t` | – | `0x10518a4` |
+| `getBookSelf` | `tockenid`, `appid` (**the backup device**), `t` | download url; the app GETs it and parses a `Book` list (`code != 0` → empty list, errors → `获取书架书籍失败:`) | `0xfa8894` |
+| `getSources` / `getRss` | `tockenid`, `appid` (backup device), `t` | download url; the device dialog GETs it and imports (a message with `404` → `此设备书源备份为空` / `此设备订阅源备份为空`) | `0x105127c` / `0x1050ff4` |
+
+Uploads: bookshelf `0xe65010` (all shelf books as JSON, then prefs `lastSyncTime` = `yyyy-MM-dd HH:mm:ss`), sources `0xe7665c`
+(`lastSyncTime2`), RSS `0xe72958` (`lastSyncTimer3`); after a save a 10 s timer uploads when the switch is on and the url known
+(`0x1bc564`, `0x1c7e34`, `0x1c5610`). The 备份导入 entry of the shelf opens the device dialog (`AutoDeviceManagementDialog`, bool
+`false` = bookshelf devices, `true` = source devices); a bookshelf device opens `BackbookPage(appid)`. The own server serves the
+urls as `<base>/autobackup/<32 hex>` (`PUT` stores, `GET` reads, 404 until the first upload); st `"1"` fails when the device is
+no longer registered, which turns the switch off on that device (as the original does on any failure).
 
 ### Result codes and the sync flow [code unless marked]
 * `code == 0` success, `code == -5` "nothing stored" (the getters then return `""`), any other code is a failure: the cloud-sync flags

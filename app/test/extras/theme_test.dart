@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:archive/archive.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:newread/common/system.dart';
 import 'package:newread/data/fonts.dart';
 import 'package:newread/data/ground.dart';
 import 'package:newread/data/theme.dart';
@@ -112,6 +113,25 @@ void main() {
       expect(tp.defaultCovers, ['lib/assets/images/no_cover.jpeg']);
       await tp.setOwnCovers(['covers/x.jpg']);
       expect(tp.defaultCovers, ['covers/x.jpg']);
+      // appearanceFollowTheme: following the theme ignores the own choice until the flag is cleared
+      expect(jsonDecode(Storage.getString(ThemeProvider.followThemeKey)), containsPair('defaultCover', false));
+      await tp.setFollows(ThemeProvider.navFontKey, true);
+      await tp.setOwnFont(ThemeProvider.navFontKey, '阿里圆体');
+      expect(tp.follows(ThemeProvider.navFontKey), isFalse);
+      expect(tp.navFont, '阿里圆体');
+      await tp.setFollows(ThemeProvider.navFontKey, true);
+      expect(tp.navFont, '阿里黑体', reason: 'the theme font wins while following');
+      await tp.setFollows('defaultCover', true);
+      expect(tp.defaultCovers, ['covers/x.jpg'], reason: 'a theme without cover falls back to the own list');
+      expect(AppFonts.family('谷歌汉字'), 'googlefont');
+    });
+
+    test('System.pagenames: the 69 name -> id pairs of the original, reverse lookup for the editor', () {
+      expect(System.pagenames.length, 69);
+      expect(System.pagenames['书架'], 'book');
+      expect(System.pagenames['阅读统计'], 'readtj');
+      expect(System.pageTitles['fontsetting'], '字体设置');
+      expect(System.pageTitles['me'], '我的');
     });
   });
 
@@ -173,6 +193,20 @@ void main() {
       expect(n, 2);
       expect(Ground.grounds.map((g) => g.themeName), ['护眼', '夜读']);
       expect(File(Ground.grounds.first.backgroundimage).readAsBytesSync(), [9, 9, 9]);
+    });
+
+    test('a layout may carry its font as base64 under f: written to fonts/ and registered once', () async {
+      await Ground.load();
+      await FontsData.load();
+      final n = await ThemePackage.importLayouts(jsonEncode([
+        {'themeName': '宋体版', 'fontFamily': '方正书宋', 'f': base64Encode([1, 2, 3, 4])},
+        {'themeName': '同字体', 'fontFamily': '方正书宋', 'f': base64Encode([7])},
+      ]));
+      expect(n, 2);
+      final font = Fonts.byFamily('方正书宋')!;
+      expect(File(FontsData.filePath(font)).readAsBytesSync(), [1, 2, 3, 4]);
+      expect(FontsData.fonts.length, 1);
+      expect(Ground.grounds.map((g) => g.fontFamily), ['方正书宋', '方正书宋']);
     });
   });
 

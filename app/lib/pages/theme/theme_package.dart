@@ -10,6 +10,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:path/path.dart' as p;
 
@@ -169,8 +170,9 @@ abstract class ThemePackage {
 
   /// 内置排版方案 of a plaza theme (layout file, 0x103e31c): a JSON list of reading layouts ([BackGround] maps, or `{data:[...]}`).
   /// Background images embedded as data urls (`…base64;…` / `…base64,…`) are written to `<root>/images` (`正在上传背景图`); layouts
-  /// are added to `Ground` with fresh numbers. Returns the number imported. TODO(asm 0x103e31c): the original also downloads fonts
-  /// named by the layout (`尝试导入字体`, `/fonts/`); the replica keeps the font name and lets the reader fall back.
+  /// are added to `Ground` with fresh numbers. A layout may carry its font as base64 under `f` (0x103e31c: `尝试导入字体`): the file is
+  /// written to `<root>/fonts/<fontFamily>` and registered under the layout's `fontFamily` unless that family exists. Returns the
+  /// number imported.
   static Future<int> importLayouts(String text) async {
     Object? v;
     try {
@@ -198,6 +200,20 @@ abstract class ThemePackage {
           m[k] = out.path;
         } catch (_) {
           m[k] = '';
+        }
+      }
+      final f = m.remove('f');
+      final family = '${m['fontFamily'] ?? ''}'.trim();
+      if (f is String && f.isNotEmpty && family.isNotEmpty && Fonts.byFamily(family) == null) {
+        try {
+          final data = base64Decode(f.contains('base64') ? f.substring(f.indexOf('base64') + 7).trim() : f.trim());
+          debugPrint('尝试导入字体');
+          final d = await AppDirs.ensure('fonts');
+          final name = family.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+          await File(p.join(d.path, name)).writeAsBytes(data, flush: true);
+          await Fonts.add(Font(family: family, path: name));
+        } catch (e) {
+          debugPrint('字体导入失败 $e');
         }
       }
       m['name'] = 0;

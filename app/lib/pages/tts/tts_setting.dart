@@ -3,12 +3,12 @@
 //     `君不见黄河之水天上来，奔流到海不复回。`; menu 编辑 / 删除 (`删除确认`) / 置顶 / 置底 (`确定要把《x》置顶吗？` → `置顶成功`);
 //     multi-select (全选 (n) / 反选) for bulk delete; import of Legado HttpTTS JSON (`请选择您想要导入的朗读引擎文件`, `导入失败:` /
 //     `选择文件失败:`).
-//   * 新增 → `请选择新建引擎类型` dialog (0x61bf4c): 大声朗读 (HTTP engine, tts_edit.dart), 中文角色 (多角色, needs an AI model:
-//     `多角色引擎需要ai支持，请先配置ai接口`), 火山引擎 (字节跳动 · 21 款音色), MiMo引擎 (小米 MiMo · 预置/克隆/音色设计),
-//     本地引擎 (sherpa-onnx 离线模型 · 无需联网); footer `注：多角色引擎是基于ai的功能，需要在阅读设置里配置ai大模型。`
+//   * 新增 → `请选择新建引擎类型` dialog (0x61bf4c: 普通引擎 = 1 / 多角色引擎 = 0, footer `注：多角色引擎是基于ai的功能，需要在阅读设置里
+//     配置ai大模型。`) plus the engine kinds of 0x606390: 火山引擎 (字节跳动 · 21 款音色), MiMo引擎 (小米 MiMo · 预置/克隆/音色设计),
+//     本地引擎 (sherpa-onnx 离线模型 · 无需联网); 大声朗读 (the Edge voice) is not offered (Edge client token, porting rule 4).
+//     Volcano / MiMo engines are pages with the user's own credentials (pages/tts/vendor_engines.dart).
 //   * 本地引擎 section (0x606e08): member-only (`本地引擎仅 VIP 可用`), `尚未导入模型包…`, `删除模型会保留由它生成的全部朗读引擎。`
 //     This build has no sherpa-onnx runtime: members see `当前版本不包含本地引擎（sherpa-onnx）`; no model downloads.
-// Volcano / MiMo engines are stored with their credentials (the user's own) but cannot synthesize here (util/audio/tts_controller.dart).
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -24,6 +24,7 @@ import '../../util/vip.dart';
 import 'multi_role_edit.dart';
 import 'tts_edit.dart';
 import 'tts_help.dart';
+import 'vendor_engines.dart';
 
 class TTsSetting extends StatefulWidget {
   const TTsSetting({super.key});
@@ -31,8 +32,6 @@ class TTsSetting extends StatefulWidget {
   static const String sample = '君不见黄河之水天上来，奔流到海不复回。';
   static const String localGate = '本地引擎仅 VIP 可用';
 
-  /// The 21 Volcano voices are listed by the original (`VolcanoVoice`); the replica keeps the voice id free text.
-  static const String volcanoHint = '在 console.volcengine.com/speech/new/setting/apikeys 获取 App ID 与 Access Token';
 
   @override
   State<TTsSetting> createState() => _ReplaceRuleSettingState();
@@ -86,8 +85,8 @@ class _ReplaceRuleSettingState extends State<TTsSetting> {
             const Text('请选择新建引擎类型', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
             const SizedBox(height: 12),
             for (final k in const [
-              (TtsKind.http, '大声朗读', '导入或编写 HTTP 朗读引擎'),
-              (TtsKind.multiRole, '中文角色', '多角色引擎，按角色分配音色'),
+              (TtsKind.http, '普通引擎', '导入或编写网页 / HTTP 朗读引擎'),
+              (TtsKind.multiRole, '多角色引擎', '多角色引擎，按角色分配音色'),
               (TtsKind.volcano, '火山引擎', '字节跳动 · 21 款音色'),
               (TtsKind.mimo, 'MiMo引擎', '小米 MiMo · 预置/克隆/音色设计'),
               (TtsKind.local, '本地引擎', 'sherpa-onnx 离线模型 · 无需联网'),
@@ -114,7 +113,7 @@ class _ReplaceRuleSettingState extends State<TTsSetting> {
         ),
       ),
     );
-    if (kind == null) return;
+    if (kind == null || !mounted) return;
     switch (kind) {
       case TtsKind.http:
         await Get.to(() => const EditTts());
@@ -125,56 +124,16 @@ class _ReplaceRuleSettingState extends State<TTsSetting> {
         }
         await Get.to(() => const MultiRoleEdit());
       case TtsKind.volcano:
+        await VendorEngines.volcano(context);
       case TtsKind.mimo:
-        await _vendorEngine(kind);
+        await VendorEngines.mimo(context);
       case TtsKind.local:
         if (!Vip.require(TTsSetting.localGate)) return;
-        Toast.show('当前版本不包含本地引擎（sherpa-onnx）');
+        Toast.show(TtsController.localMissing);
+      case TtsKind.edge:
+        Toast.show(TtsController.edgeMissing);
     }
     if (mounted) setState(() {});
-  }
-
-  /// Volcano / MiMo credentials (the user's own keys).
-  Future<void> _vendorEngine(TtsKind kind, [HttpTts? old]) async {
-    final volcano = kind == TtsKind.volcano;
-    final name = TextEditingController(text: old?.name ?? (volcano ? '火山引擎' : 'MiMo引擎'));
-    final a = TextEditingController(text: '${old?.html[volcano ? 'appid' : 'apikey'] ?? ''}');
-    final b = TextEditingController(text: '${old?.html[volcano ? 'token' : 'mode'] ?? (volcano ? '' : 'mimo-v2.5-tts')}');
-    final voice = TextEditingController(text: '${old?.html['voice'] ?? ''}');
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(volcano ? '火山引擎' : 'MiMo引擎'),
-        content: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            TextField(controller: name, decoration: const InputDecoration(labelText: '名称')),
-            TextField(controller: a, decoration: InputDecoration(labelText: volcano ? 'App ID' : 'MiMo API Key', hintText: volcano ? null : 'eyJ... 或 mimokey_...')),
-            TextField(controller: b, decoration: InputDecoration(labelText: volcano ? 'Access Token' : '模型')),
-            TextField(controller: voice, decoration: const InputDecoration(labelText: '音色')),
-            const SizedBox(height: 8),
-            Text(volcano ? TTsSetting.volcanoHint : '预置音色 mimo-v2.5-tts / 克隆 mimo-v2.5-tts-voiceclone / 音色设计 mimo-v2.5-tts-voicedesign',
-                style: TextStyle(fontSize: 12, color: Theme.of(ctx).colorScheme.outline)),
-          ]),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
-          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('保存')),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    if (name.text.trim().isEmpty) return Toast.show('请输入名称', iserror: true);
-    final html = volcano
-        ? {'appid': a.text.trim(), 'token': b.text.trim(), 'voice': voice.text.trim()}
-        : {'apikey': a.text.trim(), 'mode': b.text.trim(), 'voice': voice.text.trim()};
-    if (old == null) {
-      await Tts.add(HttpTts(name: name.text.trim(), tp: kind.tp, html: html));
-    } else {
-      await Tts.update(HttpTts.fromJson(old.toJson())
-        ..name = name.text.trim()
-        ..html = html);
-    }
-    Toast.show('保存成功');
   }
 
   Future<void> _edit(HttpTts e) async {
@@ -184,10 +143,15 @@ class _ReplaceRuleSettingState extends State<TTsSetting> {
       case TtsKind.multiRole:
         await Get.to(() => MultiRoleEdit(engine: e));
       case TtsKind.volcano:
+        if (TTSData.pageOf(e).isEmpty) return VendorEngines.volcanoCredentials(context);
+        await Get.to(() => EditTts(engine: e));
       case TtsKind.mimo:
-        await _vendorEngine(TtsKind.of(e), e);
+        if (TTSData.pageOf(e).isEmpty) return VendorEngines.mimoKey(context);
+        await Get.to(() => EditTts(engine: e));
       case TtsKind.local:
         if (!Vip.require(TTsSetting.localGate)) return;
+      case TtsKind.edge:
+        await Get.to(() => EditTts(engine: e));
     }
     if (mounted) setState(() {});
   }
@@ -298,7 +262,7 @@ class _ReplaceRuleSettingState extends State<TTsSetting> {
         trailing: const Icon(Icons.lock_outline),
         onTap: () {
           if (!Vip.require(TTsSetting.localGate)) return;
-          Toast.show('当前版本不包含本地引擎（sherpa-onnx）');
+          Toast.show(TtsController.localMissing);
         },
       ),
       Padding(
@@ -366,7 +330,9 @@ class _ReplaceRuleSettingState extends State<TTsSetting> {
   }
 
   Future<void> _export() async {
-    final text = const JsonEncoder.withIndent('  ').convert([for (final e in _engines) if (TtsKind.of(e) == TtsKind.http) e.html]);
+    final list = [for (final e in _engines) if (TtsKind.of(e) != TtsKind.multiRole) Tts.toOriginal(e)];
+    if (list.isEmpty) return Toast.show('您选择的引擎为空!(多角色引擎无法导出)');
+    final text = const JsonEncoder.withIndent('  ').convert(list);
     await Get.to(() => TTSHelpPage(title: '导出', code: text));
   }
 }

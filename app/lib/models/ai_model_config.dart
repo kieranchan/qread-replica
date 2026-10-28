@@ -30,7 +30,8 @@ class AiModelConfig {
         model: jStr(json['model']),
         isRoleAnalysis: jBool(json['isRoleAnalysis']),
         isPurify: jBool(json['isPurify']),
-        concurrent: jInt(json['concurrent']),
+        // a bool in the original's configs; the replica keeps a count (true -> 1, false -> 0 = the page's default)
+        concurrent: json['concurrent'] is bool ? (json['concurrent'] == true ? 1 : 0) : jInt(json['concurrent']),
       );
 
   Map<String, dynamic> toJson() => {

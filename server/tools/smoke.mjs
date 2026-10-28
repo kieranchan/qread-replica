@@ -42,6 +42,13 @@ try {
   check('upload bookshelf', up.code === 0, JSON.stringify(up));
   check('etag = md5', (await post('/getEtag', t)).data === crypto.createHash('md5').update(body).digest('hex'));
   check('list round trip', (await post('/getBooks', t)).data === body);
+  // device backup (书架备份): openAuto hands out the upload url, the app PUTs its shelf, 备份导入 finds it through getBookSelf
+  const open = await post('/openAuto', { ...t, st: '0' });
+  check('openAuto upload url', open.code === 0 && /\/autobackup\/[0-9a-f]{32}$/.test(open.data ?? ''), JSON.stringify(open));
+  const put = await fetch(open.data, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body });
+  check('backup upload', put.status === 200);
+  const where = await post('/getBookSelf', { ...t, appid: t.appid });
+  check('getBookSelf download', where.code === 0 && (await (await fetch(where.data)).text()) === body, JSON.stringify(where));
   check('会员中心 page', (await fetch(`${base}/vip?tockenid=${t.tockenid}`)).status === 200);
   check('theme categories', (await (await fetch(base + '/public/categories')).json()).code === 200);
   check('logout', (await post('/logout', t)).code === 0);

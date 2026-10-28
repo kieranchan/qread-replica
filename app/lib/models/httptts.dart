@@ -48,7 +48,8 @@ class HttpTts {
         defaultMaleDialogueVoiceId: jStr(json['defaultMaleDialogueVoiceId']),
         defaultFemaleDialogueEngineId: jStr(json['defaultFemaleDialogueEngineId']),
         defaultFemaleDialogueVoiceId: jStr(json['defaultFemaleDialogueVoiceId']),
-        html: jMap(json['html']),
+        // the original stores the engine page as a String; the replica keeps it as `html['page']` (see data/tts.dart)
+        html: json['html'] is String ? {'page': json['html']} : jMap(json['html']),
       );
 
   Map<String, dynamic> toJson() => {
@@ -65,7 +66,8 @@ class HttpTts {
         'defaultMaleDialogueVoiceId': defaultMaleDialogueVoiceId,
         'defaultFemaleDialogueEngineId': defaultFemaleDialogueEngineId,
         'defaultFemaleDialogueVoiceId': defaultFemaleDialogueVoiceId,
-        'html': html,
+        // written back in the original's form when the entry only holds a page
+        'html': html.length == 1 && html['page'] is String ? html['page'] : html,
       };
 }
 
