@@ -55,5 +55,11 @@ abstract class RssApi {
 
   static Future<void> setVariable(String url, String variable) async => Qread.post('/setRssVariable', {'id': url, 'variable': variable});
 
+  /// `/rssshouldOverrideUrlLoading` `{id, url}` (0xfbdd9c): the backend runs the source's shouldOverrideUrlLoading.
+  static Future<bool> shouldOverrideUrlLoading(String sourceUrl, String url) async {
+    final r = await Qread.post('/rssshouldOverrideUrlLoading', {'id': sourceUrl, 'url': url});
+    return r == true || '$r' == 'true';
+  }
+
   static Future<String> getVariable(String url) async => '${await Qread.post('/getRssVariable', {'id': url}) ?? ''}';
 }
