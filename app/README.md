@@ -22,7 +22,8 @@ Five tabs in the original's default order (`bottomBarTabs`): 书架 · 发现 ·
 | Lead glue | `main.dart`, `init/wiring.dart`, `init/glue_routes.dart`, `init/reader_ai_adapter.dart`, `common/nav.dart`, `pages/main_page.dart` | `Nav` hooks and route tables between the areas, tabs, start-up |
 
 Fidelity pass (2026-10-28): settings keys, prompts, defaults and flows re-read from the original; added page-curl effects,
-header/footer slots, wakelock, screen brightness, PDF books, listening through every TTS engine (HTTP, Volcano, MiMo, web-view
+header/footer slots, wakelock, screen brightness, PDF books, offline read-aloud (sherpa-onnx models imported or downloaded through
+the owner's `static/down.json`), listening through every TTS engine (HTTP, Volcano, MiMo, web-view
 pages, multi-role) with background music and lock-screen controls, AI purification and chat tools, in-app video, dictionaries,
 highlight backgrounds, camera QR scanning, app links / open-with, Big5 + GB18030, per-source proxy, font de-obfuscation
 (queryTTF/replaceFont), drag-sorted shelf, explore actions, 沉浸光感 (liquid glass), 底栏标签配置 (订阅 hidden by default as in the
@@ -35,7 +36,7 @@ The remaining approximations are marked `TODO(asm 0x…)` with what was checked.
 ## Tests
 ```powershell
 . ..\env.ps1            # flutter on PATH, PUB_CACHE inside qread
-flutter analyze; flutter test     # 524 tests, about 1.5 minutes
+flutter analyze; flutter test     # 542 tests, about 1.5 minutes
 ```
 * Per area: `test/{data,storage,util,read,reader_ui,shelf,sources,extras}/`; the engine runs against a fake site on 127.0.0.1.
 * `test/app_smoke_test.dart` starts the wired app and opens every tab; `test/route_coverage_test.dart` fails when a page opens a
