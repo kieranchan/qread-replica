@@ -14,6 +14,7 @@ import '../../models/bookchapter.dart';
 import '../../models/explore.dart';
 import '../../models/source.dart';
 import '../../storage/storage.dart';
+import '../../widget/book_page.dart' show BookVariables;
 import '../../util/webbook/model/book.dart' as wb;
 import '../../util/webbook/model/book_chapter.dart' as wb;
 import '../../util/webbook/model/book_source.dart';
@@ -109,17 +110,27 @@ class EngineBookSearchService implements BookSearchService {
     return [for (final s in list) _remember(s.toBook())];
   }
 
+  /// The engine copy of [b] with the user's book variable (「设置书籍变量」, `custom`) loaded from the file store.
+  Future<wb.Book> _engineBookWithVariable(Book b) async {
+    final eb = _engineBook(b);
+    if (!b.isqread && eb.getVariable('custom') == null) {
+      final v = await BookVariables.custom(b.bookUrl);
+      if (v.isNotEmpty) eb.putVariable('custom', v);
+    }
+    return eb;
+  }
+
   @override
   Future<Book> bookInfo(Book book) async {
     final src = _sourceForBook(book);
-    final r = await SourceApi.bookInfo(src, _engineBook(book));
+    final r = await SourceApi.bookInfo(src, await _engineBookWithVariable(book));
     return _keepShelfFields(book, _remember(r));
   }
 
   @override
   Future<List<BookChapter>> chapters(Book book) async {
     final src = _sourceForBook(book);
-    var eb = _engineBook(book);
+    var eb = await _engineBookWithVariable(book);
     if (eb.tocUrl.isEmpty || eb.tocUrl.contains('@get:')) eb = await SourceApi.bookInfo(src, eb);
     _engineBooks[_key(eb.origin, eb.bookUrl)] = eb;
     final list = await SourceApi.chapters(src, eb);
@@ -127,9 +138,9 @@ class EngineBookSearchService implements BookSearchService {
   }
 
   @override
-  Future<String> content(Book book, BookChapter chapter) {
+  Future<String> content(Book book, BookChapter chapter) async {
     final src = _sourceForBook(book);
-    return SourceApi.content(src, _engineBook(book), wb.BookChapter.fromModel(chapter, bookUrl: book.bookUrl));
+    return SourceApi.content(src, await _engineBookWithVariable(book), wb.BookChapter.fromModel(chapter, bookUrl: book.bookUrl));
   }
 
   @override

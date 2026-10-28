@@ -32,15 +32,19 @@ void main() {
     await start(t, books: fixtureBooks().take(2).toList());
     expect(find.text('斗破苍穹'), findsWidgets);
     expect(find.text('斗罗大陆'), findsWidgets);
-    expect(find.textContaining('最新：'), findsNothing); // grid
-    // unread badge: 1623 chapters, read up to index 10
-    expect(find.text('99+'), findsOneWidget);
-
-    await t.tap(find.byKey(const Key('shelf_layout')));
-    await settle(t);
+    // `listtype` unset → 1 = list (0x8ee0e4)
     expect(find.text('最新：第一千六百二十三章 结束'), findsOneWidget);
     expect(find.text('天蚕土豆 • 共1623章'), findsOneWidget);
-    expect(Storage.getString(ShelfPrefs.listtypeKey), '0');
+    // unread badge, `needupdate` unset = 缩略显示: a dot (1623 chapters, read up to index 10)
+    expect(find.byKey(const Key('dot_http://src-a.test/book/1')), findsOneWidget);
+    expect(find.text('99+'), findsNothing);
+
+    await t.runAsync(() => Storage.setString(ShelfPrefs.unreadKey, '${ShelfPrefs.unreadFull}'));
+    await t.tap(find.byKey(const Key('shelf_layout')));
+    await settle(t);
+    expect(find.textContaining('最新：'), findsNothing); // grid
+    expect(Storage.getString(ShelfPrefs.listtypeKey), '2');
+    expect(find.text('99+'), findsOneWidget); // 完整显示
   });
 
   testWidgets('tapping a book opens the reader through Nav.openReader', (t) async {

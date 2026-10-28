@@ -106,6 +106,25 @@ class BookshelfPageState extends BookApiPage<BookshelfPage> with AutomaticKeepAl
     return BookSelfN.sorted(list, sort);
   }
 
+  /// `moveCallback` (0x534530 → 0xf6fc8c): dropping [dragged] on [target] switches the shelf to 手动排序 (`booklistordrer` = 3), keeps
+  /// the order shown so far as the stored order and puts [dragged] at [target]'s place.
+  Future<void> moveCallback(Book dragged, Book target) async {
+    if (dragged.bookUrl == target.bookUrl) return;
+    if (!ShelfPrefs.isManualSort) {
+      // the order on screen becomes the stored order
+      final shown = booksOf(kAllGroup).map((b) => b.bookUrl).toList();
+      for (var i = 0; i < shown.length; i++) {
+        final from = BookSelfN.books.indexWhere((b) => b.bookUrl == shown[i]);
+        if (from >= 0 && from != i) await BookSelfN.move(from, i);
+      }
+    }
+    await ShelfPrefs.setSort(ShelfPrefs.manualSort);
+    final from = BookSelfN.books.indexWhere((b) => b.bookUrl == dragged.bookUrl);
+    final to = BookSelfN.books.indexWhere((b) => b.bookUrl == target.bookUrl);
+    if (from >= 0 && to >= 0) await BookSelfN.move(from, to);
+    if (mounted) setState(() {});
+  }
+
   Future<void> _selectGroup(String g) async {
     setState(() {
       _group = g;
@@ -626,6 +645,7 @@ class BookshelfPageState extends BookApiPage<BookshelfPage> with AutomaticKeepAl
                       onTap: _open,
                       showBookOperations: showBookOperations,
                       toggleSourceSelection: toggleSourceSelection,
+                      moveCallback: moveCallback,
                     ),
             ),
       bottomNavigationBar: _isedit ? _editBar() : null,

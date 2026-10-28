@@ -61,6 +61,11 @@ class BookList2 extends StatefulWidget {
   /// Extra space at the bottom (the floating tab bar of the main page).
   final double bottom;
 
+  /// Drag to reorder (手动排序): every item is a `DragTarget<Book>` around a `LongPressDraggable<Book>` (500 ms, the dragged
+  /// item stays at opacity 0.4, closures 0x5a7358 / 0x5a6e68); dropping book A on book B calls `moveCallback(A, B)`. A long press
+  /// that is released without moving still opens the book operations.
+  final Future<void> Function(Book dragged, Book target)? moveCallback;
+
   const BookList2({
     super.key,
     required this.books,
@@ -81,6 +86,7 @@ class BookList2 extends StatefulWidget {
     this.toggleSourceSelection,
     this.onLoadMore,
     this.bottom = 0,
+    this.moveCallback,
   });
 
   @override
@@ -97,6 +103,47 @@ class _BookListState extends State<BookList2> {
   }
 
   bool _loadRequested = false;
+
+  /// Wraps an item for drag-to-reorder when [BookList2.moveCallback] is set (not in edit mode).
+  Widget _draggable(Book b, Widget child, double width) {
+    final move = widget.moveCallback;
+    if (move == null || widget.isedit) return child;
+    return DragTarget<Book>(
+      key: Key('drop_${b.bookUrl}'),
+      onWillAcceptWithDetails: (d) => d.data.bookUrl != b.bookUrl,
+      onAcceptWithDetails: (d) => move(d.data, b),
+      builder: (context, candidates, rejected) => LongPressDraggable<Book>(
+        data: b,
+        delay: const Duration(milliseconds: 500),
+        hapticFeedbackOnStart: true,
+        feedback: Material(color: Colors.transparent, child: SizedBox(width: width, child: Opacity(opacity: 0.9, child: child))),
+        childWhenDragging: Opacity(opacity: 0.4, child: child),
+        onDragEnd: (d) {
+          if (!d.wasAccepted && _moved < 12) widget.showBookOperations?.call(b);
+        },
+        child: Listener(
+          onPointerDown: (e) {
+            _down = e.position;
+            _moved = 0;
+          },
+          onPointerMove: (e) {
+            final m = (e.position - _down).distance;
+            if (m > _moved) _moved = m;
+          },
+          child: candidates.isEmpty
+              ? child
+              : DecoratedBox(
+                  position: DecorationPosition.foreground,
+                  decoration: BoxDecoration(border: Border.all(color: Theme.of(context).colorScheme.primary, width: 2), borderRadius: BorderRadius.circular(8)),
+                  child: child,
+                ),
+        ),
+      ),
+    );
+  }
+
+  Offset _down = Offset.zero;
+  double _moved = 0;
 
   bool _onScroll(ScrollNotification n) {
     final more = widget.onLoadMore;
@@ -125,8 +172,8 @@ class _BookListState extends State<BookList2> {
     if (!widget.isbookshelf) return const SizedBox.shrink();
     final mode = ShelfPrefs.unreadMode;
     final n = unreadCount(b);
-    if (mode == 1 || (n == 0 && !b.isredupdate)) return const SizedBox.shrink();
-    if (mode == 2 || n == 0) {
+    if (mode == ShelfPrefs.unreadHidden || (n == 0 && !b.isredupdate)) return const SizedBox.shrink();
+    if (mode != ShelfPrefs.unreadFull || n == 0) {
       return Container(key: Key('dot_${b.bookUrl}'), width: 10, height: 10, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle));
     }
     return Container(
@@ -170,7 +217,7 @@ class _BookListState extends State<BookList2> {
     return InkWell(
       key: Key('book_${b.bookUrl}'),
       onTap: () => _tap(b),
-      onLongPress: widget.isedit ? null : () => widget.showBookOperations?.call(b),
+      onLongPress: widget.isedit || widget.moveCallback != null ? null : () => widget.showBookOperations?.call(b),
       borderRadius: BorderRadius.circular(8),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Stack(children: [
@@ -196,7 +243,7 @@ class _BookListState extends State<BookList2> {
     return InkWell(
       key: Key('book_${b.bookUrl}'),
       onTap: () => _tap(b),
-      onLongPress: widget.isedit ? null : () => widget.showBookOperations?.call(b),
+      onLongPress: widget.isedit || widget.moveCallback != null ? null : () => widget.showBookOperations?.call(b),
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8 * scale),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -250,7 +297,7 @@ class _BookListState extends State<BookList2> {
           padding: EdgeInsets.only(bottom: widget.bottom),
           physics: const AlwaysScrollableScrollPhysics(),
           itemCount: count,
-          itemBuilder: (c, i) => i == widget.books.length ? _footer() : _listItem(widget.books[i], scale),
+          itemBuilder: (c, i) => i == widget.books.length ? _footer() : _draggable(widget.books[i], _listItem(widget.books[i], scale), w),
         );
       } else {
         list = GridView.builder(
@@ -259,7 +306,7 @@ class _BookListState extends State<BookList2> {
           physics: const AlwaysScrollableScrollPhysics(),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: cols, mainAxisExtent: 112 * scale + 16),
           itemCount: widget.books.length,
-          itemBuilder: (c, i) => _listItem(widget.books[i], scale),
+          itemBuilder: (c, i) => _draggable(widget.books[i], _listItem(widget.books[i], scale), w / cols),
         );
       }
     } else {
@@ -279,7 +326,8 @@ class _BookListState extends State<BookList2> {
                 mainAxisSpacing: 10,
                 mainAxisExtent: itemW * 4 / 3 + 42,
               ),
-              delegate: SliverChildBuilderDelegate((c, i) => _gridItem(widget.books[i], itemW), childCount: widget.books.length),
+              delegate: SliverChildBuilderDelegate((c, i) => _draggable(widget.books[i], _gridItem(widget.books[i], itemW), itemW),
+                  childCount: widget.books.length),
             ),
           ),
           SliverToBoxAdapter(child: _footer()),
