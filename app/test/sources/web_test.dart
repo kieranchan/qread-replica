@@ -140,17 +140,17 @@ void main() {
     await idleUntil(t, () => Toast.log.contains('已添加到收藏夹'));
     expect(Chromemarks.contains('https://www.bing.com/'), isTrue);
     expect(Toast.log, contains('已添加到收藏夹'));
-    // menu -> UA设置 -> iPhone
+    // menu -> UA设置 -> iOS UA
     await act(t, () => t.tap(find.byKey(const Key('chrome_menu'))));
     await t.pumpAndSettle();
     await act(t, () => t.tap(find.text('UA设置')));
     await t.pumpAndSettle();
-    await t.tap(find.text('iPhone'));
+    await t.tap(find.text('iOS UA'));
     await t.pump();
     await act(t, () => t.tap(find.text('确定')));
     await idle(t);
-    expect(Storage.getInt('userAgentType'), UAType.iphone.index);
-    expect(c.userAgent, UAType.iphone.ua);
+    expect(Storage.getInt('userAgentType'), UAType.ios.index);
+    expect(c.userAgent, UAType.ios.ua);
     expect(Toast.log, contains('UA设置已应用,重新打开页面后生效'));
   });
 
