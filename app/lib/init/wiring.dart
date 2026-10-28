@@ -3,8 +3,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 
 import '../common/app_dirs.dart';
+import '../pages/read/pages/audio_view.dart';
+import '../data/tts.dart';
+import '../util/source/baswebview.dart';
+import '../read/api/readapi.dart';
 import '../common/nav.dart';
 import '../data/bookself.dart';
 import '../data/cloud/auto_backup.dart';
@@ -84,6 +89,28 @@ abstract class Wiring {
     // sets Nav.openSourceEdit / Nav.openRss
     await SourcesArea.init();
     SourcesArea.registerNav();
+    // 时光源 handlers that need the reader / player / TTS (the rest are installed by SourcesArea.init)
+    SourceUi.playVideo = (url, title) async {
+      final ctx = Get.context;
+      if (ctx != null) await Nav.openNamed(ctx, 'video_player_page', arguments: {'url': url, 'title': title});
+    };
+    SourceUi.speak = (text) => TtsBridge.speakWith(TTSData.defaultEngine, text);
+    SourceUi.readBook = () => ReadApi.active?.book.toJson();
+    SourceUi.durChapterIndex = (bookUrl) {
+      final a = ReadApi.active;
+      if (a != null && a.book.bookUrl == bookUrl) return a.book.durChapterIndex;
+      return BookSelfN.books.where((b) => b.bookUrl == bookUrl).firstOrNull?.durChapterIndex ?? 0;
+    };
+    SourceUi.directoryList = (bookUrl) async {
+      final a = ReadApi.active;
+      return a != null && a.book.bookUrl == bookUrl ? [for (final c in a.chapters) c.toJson()] : <dynamic>[];
+    };
+    SourceUi.refreshContent = () async => ReadApi.refreshCurrent?.call();
+    SourceUi.putLyric = (lyric) {
+      final a = ReadApi.active;
+      if (a != null) unawaited(AudioLyrics.write(a.book.bookUrl, a.book.durChapterIndex, lyric));
+    };
+
     // files opened with the app, qread:// and legado:// / yuedu:// links (original service/app_links_service.dart)
     await AppLinksService.init(null);
     // book intros with <usehtml> are rendered by flutter_html as in the original

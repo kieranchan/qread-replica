@@ -179,6 +179,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     WidgetsBinding.instance.removeObserver(this);
     if (ReadApi.log == _logLine) ReadApi.log = null;
     if (ReadApi.aiError == _aiError) ReadApi.aiError = null;
+    if (ReadApi.refreshCurrent == _refreshFromSource) ReadApi.refreshCurrent = null;
     _setting.removeListener(_onSetting);
     _autoTimer?.cancel();
     ReaderWakelock.stop();
@@ -234,6 +235,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     _api = ReadApi(widget.book, chapters: _chapters, loader: widget.loader, replaceRules: ReplaceData.rules);
     ReadApi.log ??= _logLine;
     ReadApi.aiError = _aiError;
+    ReadApi.refreshCurrent = _refreshFromSource;
     final b = widget.book;
     var start = widget.chapterIndex ?? b.durChapterIndex;
     var progress = widget.chapterIndex == null || widget.chapterIndex == b.durChapterIndex ? b.durChapterPos : 0.0;
@@ -454,6 +456,9 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     if (_setting.turn == TurnMode.scroll) _resetList();
     _preload();
   }
+
+  /// `refreshContent` of a 时光源 page: reload the current chapter from the source.
+  Future<void> _refreshFromSource() => reloadChapter(refresh: true);
 
   @override
   Future<void> reloadChapter({bool refresh = false}) async {

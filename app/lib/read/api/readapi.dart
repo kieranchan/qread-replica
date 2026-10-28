@@ -124,7 +124,15 @@ class ReadApi {
     this.bookai = bookai ?? BookAi();
     this.bookh = bookh ?? BookHight();
     this.bookMark = bookMark ?? const BookMark();
+    active = this;
   }
+
+  /// The book most recently opened in the reader (the 时光源 handlers `getReadBook` / `getdurChapterIndex` / `getDirectoryList` /
+  /// `putLyric` read it, as the original reads its reader state).
+  static ReadApi? active;
+
+  /// Asks the open reader to reload the current chapter (`refreshContent` of a 时光源); the reader UI installs it.
+  static Future<void> Function()? refreshCurrent;
 
   // ------------------------------------------------------------------ statics (wiring)
 
