@@ -26,6 +26,28 @@ function sniffImage(buf) {
   return null;
 }
 
+// The release announced by check_update (written by `admin set-update`), or null.
+export function updateFile(dataDir) {
+  return path.join(dataDir, 'static', 'update.json');
+}
+export function parseUpdate(j) {
+  if (!j || typeof j !== 'object' || Array.isArray(j)) throw new Error('update file must be a JSON object');
+  const build = Number(j.build);
+  if (!Number.isInteger(build) || build < 1) throw new Error('build must be a positive integer (the build number after + in pubspec version)');
+  const url = String(j.url ?? '');
+  if (!/^https?:\/\/\S+$/.test(url)) throw new Error('url must be an http(s) link');
+  const platform = String(j.platform ?? '');
+  if (platform && !/^[a-z]{2,16}$/.test(platform)) throw new Error('platform must be like ios');
+  return { version: String(j.version ?? ''), build, notes: String(j.notes ?? ''), url, ...(platform ? { platform } : {}) };
+}
+function readUpdate(dataDir) {
+  try {
+    return parseUpdate(JSON.parse(fs.readFileSync(updateFile(dataDir), 'utf8')));
+  } catch {
+    return null;
+  }
+}
+
 export function createUserApi(svc, cfg, limiter = new RateLimiter()) {
   const imgDir = path.join(cfg.dataDir, 'images');
   const urlOf = (file) => (file ? `${cfg.baseUrl}/images/${file}` : '');
@@ -104,7 +126,18 @@ export function createUserApi(svc, cfg, limiter = new RateLimiter()) {
     throw new ApiError(CODE.ERR, '未开启邮件找回，请联系管理员重置密码');
   };
 
-  h.check_update = () => ({ code: 0, updateUrl: '', description: '' });
+  // Update check (the app's 关于 page and its main-page start-up, 0x1078878): `check_update?platform=&version=<build number>&t=`.
+  // The original reads `code` (0 = a newer build exists), `updateUrl`, `description`. The answer comes from the release the owner set
+  // with `qread-admin set-update <file.json>` (data/static/update.json: version, build, notes, url, optional platform).
+  h.check_update = (c) => {
+    const rel = readUpdate(cfg.dataDir);
+    const none = { code: CODE.ERR, errorMsg: '已是最新版本' };
+    if (!rel) return none;
+    if (rel.platform && String(c.p.platform ?? '') !== rel.platform) return none;
+    const current = Number.parseInt(String(c.p.version ?? ''), 10);
+    if (Number.isFinite(current) && current >= rel.build) return none;
+    return { code: 0, updateUrl: rel.url, description: rel.notes, version: rel.version, build: rel.build };
+  };
 
   // ---------------- accounts (with token) ----------------
   h.getUserInfo = (c) => {

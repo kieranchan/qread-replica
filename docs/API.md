@@ -79,8 +79,7 @@ The generated table of all 49 functions with the pool strings in code order is `
 
 ### More calls found in the second pass [code]
 `getItemMd5` (`appid`, `item`, `t` → `data` = md5 of the stored item; the app compares it with its local md5, message `一样不必同步`),
-`getAuto2Device` / `removeAuto2Device` / `newopenAuto2` (`st`, `appid`; `data` = `{source, rss}`), `check_update?platform=<ios>&version=<v>&t=`
-(→ `{code, updateUrl, description}`), `upload` (multipart image → `{code, url, message}`), `svgtopng`.
+`getAuto2Device` / `removeAuto2Device` / `newopenAuto2` (`st`, `appid`; `data` = `{source, rss}`), `check_update` (see below), `upload` (multipart image → `{code, url, message}`), `svgtopng`.
 Item names seen with `getItemJson`/`setItemJsonFile`: `tts_engines`, `exploration_templates_backup`, `ai_model_settings_v2`, `readitems`,
 `readtheme`, `svg`, `markname`.
 
@@ -156,3 +155,12 @@ failures carry `message`, success is `code < 400`.
 | gRPC `/common.WebBookService/BookStream` | bidirectional stream to a server-side Legado engine (not the membership channel); recovered `.proto` and notes in `docs/proto/` |
 | Baidu Pan, Weiyun, CloudDrive2, WebDAV | network-drive features (member-gated in the UI) |
 | `https://www.qread.xyz/ai.html`, `docs.html`, `jquery.min.js` | static web pages |
+
+### Update check `check_update` [code 0x1078878, server]
+`GET <base>check_update?platform=ios&version=<PackageInfo.buildNumber>&t=<ms>` (no token). Reply `{code, updateUrl, description}`:
+`code` 0 means a newer build exists (the app then shows 发现新版本 / 更新内容: `description` / 暂不更新 / 立即更新 → opens `updateUrl`);
+any other code, and any network error, means "no update" (关于 page: 已是最新版本). The app asks on the 关于 page (检查更新) and at
+main-page start-up when the prefs key `updateReminder` is unset or `"true"` (更新提醒 switch). The owner's server answers from the release
+set with `qread-admin set-update <file.json>` (`{"version":"1.0.1","build":2,"notes":"…","url":"https://…","platform":"ios"}`;
+`platform` optional): `code 0` plus `updateUrl` = url, `description` = notes (also `version`, `build`) when `build` is greater than the
+`version` parameter, else `{code: -1, errorMsg: "已是最新版本"}`. `set-update --clear` withdraws it, `show-update` prints it.

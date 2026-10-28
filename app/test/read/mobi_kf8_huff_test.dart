@@ -1,4 +1,4 @@
-﻿// MOBI additions: HUFF/CDIC compression, KF8 (AZW3) assembly from the skeleton / fragment indexes + NCX table of contents, and the
+// MOBI additions: HUFF/CDIC compression, KF8 (AZW3) assembly from the skeleton / fragment indexes + NCX table of contents, and the
 // original's chapter split (0x254e84 headings, 0x254c18 第N部分 pieces).
 import 'dart:convert';
 import 'dart:io';

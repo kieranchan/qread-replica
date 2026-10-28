@@ -13,9 +13,11 @@ import 'package:newread/data/rss.dart';
 import 'package:newread/data/source.dart';
 import 'package:newread/data/user.dart';
 import 'package:newread/models/book.dart';
+import 'package:newread/pages/about_page.dart';
 import 'package:newread/storage/storage.dart';
 import 'package:newread/util/self_check.dart';
 import 'package:newread/util/toast.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 String md5Hex(String s) => md5.convert(utf8.encode(s)).toString();
@@ -228,6 +230,22 @@ void main() {
     expect(rep['ok'], results.length);
     // the admin CLI sees it
     expect(admin(['list-diag', '--limit', '1', '--full']), contains('云端读写 selfcheck'));
+  }, skip: skip);
+
+  test('check_update: no release -> no update; admin set-update with a newer build -> 发现新版本 data', () async {
+    PackageInfo.setMockInitialValues(appName: 'a', packageName: 'p', version: '1.0.0', buildNumber: '3', buildSignature: '', installerStore: null);
+    AboutPage.dio = null;
+    expect((await AboutPage.checkUpdate()).hasUpdate, isFalse);
+    final rel = File('${tmp.path}/release.json')
+      ..writeAsStringSync(jsonEncode({'version': '1.0.1', 'build': 4, 'notes': '更新说明', 'url': 'https://example.invalid/4.ipa'}));
+    expect(admin(['set-update', rel.path]), contains('build 4'));
+    final u = await AboutPage.checkUpdate();
+    expect(u.hasUpdate, isTrue);
+    expect(u.updateUrl, 'https://example.invalid/4.ipa');
+    expect(u.description, '更新说明');
+    PackageInfo.setMockInitialValues(appName: 'a', packageName: 'p', version: '1.0.1', buildNumber: '4', buildSignature: '', installerStore: null);
+    expect((await AboutPage.checkUpdate()).hasUpdate, isFalse, reason: 'the installed build is the release');
+    admin(['set-update', '--clear']);
   }, skip: skip);
 
   test('password change ends the session: the old token is rejected with 登陆已过期', () async {

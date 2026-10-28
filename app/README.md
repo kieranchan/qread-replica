@@ -31,7 +31,8 @@ highlight backgrounds, camera QR scanning, app links / open-with, Big5 + GB18030
 original), backup devices on the owner's server, alternate home-screen icons.
 
 Not available (pages keep the original strings and say so): the browser reading mode (it needs qread.xyz services), 时光源 pages
-encrypted with `@aes` (the key is a constant of the original), Baidu/Weiyun drives (vendor credentials), the Edge voice (its client token is not copied), app update check.
+encrypted with `@aes` (the key is a constant of the original), Baidu/Weiyun drives (vendor credentials), the Edge voice (its client token is not copied). The update check (关于 page and main-page start-up) asks the owner's server, which
+answers from `qread-admin set-update`.
 The remaining approximations are marked `TODO(asm 0x…)` with what was checked.
 
 ## Tests
