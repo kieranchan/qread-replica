@@ -39,7 +39,7 @@ class FakeBackend {
     Object? reply;
     if (cmd == '/login') {
       final m = body as Map;
-      reply = m['username'] == 'alice' && m['password'] == 'pw'
+      reply = m['username'] == 'alice' && m['password'] == 'secret-Pass_42'
           ? {'isSuccess': true, 'data': {'accessToken': 'tok-1', 'username': 'alice'}}
           : {'isSuccess': false, 'errorMsg': '用户名或密码错误'};
     } else if (req.uri.queryParameters['accessToken'] != 'tok-1') {
@@ -102,7 +102,7 @@ void main() {
     await expectLater(Qread.bind(backend.base, 'alice', 'bad'), throwsA(isA<QreadException>().having((e) => e.message, 'm', '绑定失败:用户名或密码错误')));
     expect(() => Qread.api('/x'), throwsA(isA<QreadException>().having((e) => e.message, 'm', '请先绑定轻阅读后端')));
 
-    await Qread.bind('127.0.0.1:1, ${backend.base}', 'alice', 'pw');
+    await Qread.bind('127.0.0.1:1, ${backend.base}', 'alice', 'secret-Pass_42');
     expect((Qread.isbind, Qread.accessToken), (true, 'tok-1'));
     // the edit permission comes from the device channel's `source` job (`md5` == "1"), not from getUserInfo
     await QreadWebsocket.handle('{"msg":"source","md5":"1"}');
@@ -118,8 +118,8 @@ void main() {
     expect(await Storage.read('accessTokendev1'), 'tok-1');
     expect(await Storage.read('Qreadusernamedev1'), 'alice');
     final stored = await Storage.read('Qreadpassworddev1');
-    expect(stored, isNot(contains('pw')));
-    expect(await Qread.savedPassword(), 'pw');
+    expect(stored, isNot(contains('secret-Pass_42'))); // a long password: short ones can appear in random cipher text
+    expect(await Qread.savedPassword(), 'secret-Pass_42');
 
     // a fresh process restores the binding
     Qread.resetForTests();
@@ -133,7 +133,7 @@ void main() {
   });
 
   test('backend sources and RSS through the bound backend', () async {
-    await Qread.bind(backend.base, 'alice', 'pw');
+    await Qread.bind(backend.base, 'alice', 'secret-Pass_42');
     final list = await QSourceApi.refresh();
     expect(list.map((s) => (s.bookSourceName, s.isqread, s.enabled)), [('后端一', true, true), ('后端二', true, false)]);
     QSources.reset();
