@@ -1,12 +1,12 @@
 // ai/read.dart — the AI helpers of reading / listening, configured from `Setting` (storage/setting.dart):
 //  * role analysis for the multi-role TTS (0xf07800, caller 0xf063d0): lines `{id, text}` go to the model flagged 多角色
 //    (`isRoleAnalysis`) with the original prompt (pool 0x2fc10); the reply is a JSON array of `{id, ispb, gender, str, name,
-//    personality}` (dialogue only). Request: temperature 0.01, top_p 0.01, max_tokens 16384, thinking off; timeouts 30 s / 200 s.
+//    personality}` (dialogue only). Request: temperature 0.01, top_p 0.01, max_tokens 8192 (Smi 0x4000), thinking off; timeouts 30 s / 200 s.
 //    Results are cached per chapter under `<root>/tts_analysis` (`保存角色分析缓存失败`). Without a model the heuristic split is used
 //    (quotes; speaker from `(\S+?)[说道喊道叫呼问笑叹了哭骂]` / `(\S+?)[：:]`).
-//  * purification (正文净化, model flagged `isPurify`): the chapter text is sent with a cleaning instruction; on failure the caller
-//    keeps the original text (`正文获取失败:Ai净化出错 …`). TODO(asm 0xf089b0): the original purification prompt is assembled at run time
-//    and not recovered; the replica's instruction is its own.
+//  * purification (正文净化, model flagged `isPurify`; content pipeline 0xf089b0 → 0xf0a000): the user message is the prompt of
+//    sub_2a5304 followed by the text, sent with the role-analysis request shape (0xf0a0dc); the model answers with `<br>` for line
+//    breaks, which become line feeds. On failure the caller keeps the original text (`正文获取失败:Ai净化出错 …`).
 // Both need a configured model (`请先配置AiTocken`).
 import 'dart:convert';
 import 'dart:io';
@@ -49,8 +49,9 @@ abstract class AiRead {
   static const String rolePrompt =
       '仅输出JSON数组，不要有任何思考，请只给出答案,必须非常迅速。每个对象包含以下字段：id=必须用拆分前的id，以方便我后面整理，ispb:true=旁白/false=对话，gender:0=男/1=女/2=未知，str=拆分后的文字，name=说话者名字（旁白为空）,personality=说话人的固定人设（先通读全文总结该角色整体性格，如"风流不羁""阴险狡诈"，10字以内；注意不是这句台词的语气情绪；同一角色的每一行必须输出完全相同的personality）,如果是对话名字不能为空请联系上下文判断。我会给你一个json数组，我按照换行拆分了，例如：[{"id":"24","text":"我晃动两根手指，像招狗一样：“来，你过来我告诉你。” "},] 要拆成 [{"id": "24", "ispb": false, "gender": 0, "str": "来，你过来我告诉你。", "name": "联系上下文获取具体姓名，如没有可以用我", "personality": "风流不羁"}](你可以发现拆分后的为id 为拆分前数组的id) ,请分析拆分每行文本，保留原始id，把旁白和对话分开，只有引号包裹的为对话（无论是单引号还是双引号），需要拆分，为了速度你只需输出ispb为false的对话。内容：';
 
+  /// sub_2a5304 (the text follows `内容：`).
   static const String purifyPrompt =
-      '请净化下面的小说正文：删除广告、网址、求票求收藏、作者的话、乱码与无关符号，保持原文段落、标点和内容不变，不要改写、总结或添加任何文字，只输出净化后的正文。正文：\n';
+      '仅输出正文内容，不要有任何思考，请只给出答案,必须非常迅速。你需要在我从网页中提取出的正确的正文内容，去除广告，标题 ，等非正文相关内容，或者多提取出的内容 , 并且用<br>代替换行，必须确保正文能正确换行，换行必须用<br>，如果正文没有正确换行，你需要自行确保换行正确，仅输出正文 。内容：';
 
   /// Dio used for the calls (tests inject one).
   static Dio? dio;
@@ -63,7 +64,7 @@ abstract class AiRead {
     final m = model ?? Setting.roleAnalysisModel;
     if (m == null || m.url.isEmpty || m.key.isEmpty) throw const AiException('多角色引擎需要ai支持，请先配置ai接口');
     final input = jsonEncode([for (final e in lines.entries) {'id': e.key, 'text': e.value}]);
-    final r = await _client(m).chat([AiMessage.user('$rolePrompt$input')], temperature: 0.01, topP: 0.01, maxTokens: 16384);
+    final r = await _client(m).chat([AiMessage.user('$rolePrompt$input')], temperature: 0.01, topP: 0.01, maxTokens: 8192);
     return parseRoles(r.content);
   }
 
@@ -154,8 +155,8 @@ abstract class AiRead {
   static Future<String> purify(String text, {AiModelConfig? model}) async {
     final m = model ?? Setting.purifyModel;
     if (m == null || m.url.isEmpty || m.key.isEmpty) throw const AiException('请先配置AiTocken');
-    final r = await _client(m).chat([AiMessage.user('$purifyPrompt$text')], temperature: 0.01, topP: 0.01, maxTokens: 16384);
-    final out = r.content.trim();
+    final r = await _client(m).chat([AiMessage.user('$purifyPrompt$text')], temperature: 0.01, topP: 0.01, maxTokens: 8192);
+    final out = r.content.trim().replaceAll('<br>', '\n');
     if (out.isEmpty) throw const AiException('Invalid response format');
     return out;
   }

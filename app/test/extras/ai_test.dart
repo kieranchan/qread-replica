@@ -152,18 +152,51 @@ void main() {
           {'choices': [{'delta': {'content': '答案是 42'}}]},
         ]));
       final tool = ChatTool(const AiTool('echo', 'echo', {'type': 'object'}), (a) async => 'echo:${a['v']}');
-      final agent = ChatAgent(model, tools: [tool], deepThinking: true, context: const ChatContext(bookName: '三体', chapterCount: 30));
+      final seen = <String>[];
+      final agent = ChatAgent(model,
+          tools: [tool],
+          deepThinking: true,
+          context: const ChatContext(bookName: '三体', chapterCount: 30, chapterNumber: 7),
+          onToolCall: (c, r) => seen.add('${c.name}=$r'));
       final events = await agent.run(const [], '问题').toList();
+      expect(seen, ['echo=echo:42']);
       expect(events.whereType<ChatToolResult>().single.result, 'echo:42');
       final done = events.whereType<ChatDone>().single;
       expect(done.content, '答案是 42');
       expect(done.messages.map((m) => m.role), ['user', 'assistant', 'tool', 'assistant']);
       final first = ai.bodies.first;
-      expect((first['messages'] as List).first['content'], contains('《三体》'));
-      expect((first['messages'] as List).last['content'], '${ChatAgent.deepPrefix}问题');
+      final system = (first['messages'] as List).first['content'] as String;
+      expect(system, startsWith('${ChatAgent.deepPrefix}你叫时光，是《三体》的阅读助手，用户当前在第 7 章。回复时以「时光」自称。'));
+      expect(system, contains('（如「三体 小说 简介」「三体 剧情介绍」「三体 大结局/结局」）'));
+      expect(system, endsWith('你最多只能调用 10 轮工具。请在达到上限前完成所有必要调用并整理最终回复；如果你发现工具调用轮数即将达到 10 轮，必须立即总结当前已掌握的信息并给出最终回答，不要继续调用工具，否则会因超轮而被迫中断。请用中文简洁回答。'));
+      expect((first['messages'] as List).last['content'], '问题', reason: 'the deep-thinking line belongs to the system prompt');
       expect(first['tools'], isNotEmpty);
       final second = ai.bodies.last['messages'] as List;
       expect(second.last, {'role': 'tool', 'content': 'echo:42', 'tool_call_id': 'c1', 'name': 'echo'});
+    });
+
+    test('chatWithTools: plain role maps, the caller system prompt, tool rounds, streamed text', () async {
+      await member(true);
+      ai.script
+        ..add(FakeAi.sse([
+          {'choices': [{'delta': {'tool_calls': [{'index': 0, 'id': 'c1', 'function': {'name': 'echo', 'arguments': '{"v":"7"}'}}]}}]},
+        ]))
+        ..add(FakeAi.sse([
+          {'choices': [{'delta': {'content': '好'}}]},
+          {'choices': [{'delta': {'content': '的'}}]},
+        ]));
+      final tool = ChatTool(const AiTool('echo', 'echo', {'type': 'object'}), (a) async => 'echo:${a['v']}');
+      final text = await ChatAgent.chatWithTools(model, [
+        {'role': 'system', 'content': '阅读页的系统提示'},
+        {'role': 'user', 'content': '早先的问题'},
+        {'role': 'assistant', 'content': '早先的回答'},
+        {'role': 'user', 'content': '调大字号'},
+      ], [tool]).join();
+      expect(text, '好的');
+      final msgs = ai.bodies.first['messages'] as List;
+      expect(msgs.map((m) => m['role']), ['system', 'user', 'assistant', 'user']);
+      expect(msgs.first['content'], '阅读页的系统提示');
+      expect(msgs.last['content'], '调大字号');
     });
 
     test('stops after 10 rounds of tool calls', () async {
@@ -190,7 +223,7 @@ void main() {
       final content = ai.bodies.single['messages'][0]['content'] as String;
       expect(content, startsWith('仅输出JSON数组'));
       expect(content, endsWith(jsonEncode([{'id': '1', 'text': '天色已晚。'}, {'id': '2', 'text': '林黛玉说：“你来了”'}])));
-      expect(ai.bodies.single['max_tokens'], 16384);
+      expect(ai.bodies.single['max_tokens'], 8192);
       expect(ai.bodies.single['top_p'], 0.01);
     });
 
@@ -207,9 +240,11 @@ void main() {
 
     test('purification uses the purify model and returns the cleaned text', () async {
       await Setting.saveAiModels([model]);
-      ai.script.add(FakeAi.json(FakeAi.message('第一章 正文')));
-      expect(await AiRead.purify('第一章 正文 www.ad.com'), '第一章 正文');
-      expect(ai.bodies.single['messages'][0]['content'], contains('www.ad.com'));
+      ai.script.add(FakeAi.json(FakeAi.message('第一章<br>正文')));
+      expect(await AiRead.purify('第一章 正文 www.ad.com'), '第一章\n正文', reason: '<br> becomes a line feed');
+      final content = ai.bodies.single['messages'][0]['content'] as String;
+      expect(content, startsWith('仅输出正文内容，不要有任何思考'));
+      expect(content, endsWith('仅输出正文 。内容：第一章 正文 www.ad.com'));
     });
   });
 }
