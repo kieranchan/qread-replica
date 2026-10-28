@@ -3,8 +3,9 @@
 // `bookSourceUrl`, `isQRead`, `exploreUrl`, `categories` [{title, exploreUrl}], `count`, `countPerCategory`, `itemWidth`,
 // `gap`), the book loader and the section frame.
 //
-// TODO(asm 0x647e58): the original serialises `type` through the enum (names are not in the snapshot); the replica stores the
-// Dart enum name and also accepts the index.
+// TODO(asm 0x647e58): `fromJson` finds the enum value by a string compare with `json['type']`; the 7 `ComponentType` objects in
+// the pool keep only their index (objs.txt, names stripped), so the stored strings are unknown: the replica writes the Dart enum
+// name and also accepts the index.
 import 'package:flutter/material.dart';
 
 import '../../data/source.dart';

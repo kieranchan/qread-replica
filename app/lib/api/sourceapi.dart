@@ -16,6 +16,7 @@ import '../util/http.dart';
 import '../util/webbook/debug.dart';
 import '../util/webbook/model/book.dart';
 import '../util/webbook/model/book_chapter.dart';
+import '../util/webbook/analyze_rule/js_extensions.dart';
 import '../util/webbook/model/book_source.dart';
 import '../util/webbook/model/shared_js_scope.dart';
 import '../util/webbook/model/search_book.dart';
@@ -121,6 +122,17 @@ abstract class SourceApi {
 
   /// The discovery entries of [source] (`exploreUrl`, evaluated once and cached for JS rules).
   static Future<List<ExploreKind>> exploreKinds(BookSource source, {bool refresh = false}) => source.exploreKinds(refresh: refresh);
+
+  /// Runs the `action` JavaScript of an explore kind (button / text / select / toggle) with `key` (the kind title) and `value`
+  /// (what the user typed or chose; also stored with `source.put(key, value)` so rules read it back with `source.get(key)`).
+  /// Returns the script result as text ('' for null / undefined).
+  static Future<String> exploreAction(BookSource source, String action, {String key = '', String? value}) async {
+    if (value != null && key.isNotEmpty) source.put(key, value);
+    final r = await SourceJsExtensions(source).runJs(action, values: {'key': key, 'value': value, 'result': value});
+    if (r == null) return '';
+    final s = r is String ? r : '$r';
+    return s == 'undefined' || s == 'null' ? '' : s;
+  }
 
   /// One discovery page: [url] is an [ExploreKind.url].
   static Future<List<SearchBook>> explore(BookSource source, String url, {int page = 1, DebugLog? debug}) =>

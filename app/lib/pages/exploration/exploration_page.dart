@@ -24,10 +24,15 @@ List<ExplorationComponent> componentsOf(ExplorationTemplate t) {
   return list;
 }
 
-/// The widget of one component.
+/// The widget of one component, inside a `NotificationListener<ScrollNotification>` that stops the component's own scrolling
+/// from reaching the page (0x7b3450: `onNotification` is the always-true closure).
 Widget componentWidget(ExplorationComponent c) {
   final cfg = ComponentConfig(c.config);
   final key = ValueKey('comp_${c.id}');
+  return NotificationListener<ScrollNotification>(onNotification: (_) => true, child: _componentBody(c, cfg, key));
+}
+
+Widget _componentBody(ExplorationComponent c, ComponentConfig cfg, Key key) {
   return switch (typeOf(c)) {
     ComponentType.recommendCard => RecommendCardWidget(key: key, config: cfg),
     ComponentType.grid => GridWidget(key: key, config: cfg),
