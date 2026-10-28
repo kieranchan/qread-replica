@@ -5,8 +5,9 @@
 //   CLine  = one styled run inside a line: text, style tokens, offsets into the chapter text, anchor id, link target
 //
 // Offsets (`start`/`end`) index the chapter text that was laid out ([CalculateChapter]); `-1` marks synthetic runs (the
-// chapter title, which is not part of the body text). Characters in [CLine.prefix] (the first-line indent, `　　`) have no
-// source offset: `end - start == str.length` always holds for the source part.
+// chapter title, which is not part of the body text, and inline images: a CLine of type image inside a text line, `str` '', like the
+// original's type-1 CLines that 0x23d118 puts between the text CLines of a source line). Characters in [CLine.prefix] (the first-line
+// indent, `　　`) have no source offset: `end - start == str.length` always holds for the source part.
 import '../../models/_json.dart';
 
 /// Style tokens carried by [CLine.style] (space separated). `style` is a String in the original JSON (`"style": ""`). In the original

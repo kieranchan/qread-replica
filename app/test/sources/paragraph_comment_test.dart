@@ -1,8 +1,9 @@
 ﻿// 段评 of 时光源: the `<img src>` conventions (dp: bubbles, `,{json}` with js / headers, data: images), tapping an image runs its
 // js in the source page, the bubble store handlers showsvg / getsvg / addsvg (0xea5444 / 0x2273b0) and the reader side (bubble
-// size, the drawn bubble).
+// size, the drawn bubble, inline at the end of its paragraph's line: test/read/inline_image_test.dart has the layout side).
 import 'dart:convert';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart' show SvgPicture;
 import 'package:flutter_test/flutter_test.dart';
@@ -12,10 +13,13 @@ import 'package:newread/data/svg.dart';
 import 'package:newread/data/user.dart';
 import 'package:newread/pages/read/pages/novel/content.dart';
 import 'package:newread/pages/read/pages/novel_view.dart';
+import 'package:newread/pages/read/web_book_loader.dart';
+import 'package:newread/read/api/calculate/calculate_hapter.dart';
 import 'package:newread/pages/setting/choose_svg.dart';
 import 'package:newread/read/model/line.dart';
 import 'package:newread/read/model/page.dart';
 import 'package:newread/read/setting/read_layout_style.dart';
+import 'package:newread/read/util/content_painter.dart';
 import 'package:newread/storage/storage.dart';
 import 'package:newread/util/source/baswebview.dart';
 import 'package:newread/util/source/image_meta.dart';
@@ -165,8 +169,74 @@ void main() {
     expect(find.text('<svg id="from-page"/>'), findsOneWidget);
   });
 
-  test('reader: a bubble is about one character big', () async {
-    expect(await NovelViewState.imageSize('dp:3', fontSize: 18), const Size(24, 18));
+  test('reader: a bubble on a line of its own takes one line, in the box of an inline bubble ("我的" wide)', () async {
+    const style = ReadLayoutStyle(fontSize: 18, lineHeight: 1.6);
+    final s = (await NovelViewState.imageSize('dp:3', style: style))!;
+    expect(s.width, 36);
+    expect(s.height, closeTo(18 * 1.6, 1e-9));
+    expect(s, ReadTextBuilder.inlineImageSize(style));
+  });
+
+  /// Lets the source runner start and run [js]-calls, then returns what the page ran.
+  Future<List<String>> ranJs(WidgetTester t) async {
+    final ran = <String>[];
+    await t.runAsync(() async {
+      for (var i = 0; i < 50 && FakeSourceEngine.created.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      final page = FakeSourceEngine.created.single;
+      for (var i = 0; i < 50 && (page.page?.calls.isEmpty ?? true); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      ran.addAll(page.page!.calls);
+      // the runner's idle sweeper was started inside the test zone
+      await SourceRun.clear();
+    });
+    return ran;
+  }
+
+  testWidgets('reader: a bubble on the same line as the text sits at the end of that line; a tap runs its js, not the page tap', (t) async {
+    await t.runAsync(_addSource);
+    ParagraphComments.activeSource = () => 'https://dp.test';
+    const style = ReadLayoutStyle(fontSize: 16, lineHeight: 1.5, indent: 2, padding: EdgeInsets.all(10));
+    const engine = CalculateChapter(style: style);
+    final content = WebBookLoader.parseContent('''一二三四五<img src="dp:5,{'js':'checkin()'}">\n六七八''');
+    final page = engine.layout(size: const Size(200, 300), blocks: content.blocks).single;
+    expect(page.contents.first.lines.length, 1);
+    var pageTaps = 0;
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Align(
+          alignment: Alignment.topLeft,
+          // the pager's own tap recognizer (NovelPager: page turn / menu)
+          child: RawGestureDetector(
+            behavior: HitTestBehavior.opaque,
+            gestures: {
+              TapGestureRecognizer: GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
+                TapGestureRecognizer.new,
+                (r) => r.onTapUp = (_) => pageTaps++,
+              ),
+            },
+            child: PageBody(page: page, style: style, textColor: Colors.black, width: 180, chapterIndex: 0),
+          ),
+        ),
+      ),
+    ));
+    final bubble = find.byType(SvgPicture);
+    expect(bubble, findsOneWidget);
+    final box = t.getRect(bubble);
+    final body = t.getTopLeft(find.byType(PageBody));
+    // after the indent and five characters, inside the first line (24 px high), centred, 16 * 1.2 high
+    expect(box.left - body.dx, closeTo(7 * 16, 0.5));
+    expect(box.height, closeTo(16 * 1.2, 0.5));
+    expect(box.center.dy - body.dy, closeTo(12, 1));
+
+    await t.tap(bubble);
+    expect(pageTaps, 0);
+    expect((await ranJs(t)).single, contains('checkin()'));
+    // a tap on the text is still the page's
+    await t.tapAt(body + const Offset(40, 12));
+    expect(pageTaps, 1);
   });
 
   testWidgets('reader: a dp image is drawn as the bubble and a tap runs its js', (t) async {
@@ -187,19 +257,6 @@ void main() {
     ));
     expect(find.byType(SvgPicture), findsOneWidget);
     await t.tap(find.byType(SvgPicture));
-    final ran = <String>[];
-    await t.runAsync(() async {
-      for (var i = 0; i < 50 && FakeSourceEngine.created.isEmpty; i++) {
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
-      final page = FakeSourceEngine.created.single;
-      for (var i = 0; i < 50 && (page.page?.calls.isEmpty ?? true); i++) {
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
-      ran.addAll(page.page!.calls);
-      // the runner's idle sweeper was started inside the test zone
-      await SourceRun.clear();
-    });
-    expect(ran.single, contains('checkin()'));
+    expect((await ranJs(t)).single, contains('checkin()'));
   });
 }

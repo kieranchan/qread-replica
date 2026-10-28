@@ -32,6 +32,7 @@ import '../../../qread/qread_jobs.dart';
 import '../../../read/setting/read_layout_style.dart';
 import '../../../read/setting/read_setting.dart';
 import '../../../read/util/chapter_content.dart';
+import '../../../read/util/content_painter.dart';
 import '../../../read/util/highlight_apply.dart';
 import '../../../read/util/list_content.dart';
 import '../../../read/util/listcontroller.dart';
@@ -341,17 +342,20 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     for (final b in c.blocks) {
       if (b.isImage) continue;
       for (final r in b.runs) {
-        r.str = EpubZhConvert.convert(r.str, toTraditional: toT);
+        if (!r.isImage) r.str = EpubZhConvert.convert(r.str, toTraditional: toT);
       }
     }
     return ChapterContent.fromBlocks(c.blocks);
   }
 
-  /// 显示段评 (`needdp`) off: the `dp:` bubbles of book-source text are left out.
-  ChapterContent _paragraphComments(ChapterContent c) {
-    if (_setting.needdp || c.isPlainText) return c;
-    final kept = [for (final b in c.blocks) if (!(b.isImage && b.runs.isNotEmpty && b.runs.first.href.startsWith('dp:'))) b];
-    return kept.length == c.blocks.length ? c : ChapterContent.fromBlocks(kept);
+  ChapterContent _paragraphComments(ChapterContent c) => paragraphComments(c, needdp: _setting.needdp);
+
+  /// 显示段评 (`needdp`) off: the `dp:` bubbles of book-source text are left out, the inline ones at the ends of paragraphs as well as
+  /// those on a line of their own. The text and its offsets do not change (bubbles take no characters).
+  @visibleForTesting
+  static ChapterContent paragraphComments(ChapterContent c, {required bool needdp}) {
+    if (needdp || c.isPlainText) return c;
+    return c.withoutImages((r) => r.href.startsWith('dp:'));
   }
 
   Future<ReadChapter> _ensureContent(int i, {bool refresh = false}) async {
@@ -376,7 +380,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
         final style = _style;
         final size = _size;
         if (style == null || size == null || gen != _gen) return;
-        final calc = CalculateChapter(style: style, imageSizeOf: (src) => imageSize(src, fontSize: style.fontSize));
+        final calc = CalculateChapter(style: style, imageSizeOf: (src) => imageSize(src, style: style));
         final pages = await calc.calculate(
           size: size,
           blocks: rc.content.blocks,
@@ -395,11 +399,13 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     return f;
   }
 
-  /// Layout size of an image block; a 段评 bubble (`dp:N`) is about one character high (the bubbles are 4:3).
+  /// Layout size of an image block. A 段评 bubble (`dp:N`) on a line of its own takes one line: the original sizes it
+  /// `fontSize x lineHeight` high (0xebf770, the `dp` branch of the image-size pass) and draws it like an inline bubble (0xffedf4: the
+  /// "我的" box, picture `min(fontSize * 1.2, height - 1)` high), so it gets the inline image box ([ReadTextBuilder.inlineImageSize]).
   @visibleForTesting
-  static Future<Size?> imageSize(String src, {double fontSize = 20}) async {
+  static Future<Size?> imageSize(String src, {ReadLayoutStyle style = const ReadLayoutStyle()}) async {
     if (src.startsWith(PdfFile.scheme)) return PdfFile.sizeOf(src);
-    if (src.startsWith('dp:')) return Size(fontSize * 4 / 3, fontSize);
+    if (src.startsWith('dp:')) return ReadTextBuilder.inlineImageSize(style);
     if (src.startsWith('http') || src.startsWith('data:')) return null;
     try {
       final m = await ImageService.readSizes([src]);

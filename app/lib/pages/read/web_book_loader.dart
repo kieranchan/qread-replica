@@ -2,7 +2,7 @@
 // contents and the chapter text come from the book-source engine (`SourceApi`), the source JSON from `Sourcedata`.
 //
 // The engine returns the chapter text with paragraphs separated by newlines and images as `<img src="...">` tags; [parseContent] turns
-// that into layout blocks (text paragraphs and image blocks) with offsets into the plain text.
+// that into layout blocks (text paragraphs, with the images of their line inline, and image blocks) with offsets into the plain text.
 import '../../api/sourceapi.dart';
 import '../../data/source.dart';
 import '../../models/book.dart';
@@ -23,7 +23,10 @@ class WebBookException implements Exception {
 }
 
 abstract class WebBookLoader {
-  static final RegExp _img = RegExp(r'''<img[^>]*?src\s*=\s*["']([^"']+)["'][^>]*>''', caseSensitive: false);
+  /// An `<img>` tag; the address in group 1 (double quotes) or 2 (single quotes). The value runs to the matching quote, so the JSON of
+  /// `src="dp:1,{'js':'…'}"` (the source help's form, 0x95fb18) stays whole, and a JSON with double quotes is taken up to its `}` as
+  /// HtmlFormatter.formatKeepImg writes it (the original switches to `src="(.*)"` when the tag holds `{…}`, 0xec0dd4).
+  static final RegExp _img = RegExp(r'''<img[^>]*?\bsrc\s*=\s*(?:"([^"]*(?:"[^>]+\})?)"|'([^']*)')[^>]*>''', caseSensitive: false);
 
   /// The engine's source of [book], null when the source is not installed.
   static Future<BookSource?> sourceOf(Book book) async {
@@ -60,7 +63,7 @@ abstract class WebBookLoader {
       final s = cached ??= await sourceOf(book);
       if (s == null) throw WebBookException('书源不存在: ${book.origin}');
       final text = await SourceApi.content(s, eb.Book.fromModel(book), ec.BookChapter.fromModel(chapter, bookUrl: book.bookUrl));
-      return parseContent(text);
+      return parseContent(text, inline: book.type_ != 2); // 2 = BookType.comic
     };
   }
 
@@ -71,16 +74,37 @@ abstract class WebBookLoader {
     await SourceApi.payAction(s, eb.Book.fromModel(book), ec.BookChapter.fromModel(chapter, bookUrl: book.bookUrl));
   }
 
-  /// Splits engine text into paragraphs and `<img>` blocks.
-  static ChapterContent parseContent(String text) {
+  /// Splits engine text into paragraphs and images. The original keeps the images of a line inside that line's `Line`
+  /// (newread/util/format.dart `_extractTextAndImgUrlsIsolate` 0x23c46c -> 0x23d118: CLines of type 1 between the text CLines) and its
+  /// source help says so (书源规则说明 0x95fb18: "和文字同行的图片会默认识别为段评，小图显示，其他图片会正常显示"). So an `<img>` on a line that
+  /// also has text is an inline image run of that paragraph, at its place in the text (a `dp:N` 段评 bubble at the end of the paragraph
+  /// in the usual case); a line of images only gives image blocks. Only the ends of a line are trimmed, as before.
+  /// [inline] false keeps every image a block (comics: the original's image-only pass, 0x23c588, and the comic view reads image blocks).
+  static ChapterContent parseContent(String text, {bool inline = true}) {
     if (!_img.hasMatch(text)) return ChapterContent.fromText(text);
+    CLine image(RegExpMatch m) => CLine(type: CLineType.image, style: CLineStyle.image, href: (m.group(1) ?? m.group(2)!).trim());
     final blocks = <CalcuPages>[];
     for (final line in text.split('\n')) {
+      final matches = _img.allMatches(line).toList();
+      if (inline && matches.isNotEmpty && line.replaceAll(_img, '').trim().isNotEmpty) {
+        final runs = <CLine>[];
+        var pos = 0;
+        for (final m in matches) {
+          if (m.start > pos) runs.add(CLine(str: line.substring(pos, m.start)));
+          runs.add(image(m));
+          pos = m.end;
+        }
+        if (pos < line.length) runs.add(CLine(str: line.substring(pos)));
+        if (!runs.first.isImage) runs.first.str = runs.first.str.trimLeft();
+        if (!runs.last.isImage) runs.last.str = runs.last.str.trimRight();
+        blocks.add(CalcuPages.text(runs));
+        continue;
+      }
       var pos = 0;
-      for (final m in _img.allMatches(line)) {
+      for (final m in matches) {
         final before = line.substring(pos, m.start).trim();
         if (before.isNotEmpty) blocks.add(CalcuPages.text([CLine(str: before, isfirst: true)]));
-        blocks.add(CalcuPages.image(CLine(type: CLineType.image, style: CLineStyle.image, href: m.group(1)!.trim())));
+        blocks.add(CalcuPages.image(image(m)));
         pos = m.end;
       }
       final rest = line.substring(pos).trim();

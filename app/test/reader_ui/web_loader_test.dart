@@ -23,12 +23,14 @@ void main() {
     });
     tearDownAll(() => site.close());
 
-    test('parseContent splits <img> tags into image blocks', () {
+    test('parseContent: an <img> alone on its line is an image block, one on the same line as text stays inline in that paragraph', () {
       final c = WebBookLoader.parseContent('　　第一段。\n　　<img src="http://h/a.png">\n尾<img src=\'b.jpg\'>巴');
-      expect(c.blocks.length, 5);
+      expect(c.blocks.length, 3);
       expect(c.blocks[1].isImage, isTrue);
       expect(c.blocks[1].runs.first.href, 'http://h/a.png');
-      expect(c.text, '第一段。\n尾\n巴');
+      expect(c.blocks[2].isImage, isFalse);
+      expect([for (final r in c.blocks[2].runs) r.isImage ? r.href : r.str], ['尾', 'b.jpg', '巴']);
+      expect(c.text, '第一段。\n尾巴');
       expect(WebBookLoader.parseContent('甲\n乙').isPlainText, isTrue);
     });
 
