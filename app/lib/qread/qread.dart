@@ -192,10 +192,7 @@ abstract class Qread {
       if (data is Map) {
         final info = data['userInfo'];
         if (info is Map && info['username'] != null) username = '${info['username']}';
-        // TODO(asm 0xf1acf4): the exact key that carries the edit permission is not visible in the digest; `canEditSource`
-        // / `caneditsource` are accepted.
-        final can = data['canEditSource'] ?? data['caneditsource'] ?? (info is Map ? info['canEditSource'] : null);
-        if (can != null) await setCanEditSource(can == true || '$can' == 'true');
+        // the edit permission is not part of this answer: the device channel's `source` job sets it (0x2ad0ac, `md5` == "1")
       }
     } catch (e) {
       debugPrint('getUserInfo: $e');
@@ -312,7 +309,8 @@ abstract class QreadWebsocket {
         Qread.allowchange = int.tryParse('${body['allowchange'] ?? body['data'] ?? 0}') ?? 0;
         debugPrint('allowchange:${Qread.allowchange}');
       case 'source':
-        await Qread.setCanEditSource('${body['source'] ?? body['data']}' == '1' || '${body['source'] ?? body['data']}' == 'true');
+        // 0x2ad0ac: `md5` == "1" → may edit the backend's sources (0xf1acf4 stores `qreadcaneditsource`)
+        await Qread.setCanEditSource('${m['md5'] ?? body['md5']}' == '1');
       case 'getWebViewUA':
         out = LegadoPlatform.webViewUserAgent ?? AppHttp.userAgent;
       case 'getVerificationCode':
