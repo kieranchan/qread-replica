@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../../../api/userapi.dart';
 import '../../../../../common/nav.dart';
 import '../../../../../data/bookself.dart';
 import '../../../../../data/replace.dart';
@@ -36,44 +37,28 @@ class TopMenuEntry {
   const TopMenuEntry(this.id, this.icon, this.label, this.run);
 }
 
-/// Prefs keys copied by 备份设置 / 恢复设置.
+/// The prefs keys of the reading settings (`StorageItem.readitems`, initializer 0x958e9c; the static key names are read from the snapshot's
+/// field table): 备份设置 uploads `{key: value}` of these as cloud item `readitems`, 恢复设置 writes them back.
 const List<String> readerBackupKeys = [
-  'turn',
-  'pageTurnSpeed',
-  'volumeButton',
-  'turntype',
-  'turntime',
-  'turnsudu',
-  'lineHeight',
-  'letterSpacing',
-  'fontWeight12345',
-  'fontFamily',
-  'paragraphSpacing',
-  'kong',
-  'fen',
-  'titleAlign',
-  'titleTopMargin',
-  'titleBottomMargin',
-  'titlefontSize',
-  'topMargin',
-  'bottomMargin',
-  'leftMargin',
-  'rightMargin',
-  'showTop',
-  'showBottom',
-  'hidetitle',
-  'hidetop',
-  'hidebottom',
-  'showProgress',
-  'fan',
-  'background',
-  'darkbackground',
-  'readHighlightType',
-  'topMenuButtons',
+  'ttsrate', 'ttsEngine', 'needdp', 'chinesetype', 'turntime', 'cantrun', 'cantnext', 'waitread', 'fontSizedefault', 'fontSizeopen',
+  'fontSizevalue', 'background', 'darkbackground', 'wakelock', 'wakelockTimeout', 'volumeButton', 'kong', 'fontFamily', 'useFixedFont',
+  'bottomfix', 'showTop', 'showFullpos', 'showPageNumber', 'fullNext', 'paragraphSpacing', 'lineHeight', 'ispad', 'isbold',
+  'bottomMargin', 'topMargin', 'horizontalMargin', 'turnType0', 'turnType2', 'hidetop', 'simplified1', 'turn', 'skipStartTime',
+  'skipEndTime', 'readspeed', 'needupdate', 'continueRead', 'dpstyle', 'listemcachenum', 'needopacity', 'letterSpacing', 'safeTop',
+  'safeBottom', 'leftMargin', 'rightMargin', 'titleTopMargin', 'titleBottomMargin', 'showProgress', 'pageTurnSpeed', 'fan',
+  'menuSliderType', 'headerFooterFontSize', 'headerLeftMargin', 'headerRightMargin', 'footerLeftMargin', 'footerRightMargin',
+  'customFooterLeft', 'customFooterCenter', 'customFooterRight', 'customHeaderLeft', 'customHeaderCenter', 'customHeaderRight',
+  'titleAlign', 'fontWeight12345', 'titlefontSize', 'hidebottom', 'menuSliderType2', 'readHighlightType', 'underline', 'underlineStyle',
+  'underlineFullWidth', 'fen', 'two', 'needcss2', 'topMenuButtons', 'aichat',
 ];
 
 abstract class TopMenuActions {
-  static const String backupItem = 'readSettingBackup';
+  /// Cloud item of the reading settings.
+  static const String cloudItem = 'readitems';
+
+  /// The account server's item store (`UserApi.setItemJsonFile` / `getItemJson`; tests replace them).
+  static Future<void> Function(String item, String content) uploadItem = UserApi.setItemJsonFile;
+  static Future<String> Function(String item) downloadItem = UserApi.getItemJson;
 
   static Future<void> batchDownload(BuildContext context, ReaderHost host) async {
     if (ReadApi.isLocalBook(host.book)) {
@@ -210,31 +195,32 @@ abstract class TopMenuActions {
     await host.relayout();
   }
 
-  /// TODO(asm 0x10e8f78): the original uploads the reader settings to the account server; this port keeps the backup in the
-  /// file store (`readSettingBackup`).
+  /// 备份设置 (0x10e6c30): the non-empty prefs of [readerBackupKeys] as one JSON map, uploaded as cloud item `readitems`.
   static Future<void> backupSetting(BuildContext context, ReaderHost host) async {
     try {
-      final map = {
+      final map = <String, String>{
         for (final k in readerBackupKeys)
-          if (Storage.containsKey(k)) k: Storage.getString(k),
+          if (Storage.getString(k).isNotEmpty) k: Storage.getString(k),
       };
-      await Storage.write(backupItem, jsonEncode(map));
+      await TopMenuActions.uploadItem(cloudItem, jsonEncode(map));
       Toast.show('上传成功');
     } catch (e) {
       Toast.show('上传失败：$e');
     }
   }
 
+  /// 恢复设置 (0x10e6874): downloads `readitems` and writes every string entry back to prefs ("您还没有备份" when absent).
   static Future<void> restoreSetting(BuildContext context, ReaderHost host) async {
     try {
-      final text = await Storage.read(backupItem);
-      if (text.isEmpty) {
+      final text = await TopMenuActions.downloadItem(cloudItem);
+      if (text.trim().isEmpty) {
         Toast.show('您还没有备份');
         return;
       }
-      final map = jsonDecode(text) as Map;
+      final map = jsonDecode(text);
+      if (map is! Map) throw const FormatException('您还没有备份');
       for (final e in map.entries) {
-        await Storage.setString('${e.key}', '${e.value}');
+        if (e.value is String) await Storage.setString('${e.key}', e.value as String);
       }
       host.setting.reload();
       await host.relayout();
