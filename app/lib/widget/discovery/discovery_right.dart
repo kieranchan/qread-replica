@@ -97,17 +97,30 @@ class DiscoveryRightPageState extends BasePage<DiscoveryRightPage> {
   Future<void> runAction(Explore k, {String? value}) async {
     try {
       String result;
+      Map<String, dynamic>? raw;
       if (widget.source.isqread) {
         final r = await Qread.post('/findaction', {'bookSourceUrl': widget.source.bookSourceUrl, 'action': k.action, 'key': k.title, 'value': value ?? ''});
         result = r == null ? '' : '$r';
       } else {
-        final raw = Sourcedata.byUrl(widget.source.bookSourceUrl);
+        raw = Sourcedata.byUrl(widget.source.bookSourceUrl);
         if (raw == null) throw StateError('书源不存在');
         result = await SourceApi.exploreAction(BookSource.fromJson(Map<String, dynamic>.from(raw)), k.action.isNotEmpty ? k.action : k.js, key: k.title, value: value);
       }
       if (!mounted) return;
       final t = result.trim();
       if (t.isEmpty) return;
+      if (ts.BaseSource.isTimeSource(raw)) {
+        // 时光源 actions do their work in the page (cache.set, refreshExplore …); only an url they answer is opened
+        if (t.startsWith('http://') || t.startsWith('https://')) {
+          await SourceUi.openBrowser?.call(SourceBrowserRequest(
+            url: t,
+            title: k.title,
+            source: ts.BaseSource.fromJson(raw!),
+            overrideUrlLoading: k.useShouldOverrideUrlLoading,
+          ));
+        }
+        return;
+      }
       if (k.useShouldOverrideUrlLoading && (t.startsWith('http://') || t.startsWith('https://'))) {
         await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => WebviewPage(url: t, title: k.title)));
       } else {
