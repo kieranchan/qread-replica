@@ -141,16 +141,19 @@ abstract class Setting {
 
   // ------------------------------------------------------------------------------- AI characters and chat sessions
 
-  /// Per-book key of the character library. TODO(asm 0xf04f58): the original key is `"${static 0x2480}$bookKey"`; no code writes
-  /// that static (a snapshot-initialised constant blutter does not dump, not in the pool), so the replica uses `ai_characters_<bookKey>`.
-  static String characterKey(String bookKey) => 'ai_characters_$bookKey';
+  /// Per-book key of the character library: `"${static 0x2480}$bookKey"` (0xf04f58), the static is `aiCharacters_`
+  /// (analysis/inventory/statics.tsv). Keys written by earlier replica builds (`ai_characters_…`) are still read.
+  static String characterKey(String bookKey) => 'aiCharacters_$bookKey';
+  static String _legacyCharacterKey(String bookKey) => 'ai_characters_$bookKey';
 
-  /// Per-book key of the chat sessions. TODO(asm 0x108e3f4): same pattern with static 0x2474 (never written, not dumped).
-  static String chatSessionKey(String bookKey) => 'ai_chat_sessions_$bookKey';
+  /// Per-book key of the chat sessions: `"${static 0x2474}$bookKey"` (0x108e3f4), the static is `aiChatSessions_`.
+  static String chatSessionKey(String bookKey) => 'aiChatSessions_$bookKey';
+  static String _legacyChatSessionKey(String bookKey) => 'ai_chat_sessions_$bookKey';
 
   /// 0xf04f58: `[]` when nothing is stored; a parse error is logged (`AI角色库读取失败 …`) and gives `[]`.
   static List<AiCharacter> getAiCharacters(String bookKey) {
-    final text = Storage.getString(characterKey(bookKey));
+    var text = Storage.getString(characterKey(bookKey));
+    if (text.isEmpty) text = Storage.getString(_legacyCharacterKey(bookKey));
     if (text.isEmpty) return [];
     try {
       final v = jsonDecode(text);
@@ -179,7 +182,8 @@ abstract class Setting {
 
   /// 0x108e3f4.
   static List<AiChatSession> getAiChatSessions(String bookKey) {
-    final text = Storage.getString(chatSessionKey(bookKey));
+    var text = Storage.getString(chatSessionKey(bookKey));
+    if (text.isEmpty) text = Storage.getString(_legacyChatSessionKey(bookKey));
     if (text.isEmpty) return [];
     try {
       final v = jsonDecode(text);

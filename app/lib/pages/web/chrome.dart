@@ -13,8 +13,8 @@ enum UAType {
   mac('Mac UA', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'),
   android('安卓UA', 'Mozilla/5.0 (Linux; Android 13; SM-G998U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36'),
   ios('iOS UA', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/123.0.6312.58 Mobile/15E148 Safari/604.1'),
-  // TODO(asm 0x9765d0): the original takes this one from a static string (pool 0x1e1c) whose value is not in the dump.
-  harmony('鸿蒙UA', 'Mozilla/5.0 (Phone; OpenHarmony 5.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36 ArkWeb/4.1.6.1 Mobile');
+  // 0x9765d0 reads static 0x1e1c (analysis/inventory/statics.tsv)
+  harmony('鸿蒙UA', 'Mozilla/5.0 (Phone; OpenHarmony 6.0; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 ArkWeb/6.0.0.120 Mobile HuaweiBrowser/5.1.11.312');
 
   final String label;
   final String? ua;
