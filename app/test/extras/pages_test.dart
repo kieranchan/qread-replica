@@ -1,11 +1,15 @@
 // Widget tests of the extras pages: 「我的」 layout and keys, member gates for non-members (themes, network drive, SVG bubbles, local TTS),
 // the AI model editor and check, settings dialogs, plus the reading statistics loader and hotkey rules.
+import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_svg/flutter_svg.dart' show SvgPicture;
 import 'package:get/get.dart';
+import 'package:newread/common/app_dirs.dart';
 import 'package:newread/data/background_music_manager.dart';
 import 'package:newread/data/bookself.dart';
 import 'package:newread/data/fonts.dart';
@@ -20,6 +24,7 @@ import 'package:newread/models/book.dart';
 import 'package:newread/models/theme.dart';
 import 'package:newread/models/userinfo.dart';
 import 'package:newread/pages/me_page.dart';
+import 'package:newread/read/api/book_content.dart';
 import 'package:newread/pages/reading_statistics_page.dart';
 import 'package:newread/pages/setting/ai_model_page.dart';
 import 'package:newread/pages/setting/backup_page.dart';
@@ -320,6 +325,20 @@ void main() {
     expect(find.text('主题广场'), findsOneWidget);
     expect(find.byKey(const Key('plaza_7')), findsOneWidget);
     expect(find.text('匿名'), findsOneWidget);
+  });
+
+  test('清理书本缓存 keeps bookcache2/<md5(bookUrl)> of shelf books (the reading core naming) and deletes other folders', () async {
+    await BookSelfN.addAll([Book(bookUrl: 'https://x/keep', name: '留下')]);
+    final root = AppDirs.dir('bookcache2')..createSync(recursive: true);
+    final keep = BookContent.bookDir(root, 'https://x/keep')..createSync();
+    File('${keep.path}/book.json').writeAsStringSync('{}');
+    final gone = BookContent.bookDir(root, 'https://x/gone')..createSync();
+    File('${root.path}/stray.txt').writeAsStringSync('x');
+    expect(CleanPage.cacheName('https://x/keep'), md5.convert(utf8.encode('https://x/keep')).toString());
+    expect(CleanPage.cleanBookCache(), 1);
+    expect(keep.existsSync(), isTrue);
+    expect(gone.existsSync(), isFalse);
+    expect(File('${root.path}/stray.txt').existsSync(), isTrue, reason: 'only folders are cache entries');
   });
 
   testWidgets('backup and clean pages render their sections', (t) async {

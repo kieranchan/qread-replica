@@ -6,8 +6,11 @@
 //   清除源Cache `清理书源缓存和配置` (`确定要清除所有源Cache数据吗？` → `清除完成！` `源Cache已成功清除`)
 //   清理旧版本书本缓存 (when `audio` / `bookcache` exist: `检测到旧版本的书本缓存文件夹，是否清理？`)
 //   恢复出厂设置 `重置所有应用到初始状态` (account and sync keys survive, `Common.cleanwhite`).
-// TODO(asm 0x101e8c0..): the per-book cache folder naming belongs to the reading core; a folder counts as "on the shelf" when its name
-// is the book url or its md5.
+// 清理书本缓存 (0x10283a4): the keep set is md5(utf8(bookUrl)) of every shelf book (sub_69d7f8), the same name the reading core gives
+// the chapter cache folders (`bookcache2/<md5(bookUrl)>/…`, read/api/book_content.dart); every other folder of `<root>/bookcache2` is
+// deleted, `清理了 n 个不在书架的缓存文件夹`.
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:path/path.dart' as p;
@@ -15,6 +18,7 @@ import 'package:path/path.dart' as p;
 import '../../common/app_dirs.dart';
 import '../../data/bookself.dart';
 import '../../init/appinit.dart';
+import '../../read/api/book_content.dart';
 import '../../storage/storage.dart';
 import '../../theme/widgets.dart';
 import '../../util/toast.dart';
@@ -32,21 +36,28 @@ class CleanPage extends StatefulWidget {
 
   static int sizeOf(List<String> names) => names.fold(0, (n, d) => n + dirSize(AppDirs.dir(d)));
 
-  /// Deletes the entries of [dir] that are not books on the shelf; returns how many were removed.
-  static int cleanBookCache(String dir) {
+  /// The cache folder name of a book in `bookcache2` (the reading core's naming: md5 hex of the url).
+  static String cacheName(String bookUrl) => p.basename(BookContent.bookDir(Directory('.'), bookUrl).path);
+
+  /// 0x10283a4: deletes the folders of `<root>/bookcache2` whose name is not the md5 of a shelf book's url; returns the count.
+  static int cleanBookCache([String dir = 'bookcache2']) {
     final d = AppDirs.dir(dir);
     if (!d.existsSync()) return 0;
-    final keep = <String>{};
-    for (final b in Bookdata.books) {
-      keep
-        ..add(b.bookUrl)
-        ..add(Storage.md5Of(b.bookUrl))
-        ..add(b.name);
+    final keep = {for (final b in Bookdata.books) cacheName(b.bookUrl)};
+    if (dir != 'bookcache2') {
+      // epub / audio2 are keyed by url, md5 or name in earlier replica builds
+      for (final b in Bookdata.books) {
+        keep
+          ..add(b.bookUrl)
+          ..add(Storage.md5Of(b.bookUrl))
+          ..add(b.name);
+      }
     }
     var n = 0;
     for (final e in d.listSync()) {
-      final name = p.basenameWithoutExtension(e.path);
-      if (keep.contains(name) || keep.contains(p.basename(e.path))) continue;
+      if (dir == 'bookcache2' && e is! Directory) continue;
+      final name = p.basename(e.path);
+      if (keep.contains(name) || keep.contains(p.basenameWithoutExtension(e.path))) continue;
       try {
         e.deleteSync(recursive: true);
         n++;
@@ -143,11 +154,12 @@ class _CleanPageState extends State<CleanPage> {
       case 'books':
         if (!await Dialogs.confirm(context, '清除书本缓存', '⚠️ 您将清除不在书架的书本缓存！\n此操作不可撤销，请确保已备份重要数据！', confirmText: '确认清除', danger: true)) return;
         await Bookdata.load();
-        var n = 0;
-        for (final d in CleanPage.bookDirs) {
-          n += CleanPage.cleanBookCache(d);
+        try {
+          final n = CleanPage.cleanBookCache();
+          Toast.show('清理了 $n 个不在书架的缓存文件夹');
+        } catch (e) {
+          Toast.show('清理缓存错误: $e', iserror: true);
         }
-        Toast.show('清除完成！($n)');
       case 'stats':
         if (!await Dialogs.confirm(context, '清理阅读统计', '确定要清理已记录的阅读时间吗？', danger: true)) return;
         CleanPage.emptyDir('reading_time');
