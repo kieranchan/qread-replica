@@ -14,6 +14,7 @@ Five tabs in the original's default order (`bottomBarTabs`): 书架 · 发现 ·
 | Account + membership | `api/userapi.dart`, `data/user.dart`, `pages/{login,register,forgot_password}_page.dart`, `pages/user/`, `util/vip.dart` | login/register (invite code), 会员中心 web view, member gates (`Vip.require()`), cloud switches, devices, self-check |
 | Data layer | `storage/`, `data/`, `common/`, `init/appinit.dart`, `models/` | prefs as text + file store `<root>/item/<md5>.txt`, every list manager, three-way cloud sync |
 | Book-source engine | `util/webbook/`, `util/legado/`, `util/html/`, `util/http.dart`, `api/sourceapi.dart`, `api/rssapi.dart` | Legado rules (CSS/jsoup, XPath, JSONPath, regex, JS via JavaScriptCore on iOS / Dart interpreter on the host), search, explore, info, toc, content, RSS, debugger |
+| 时光源 runtime | `util/source/`, `pages/web/source_webview.dart`, `pages/source/sg_login.dart` | the original's own sources: the source's `html` page runs in a HeadlessInAppWebView per source (reused, dropped after 5 idle minutes), the page's `callHandler` bridge (http, cache, cookie, webview, browser, captcha, …), search / 发现 / info / toc / content / pay / imagedecrypt through `SourceApi`, login (`getloginurl()` page or form + `login()`) |
 | Reading core | `read/`, `util/epub/`, `util/image/`, `util/cahce/` | TXT (charset + TOC rules) / EPUB / MOBI import, layout + paging, per-book stores, progress, history, bookmarks, cache |
 | Reader UI | `pages/read/`, `pages/{txtrule,replace,highlight,image,video}/`, `widget/{read,pageflip}/` | paging modes, menus, settings, selection → highlight / note, listening (system TTS), AI chat sheet, comic / audio views, rule pages |
 | Shelf / search / discovery | `pages/bookshelf_page.dart`, `pages/discovery_page*.dart`, `pages/{book,search,history,exploration}/`, `widget/` | shelf (groups, grid/list, import, batch edit, cloud sync), detail, catalog, change source, downloads, multi-source search, discovery, 探索 templates |
@@ -29,8 +30,8 @@ highlight backgrounds, camera QR scanning, app links / open-with, Big5 + GB18030
 (queryTTF/replaceFont), drag-sorted shelf, explore actions, 沉浸光感 (liquid glass), 底栏标签配置 (订阅 hidden by default as in the
 original), backup devices on the owner's server, alternate home-screen icons.
 
-Not available (pages keep the original strings and say so): 时光源 execution and the browser reading mode built on it (they need
-qread.xyz services), Baidu/Weiyun drives (vendor credentials), the Edge voice (its client token is not copied), app update check.
+Not available (pages keep the original strings and say so): the browser reading mode (it needs qread.xyz services), 时光源 pages
+encrypted with `@aes` (the key is a constant of the original), Baidu/Weiyun drives (vendor credentials), the Edge voice (its client token is not copied), app update check.
 The remaining approximations are marked `TODO(asm 0x…)` with what was checked.
 
 ## Tests
