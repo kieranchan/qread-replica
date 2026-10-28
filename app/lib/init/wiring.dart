@@ -19,6 +19,7 @@ import '../pages/main_page.dart';
 import '../pages/read/read_page.dart';
 import '../pages/read/reader_ai.dart';
 import '../pages/read/reader_routes.dart';
+import '../pages/read/tts_bridge.dart';
 import '../pages/rss_page.dart';
 import '../pages/search/search_book_page.dart';
 import '../pages/setting/extras_routes.dart';
@@ -68,6 +69,8 @@ abstract class Wiring {
     // reader: per-book stores live under the app root; the AI chat uses the AI module
     if (!ReadStorageRoot.isSet) ReadStorageRoot.dir = AppDirs.root;
     ReaderAi.instance = ReaderAiAdapter();
+    // read-aloud through the TTS engines (HTTP, Volcano, MiMo, multi-role), background music, lock-screen controls
+    TtsBridge.install();
 
     // shelf: loads the shelf and routes reader progress into it (ReadApi.onProgress)
     await ShelfRoutes.init();

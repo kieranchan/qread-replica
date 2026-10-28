@@ -26,6 +26,7 @@ import 'api/read_storage_root.dart';
 import 'api/readapi.dart';
 import 'epub/epub_file.dart';
 import 'mobi/mobi_file.dart';
+import 'pdf/pdf_file.dart';
 import 'txt/text_file.dart';
 import 'util/chapter_content.dart';
 
@@ -48,7 +49,7 @@ class LocalBookException implements Exception {
 }
 
 class LocalBookImporter {
-  static const List<String> supportedExtensions = ['txt', 'epub', 'mobi', 'azw', 'azw3', 'prc'];
+  static const List<String> supportedExtensions = ['txt', 'epub', 'mobi', 'azw', 'azw3', 'prc', 'pdf'];
 
   /// Where imported files / covers / extracted EPUB images go (defaults below [ReadStorageRoot]).
   final Directory? booksDirOverride;
@@ -67,6 +68,7 @@ class LocalBookImporter {
     final ext = p.extension(path).toLowerCase().replaceFirst('.', '');
     if (ext == 'txt') return 'txt';
     if (ext == 'epub') return 'epub';
+    if (ext == 'pdf') return 'pdf';
     if (const ['mobi', 'azw', 'azw3', 'prc'].contains(ext)) return 'mobi';
     throw LocalBookException('不支持的文件格式: .$ext');
   }
@@ -109,6 +111,10 @@ class LocalBookImporter {
           charset: 'UTF-8',
           kind: 'EPUB',
         );
+      case 'pdf':
+        // the original's PDF books: one chapter 全文 with every page as an image (read/pdf/pdf_file.dart)
+        chapters = PdfFile.chapters();
+        book = Book(name: p.basenameWithoutExtension(target.path), kind: 'PDF', charset: 'UTF-8');
       default:
         final res = await MobiFile.parse(target, workDir: _mobiWork(bookUrl), coverDir: coversDir, bookUrl: bookUrl);
         if (res.chapters.isEmpty) throw const LocalBookException('MOBI 中没有可阅读的章节');
@@ -201,6 +207,8 @@ class LocalBookImporter {
         chapters = (await TextFile.parse(file, rules: txtRules, charset: book.charset, bookUrl: book.bookUrl)).chapters;
       case 'epub':
         chapters = (await EpubFile.parse(file, bookUrl: book.bookUrl)).chapters;
+      case 'pdf':
+        chapters = PdfFile.chapters();
       default:
         chapters = (await MobiFile.parse(file, workDir: _mobiWork(book.bookUrl), bookUrl: book.bookUrl)).chapters;
     }
@@ -218,6 +226,8 @@ class LocalBookImporter {
       case 'epub':
         final imgDir = Directory('${epubDir.path}/${ReadFileStore.md5Hex(book.bookUrl)}');
         return EpubFile.getChapterContent(file, chapter, imageDir: imgDir);
+      case 'pdf':
+        return PdfFile.chapterContent(file.path);
       default:
         return MobiFile.getChapterContent(chapter, book.charset);
     }
@@ -232,6 +242,7 @@ class LocalBookImporter {
     final inLibrary = p.isWithin(booksDir.path, file.path);
     if (inLibrary) ReadFileStore.deleteSync(file);
     ReadFileStore.deleteSync(_chaptersFile(book));
+    if (p.extension(file.path).toLowerCase() == '.pdf') PdfFile.deleteCache(file.path);
     final key = ReadFileStore.md5Hex(book.bookUrl);
     for (final d in [Directory('${epubDir.path}/$key'), _mobiWork(book.bookUrl)]) {
       if (d.existsSync()) d.deleteSync(recursive: true);

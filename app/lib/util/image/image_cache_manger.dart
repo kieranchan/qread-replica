@@ -3,8 +3,8 @@
 // `util/webbook` evaluates `js`, this class only carries it).
 //
 // URL option syntax of book sources (Legado): `http://host/a.png,{"headers":{"Referer":"..."}}`; [HeaderUrl.parse] understands it.
-// Downloads use an injectable [ImageFetcher] so tests run against a local server. TODO(asm 0x236484): the original's cache lives in an
-// isolate (`ImageService._isolateEntry`); here the fetch is a plain async call.
+// Downloads use an injectable [ImageFetcher] so tests run against a local server. The original runs the downloads in an isolate
+// (`ImageService._isolateEntry` 0x236484 -> 0x2364b4); here the fetch is a plain async call with the same results.
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';

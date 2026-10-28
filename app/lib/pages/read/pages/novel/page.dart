@@ -1,14 +1,22 @@
 // pages/read/pages/novel/page.dart — the paged reader: shows the current screen and animates to the previous / next one.
 //
 // Original: `_ReadPageState` (page.dart, "动画完成处理错误: ") for 左右平移 / 上下平移 / 无动画, `_ReadCoverState` (cover.dart) for 左右覆盖,
-// `_FlipPageState` (filp.dart) for 仿真翻页, `_BookPageState` (book.dart) for 模拟翻书 and `_AppleBookPageState` (apple_book.dart) for the
-// iOS native curl. One widget drives all of them here: a drag (or [NovelPagerController.turn]) moves an animation from 0 to 1 and the
-// mode decides how the current and the neighbouring screen are drawn at that point.
+// `_FlipPageState` (filp.dart) for 仿真翻页 — a picture of the page rolled like a cylinder by `PageFlipEffect` — and `_BookPageState`
+// (book.dart) for 模拟翻书 — the page corner follows the finger (`PaperPoint`, `BookCurl`). The iOS native curl of `_AppleBookPageState`
+// (apple_book.dart, a UIKit page view) has no Flutter counterpart and uses the 模拟翻书 corner curl.
+//
+// One widget drives all modes: a drag (or [NovelPagerController.turn]) moves an animation from 0 to 1 and the mode decides how the
+// current and the neighbouring screen are drawn at that point; in the corner-curl modes the touch point itself is animated.
+import 'dart:ui' as ui;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../../../read/setting/read_setting.dart';
-import '../../../../widget/pageflip/page_curl.dart';
+import '../../../../widget/bookfx/book_painter.dart';
+import '../../../../widget/bookfx/model/paper_point.dart';
+import '../../../../widget/pageflip/effects/flip_effect.dart';
 
 class NovelPagerController {
   _NovelPagerState? _state;
@@ -65,14 +73,37 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
   Size _size = Size.zero;
   bool _busy = false;
 
+  // corner curl (模拟翻书): touch point a, lifted corner f, the animation runs a from [_from] to [_to]
+  Offset? _touch;
+  Offset _corner = Offset.zero;
+  Offset _from = Offset.zero;
+  Offset _to = Offset.zero;
+  Offset _down = Offset.zero;
+  bool _horizontal = true;
+
+  // 仿真翻页: picture of the page that rolls
+  final GlobalKey _curKey = GlobalKey(debugLabel: 'flip-cur');
+  final GlobalKey _prevKey = GlobalKey(debugLabel: 'flip-prev');
+  ui.Image? _flipImage;
+  int _captureFor = 0;
+
   bool get _vertical => widget.mode == TurnMode.verticalSlide;
+  bool get _bookMode => widget.mode == TurnMode.book || widget.mode == TurnMode.appleBook;
+  bool get _flipMode => widget.mode == TurnMode.simulation;
 
   @override
   void initState() {
     super.initState();
-    _anim = AnimationController(vsync: this, duration: widget.duration)..addListener(() => setState(() {}));
+    _anim = AnimationController(vsync: this, duration: widget.duration)..addListener(_tick);
     widget.controller?._state = this;
   }
+
+  void _tick() {
+    if (_bookMode && _dir != 0 && !_dragging) _touch = Offset.lerp(_from, _to, Curves.easeOut.transform(_anim.value));
+    setState(() {});
+  }
+
+  bool _dragging = false;
 
   @override
   void didUpdateWidget(NovelPager old) {
@@ -88,6 +119,7 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
   void dispose() {
     if (widget.controller?._state == this) widget.controller?._state = null;
     _anim.dispose();
+    _flipImage?.dispose();
     super.dispose();
   }
 
@@ -96,8 +128,94 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
     _dir = 0;
     _anim.value = 0;
     _busy = false;
+    _touch = null;
+    _dropImage();
     if (d != 0) widget.onTurned(d);
   }
+
+  void _cancelled() {
+    _dir = 0;
+    _busy = false;
+    _touch = null;
+    _anim.value = 0;
+    _dropImage();
+  }
+
+  void _dropImage() {
+    _flipImage?.dispose();
+    _flipImage = null;
+    _captureFor = 0;
+  }
+
+  /// 仿真翻页 rolls a picture of the front page: taken once the page has been painted (the previous page appears under the current one
+  /// for a frame when turning back).
+  Future<void> _capture(int dir) async {
+    if (!_flipMode || _captureFor == dir) return;
+    _captureFor = dir;
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted || _dir != dir) return;
+    final ro = (dir == 1 ? _curKey : _prevKey).currentContext?.findRenderObject();
+    if (ro is! RenderRepaintBoundary) return;
+    try {
+      final img = await ro.toImage(pixelRatio: MediaQuery.maybeDevicePixelRatioOf(context) ?? 1);
+      if (!mounted || _dir != dir || _flipImage != null) {
+        img.dispose();
+        return;
+      }
+      setState(() => _flipImage = img);
+    } catch (_) {}
+  }
+
+  // ------------------------------------------------------------------ corner curl geometry
+
+  void _startCurl(int dir, {Offset? at}) {
+    final w = _size.width, h = _size.height;
+    if (dir == 1) {
+      final y = (at ?? Offset(w, h)).dy;
+      _horizontal = at == null ? false : (y > h / 3 && y < h * 2 / 3);
+      _corner = Offset(w, (at != null && y < h / 3) ? 0 : h);
+    } else {
+      _horizontal = true;
+      _corner = Offset(w, h);
+    }
+  }
+
+  /// The touch point for a finger at [local] (backwards the previous page is pulled in from the left).
+  Offset _curlTouch(Offset local) {
+    final w = _size.width, h = _size.height;
+    if (_dir == -1) return Offset((2 * local.dx - w).clamp(-w, w), h);
+    if (_horizontal) return Offset(local.dx.clamp(-w, w), _corner.dy);
+    return PaperPoint.constrain(Offset(local.dx.clamp(-w, w - 0.5), local.dy.clamp(0, h)), _corner, _size);
+  }
+
+  /// Where the touch point ends: turned (forward: off the left edge; back: flat) or put back.
+  Offset _curlTarget(bool complete) {
+    final w = _size.width;
+    if (_dir == 1) return complete ? Offset(-w, _corner.dy) : _corner;
+    return complete ? _corner : Offset(-w, _corner.dy);
+  }
+
+  /// 0..1 progress of the curl for the decision on release.
+  double get _curlProgress {
+    final a = _touch;
+    if (a == null) return 0;
+    final w = _size.width;
+    return _dir == 1 ? ((w - a.dx) / (2 * w)).clamp(0.0, 1.0) : ((a.dx + w) / (2 * w)).clamp(0.0, 1.0);
+  }
+
+  Future<bool> _animateCurl(Offset to) async {
+    _from = _touch ?? _from;
+    _to = to;
+    _anim.value = 0;
+    try {
+      await _anim.animateTo(1);
+    } on TickerCanceled {
+      return false;
+    }
+    return mounted;
+  }
+
+  // ------------------------------------------------------------------ turns
 
   Future<bool> _turn(int delta) async {
     if (_busy) return false;
@@ -110,7 +228,19 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
       return true;
     }
     _busy = true;
+    if (_bookMode) {
+      setState(() {
+        _dir = delta;
+        _startCurl(delta);
+        final w = _size.width, h = _size.height;
+        _touch = delta == 1 ? Offset(w - 1, h - 1) : Offset(-w, h);
+      });
+      if (!await _animateCurl(_curlTarget(true))) return false;
+      setState(_finish);
+      return true;
+    }
     setState(() => _dir = delta);
+    _capture(delta);
     try {
       await _anim.animateTo(1, curve: Curves.easeOut);
     } on TickerCanceled {
@@ -126,10 +256,13 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
   void _dragStart(DragStartDetails d) {
     if (_busy) return;
     _drag = 0;
+    _down = d.localPosition;
+    _dragging = true;
   }
 
-  void _dragUpdate(double delta) {
+  void _dragUpdate(DragUpdateDetails d) {
     if (_busy) return;
+    final delta = _vertical ? d.delta.dy : d.delta.dx;
     _drag += delta;
     if (_dir == 0 && _drag.abs() > 4) {
       final dir = _drag < 0 ? 1 : -1;
@@ -139,25 +272,39 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
         _busy = true; // ignore the rest of this drag
         return;
       }
-      setState(() => _dir = dir);
+      setState(() {
+        _dir = dir;
+        if (_bookMode) _startCurl(dir, at: _down);
+      });
+      _capture(dir);
     }
-    if (_dir != 0 && widget.mode != TurnMode.none) {
-      final extent = _vertical ? _size.height : _size.width;
-      final p = (-_drag * _dir / (extent <= 0 ? 1 : extent)).clamp(0.0, 1.0);
-      _anim.value = p;
+    if (_dir == 0 || widget.mode == TurnMode.none) return;
+    if (_bookMode) {
+      setState(() => _touch = _curlTouch(d.localPosition));
+      return;
     }
+    final extent = _vertical ? _size.height : _size.width;
+    _anim.value = (-_drag * _dir / (extent <= 0 ? 1 : extent)).clamp(0.0, 1.0);
   }
 
-  Future<void> _dragEnd(double velocity) async {
+  Future<void> _dragEnd(DragEndDetails d) async {
+    _dragging = false;
     if (_busy) {
       if (_dir == 0) _busy = false;
       return;
     }
     if (_dir == 0) return;
-    final forward = -velocity * _dir > 300 || _anim.value > 0.15 || widget.mode == TurnMode.none;
+    final velocity = _vertical ? d.velocity.pixelsPerSecond.dy : d.velocity.pixelsPerSecond.dx;
+    final progress = _bookMode ? _curlProgress : _anim.value;
+    final forward = -velocity * _dir > 300 || progress > 0.15 || widget.mode == TurnMode.none;
     _busy = true;
     if (widget.mode == TurnMode.none) {
       setState(_finish);
+      return;
+    }
+    if (_bookMode) {
+      if (!await _animateCurl(_curlTarget(forward))) return;
+      setState(forward ? _finish : _cancelled);
       return;
     }
     try {
@@ -166,14 +313,7 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
       return;
     }
     if (!mounted) return;
-    setState(() {
-      if (forward) {
-        _finish();
-      } else {
-        _dir = 0;
-        _busy = false;
-      }
-    });
+    setState(forward ? _finish : _cancelled);
   }
 
   // ------------------------------------------------------------------ drawing
@@ -184,6 +324,7 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
       );
 
   Widget _compose(double w, double h) {
+    if (_flipMode && _dir == 0) return RepaintBoundary(key: _curKey, child: widget.pageBuilder(0));
     final cur = widget.pageBuilder(0);
     if (_dir == 0) return cur;
     final other = widget.pageBuilder(_dir);
@@ -200,12 +341,26 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
           Transform.translate(offset: Offset(0, _dir * (1 - t) * h), child: other),
         ]);
       case TurnMode.simulation:
+        final front = RepaintBoundary(key: _dir == 1 ? _curKey : _prevKey, child: _dir == 1 ? cur : other);
+        final under = _dir == 1 ? other : cur;
+        final img = _flipImage;
+        if (img == null) {
+          // until the picture exists: forward shows the flat page, backward keeps the previous page painted under the current one
+          return Stack(fit: StackFit.expand, children: _dir == 1 ? [under, front] : [front, under]);
+        }
+        final amount = _dir == 1 ? 1 - t : t;
+        return Stack(fit: StackFit.expand, children: [
+          under,
+          Offstage(child: front),
+          IgnorePointer(child: CustomPaint(painter: PageFlipEffect(amount: amount, image: img, backgroundColor: widget.paperColor))),
+        ]);
       case TurnMode.book:
       case TurnMode.appleBook:
-        // TODO(asm book.dart / apple_book.dart): 模拟翻书 and the iOS native curl share the simulation effect.
-        return _dir == 1
-            ? PageCurl(front: cur, under: other, amount: t, paperColor: widget.paperColor)
-            : PageCurl(front: other, under: cur, amount: 1 - t, paperColor: widget.paperColor);
+        final a = _touch;
+        final front = _dir == 1 ? cur : other;
+        final under = _dir == 1 ? other : cur;
+        if (a == null) return _dir == 1 ? front : under;
+        return BookCurl(front: front, under: under, touch: a, corner: _corner, paperColor: widget.paperColor);
       case TurnMode.none:
         return cur;
       default: // cover
@@ -232,17 +387,29 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
         gestures[VerticalDragGestureRecognizer] = GestureRecognizerFactoryWithHandlers<VerticalDragGestureRecognizer>(
           () => VerticalDragGestureRecognizer(),
           (r) => r
+            ..dragStartBehavior = DragStartBehavior.down
             ..onStart = _dragStart
-            ..onUpdate = ((d) => _dragUpdate(d.delta.dy))
-            ..onEnd = ((d) => _dragEnd(d.velocity.pixelsPerSecond.dy)),
+            ..onUpdate = _dragUpdate
+            ..onEnd = _dragEnd,
+        );
+      } else if (_bookMode) {
+        // the corner follows the finger in every direction
+        gestures[PanGestureRecognizer] = GestureRecognizerFactoryWithHandlers<PanGestureRecognizer>(
+          () => PanGestureRecognizer(),
+          (r) => r
+            ..dragStartBehavior = DragStartBehavior.down
+            ..onStart = _dragStart
+            ..onUpdate = _dragUpdate
+            ..onEnd = _dragEnd,
         );
       } else {
         gestures[HorizontalDragGestureRecognizer] = GestureRecognizerFactoryWithHandlers<HorizontalDragGestureRecognizer>(
           () => HorizontalDragGestureRecognizer(),
           (r) => r
+            ..dragStartBehavior = DragStartBehavior.down
             ..onStart = _dragStart
-            ..onUpdate = ((d) => _dragUpdate(d.delta.dx))
-            ..onEnd = ((d) => _dragEnd(d.velocity.pixelsPerSecond.dx)),
+            ..onUpdate = _dragUpdate
+            ..onEnd = _dragEnd,
         );
         if (widget.onVerticalPull != null) {
           gestures[VerticalDragGestureRecognizer] = GestureRecognizerFactoryWithHandlers<VerticalDragGestureRecognizer>(

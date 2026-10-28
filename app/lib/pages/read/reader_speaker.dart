@@ -2,8 +2,8 @@
 //
 // The original drives `TtsController` (`_NovelViewState._tts` 0x1b0, util/audio/tts_audio_controller.dart, owned by the TTS area) which
 // switches between the system voice (flutter_tts), HTTP TTS engines and the multi-role AI engine. The reader only needs "speak this
-// paragraph, tell me when done", so it talks to [ReaderSpeaker]; the default is the system voice through flutter_tts and the lead can
-// point [ReaderSpeaker.factory] at the TTS module once it is merged.
+// paragraph, tell me when done", so it talks to [ReaderSpeaker]; `TtsBridge.install()` (tts_bridge.dart) points [bookFactory] at the
+// TTS module (engine chosen by `ttsEngine` / `useGlobalTtsEngine` / the book's own engine); without it the system voice is used.
 import 'dart:async';
 
 import 'package:flutter_tts/flutter_tts.dart';
@@ -21,10 +21,13 @@ class SpeakerVoice {
 }
 
 abstract class ReaderSpeaker {
-  /// Set by the app to use another engine (HTTP TTS, multi-role AI). Null = [FlutterTtsSpeaker].
+  /// Overrides every other choice (tests).
   static ReaderSpeaker Function()? factory;
 
-  static ReaderSpeaker create() => factory?.call() ?? FlutterTtsSpeaker();
+  /// The engine for a book (set by `TtsBridge.install()`).
+  static ReaderSpeaker Function(String bookUrl)? bookFactory;
+
+  static ReaderSpeaker create({String bookUrl = ''}) => factory?.call() ?? bookFactory?.call(bookUrl) ?? FlutterTtsSpeaker();
 
   /// Called when the text given to [speak] has been spoken completely.
   void Function()? onDone;

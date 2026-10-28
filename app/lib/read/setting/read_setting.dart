@@ -9,6 +9,7 @@
 // Background colours (0x2460c4 / 0x245b64 / 0x245728): the selected style id is `background` (day) or `darkbackground` (night, default
 // `4`); ids below `Common.background.length` are the built-in colours `#e6e6e6 #c4b395 #cad9e8 #d1edd1 #000000 #ffffff` (text colour
 // `Colors.white70` on `#000000`, otherwise `Colors.black87`), larger ids name a `BackGround` of `Ground.grounds`.
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -53,11 +54,45 @@ abstract class ProgressMode {
   static const int both = 3;
 }
 
-/// `fan` values: 0 off, 1 simplified -> traditional, 2 traditional -> simplified. TODO(asm 0x8f7f40): value domain inferred.
+/// `simplified1` values (bottom menu 简体繁体: 原文 / 简体 / 繁体). 0x24d448 converts with `ChineseUtils`: 1 = to simplified, 2 = to
+/// traditional, and leaves chapters longer than 100000 characters as they are ("正本内容过长，暂不支持简繁转换").
 abstract class FanMode {
   static const int off = 0;
-  static const int toTraditional = 1;
-  static const int toSimplified = 2;
+  static const int toSimplified = 1;
+  static const int toTraditional = 2;
+
+  static const int maxLength = 100000;
+}
+
+/// The items of a custom header / footer slot (`customHeaderLeft` ... `customFooterRight` are JSON lists of these ids; names pp+0x72a78).
+abstract class SlotItem {
+  static const int time = 0;
+  static const int batteryInside = 1;
+  static const int batteryOutside = 2;
+  static const int chapterProgress = 3;
+  static const int bookProgress = 4;
+  static const int title = 5;
+  static const int bookName = 6;
+
+  static const List<String> names = ['时间', '内置百分比电池', '外置百分比电池', '章节进度', '全文进度', '标题', '书名'];
+}
+
+/// `fen` (更多设置 "分割线": 不显示 / 页眉 / 页脚 / 页眉和页脚): a line under the header and / or above the footer.
+abstract class DividerMode {
+  static const int none = 0;
+  static const int header = 1;
+  static const int footer = 2;
+  static const int both = 3;
+}
+
+/// `wakelockTimeout` (屏幕常亮; 0x2b4e64): 0 跟随系统, 1 / 2 / 5 / 10 minutes after the last activity, -1 常亮 (the default).
+abstract class WakeMode {
+  static const int system = 0;
+  static const int always = -1;
+  static const Map<int, String> labels = {0: '跟随系统', 1: '1分钟', 2: '2分钟', 5: '5分钟', 10: '10分钟', -1: '常亮'};
+
+  /// Seconds of inactivity before the screen may sleep again (0 = no timer).
+  static int seconds(int option) => switch (option) { 1 => 60, 2 => 120, 5 => 300, 10 => 600, _ => 0 };
 }
 
 /// The colours the reader paints with (original class `ReadConfig`, built by 0xecc920).
@@ -93,9 +128,20 @@ class ReadSetting extends ChangeNotifier {
   static int get imageIdBase => builtinColors.length;
   static int get userIdBase => builtinColors.length + builtinImages.length;
 
-  /// Prefix of the font-size key (`<static 0x2240>default`, 0x2b3b4c). TODO(asm 0x2b3b4c): the static is not recoverable.
-  static String fontSizeKeyPrefix = 'font';
-  static String get fontSizeKey => '${fontSizeKeyPrefix}default';
+  /// The font-size key: static 0x2240 (`"fontSize"`) + `"default"` (getter 0x2b3b4c, setter 0xfa2de0; the static's initial value is
+  /// in the snapshot's field table). A plain int, default 30, clamped to 10..55 by 0x2b3a24.
+  static const String fontSizeKey = 'fontSizedefault';
+
+  /// The six custom header / footer slots and their values when the key is absent (getters 0x1010228 / 0x1010100 / 0x100ffd8 /
+  /// 0x1010630 / 0x10104d8 / 0x1010380): header 标题 | - | -, footer 时间 | 章节进度 | 外置百分比电池.
+  static const Map<String, List<int>> slotDefaults = {
+    'customHeaderLeft': [SlotItem.title],
+    'customHeaderCenter': [],
+    'customHeaderRight': [],
+    'customFooterLeft': [SlotItem.time],
+    'customFooterCenter': [SlotItem.chapterProgress],
+    'customFooterRight': [SlotItem.batteryOutside],
+  };
 
   /// Called when the reader switches day/night so the app theme can follow (wired by the lead; null = reader only).
   static void Function(bool night)? onNightChanged;
@@ -118,6 +164,18 @@ class ReadSetting extends ChangeNotifier {
   ClickAreaSetting clickArea = ClickAreaSetting.defaults();
   int turntime = 10;
   int turnsudu = 1;
+
+  /// 翻页距离 of the auto-turn bar (`fan`, 0x8f7f40 default 5, slider up to 200).
+  int fan = 5;
+
+  /// 简体繁体 (`simplified1`, [FanMode]).
+  int simplified = FanMode.off;
+
+  /// 菜单滑动条 按章节 (0) / 按分页 (1) (`menuSliderType`).
+  int menuSliderType = 0;
+
+  /// The custom header / footer slots ([slotDefaults]).
+  Map<String, List<int>> slots = {for (final e in slotDefaults.entries) e.key: List<int>.of(e.value)};
 
   int fontSize = 30;
   double lineHeight = 2;
@@ -154,7 +212,6 @@ class ReadSetting extends ChangeNotifier {
   bool hidetop = true;
   bool hidebottom = true;
   int showProgress = ProgressMode.chapter;
-  int fan = FanMode.off;
   int background = 0;
   int darkbackground = 4;
   bool night = false;
@@ -180,6 +237,12 @@ class ReadSetting extends ChangeNotifier {
     final tt = Storage.getInt('turntime');
     turntime = tt <= 0 ? 10 : tt;
     turnsudu = Storage.getInt('turnsudu', 1).clamp(1, 20);
+    fan = Storage.getInt('fan', 5).clamp(1, 200);
+    simplified = Storage.getInt('simplified1').clamp(0, 2);
+    menuSliderType = Storage.getInt('menuSliderType').clamp(0, 1);
+    for (final k in slotDefaults.keys) {
+      slots[k] = slot(k);
+    }
 
     fontSize = Storage.getInt(fontSizeKey, 30).clamp(10, 55);
     final lh = Storage.getDouble('lineHeight');
@@ -189,7 +252,7 @@ class ReadSetting extends ChangeNotifier {
     fontFamily = Storage.getString('fontFamily');
     paragraphSpacing = Storage.getDouble('paragraphSpacing', 10).clamp(0, 100);
     kong = Storage.getInt('kong', 2).clamp(0, 8);
-    fen = Storage.getInt('fen');
+    fen = Storage.getInt('fen').clamp(0, 3);
     titleAlign = Storage.getInt('titleAlign').clamp(0, 2);
     titleTopMargin = Storage.getInt('titleTopMargin').clamp(0, 200);
     titleBottomMargin = Storage.getInt('titleBottomMargin').clamp(0, 200);
@@ -217,7 +280,6 @@ class ReadSetting extends ChangeNotifier {
     hidetop = Storage.getBool('hidetop', true);
     hidebottom = Storage.getBool('hidebottom', true);
     showProgress = Storage.getInt('showProgress', ProgressMode.chapter).clamp(0, 3);
-    fan = Storage.getInt('fan').clamp(0, 2);
     background = math.max(0, Storage.getInt('background'));
     darkbackground = math.max(0, Storage.getInt('darkbackground', 4));
     brightness = Storage.getDouble('brightness', -1);
@@ -318,8 +380,8 @@ class ReadSetting extends ChangeNotifier {
   }
 
   Future<void> setFen(int v) {
-    fen = v;
-    return _setInt('fen', v);
+    fen = v.clamp(0, 3);
+    return _setInt('fen', fen);
   }
 
   Future<void> setMargins({int? top, int? bottom, int? left, int? right}) async {
@@ -374,6 +436,19 @@ class ReadSetting extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 顶部 / 底部安全距离 (`safeTop` / `safeBottom`, -1 = the system inset).
+  Future<void> setSafeDistance({int? top, int? bottom}) async {
+    if (top != null) {
+      safeTop = top.clamp(-1, 200);
+      await Storage.setInt('safeTop', safeTop);
+    }
+    if (bottom != null) {
+      safeBottom = bottom.clamp(-1, 200);
+      await Storage.setInt('safeBottom', safeBottom);
+    }
+    notifyListeners();
+  }
+
   Future<void> setHidetitle(bool v) {
     hidetitle = v;
     return _setBool('hidetitle', v);
@@ -395,8 +470,35 @@ class ReadSetting extends ChangeNotifier {
   }
 
   Future<void> setFan(int v) {
-    fan = v.clamp(0, 2);
+    fan = v.clamp(1, 200);
     return _setInt('fan', fan);
+  }
+
+  Future<void> setSimplified(int v) {
+    simplified = v.clamp(0, 2);
+    return _setInt('simplified1', simplified);
+  }
+
+  Future<void> setMenuSliderType(int v) {
+    menuSliderType = v.clamp(0, 1);
+    return _setInt('menuSliderType', menuSliderType);
+  }
+
+  /// A custom slot as the original reads it: the JSON list of item ids, or the default when the key is empty.
+  static List<int> slot(String key) {
+    final text = Storage.getString(key);
+    if (text.isEmpty) return List<int>.of(slotDefaults[key] ?? const []);
+    try {
+      final v = jsonDecode(text);
+      if (v is List) return [for (final e in v) if (e is num) e.toInt()];
+    } catch (_) {}
+    return [];
+  }
+
+  Future<void> setSlot(String key, List<int> items) async {
+    slots[key] = List<int>.of(items);
+    await Storage.setString(key, jsonEncode(items));
+    notifyListeners();
   }
 
   Future<void> setBackgroundId(int id, {bool? forNight}) {
@@ -465,6 +567,14 @@ class ReadSetting extends ChangeNotifier {
       case 'headerFooterFontSize':
         headerFooterFontSize = v.clamp(8, 30);
         v = headerFooterFontSize;
+      case 'headerLeftMargin':
+        headerLeftMargin = v;
+      case 'headerRightMargin':
+        headerRightMargin = v;
+      case 'footerLeftMargin':
+        footerLeftMargin = v;
+      case 'footerRightMargin':
+        footerRightMargin = v;
     }
     await _setInt(key, v);
   }
@@ -521,6 +631,7 @@ class ReadSetting extends ChangeNotifier {
     await Storage.setDouble('paragraphSpacing', b.paragraphSpacing);
     await Storage.setInt('kong', b.kong);
     await Storage.setInt('fen', b.fen);
+    await Storage.setBool('ispad', b.ispad);
     await Storage.setInt('titleAlign', b.titleAlign);
     await Storage.setInt('titleTopMargin', b.titleTopMargin);
     await Storage.setInt('titleBottomMargin', b.titleBottomMargin);
@@ -541,12 +652,12 @@ class ReadSetting extends ChangeNotifier {
 
   int get currentBackgroundId => night ? darkbackground : background;
 
-  /// Font size in logical pixels. TODO(asm 0x2b3a24): the stored value (10..55, default 30) is scaled like a 750-wide design
-  /// (`needdp`); the exact formula of the original is not recovered.
-  double fontPx(double screenShortest) {
-    final scale = needdp ? (screenShortest.clamp(320, 600) / 750) : 0.5;
-    return fontSize * scale;
-  }
+  /// Font size in logical pixels: the stored value itself. 0x2b3a24 only clamps it to 10..55, the layout (0x236afc: line height =
+  /// size * lineHeight) and the text painters (`TextScaler` 1.0) use it unscaled. ([screenShortest] is kept for callers.)
+  double fontPx([double screenShortest = 0]) => fontSize.clamp(10, 55).toDouble();
+
+  /// Header / footer text size as the status line paints it (0x6342b8: 0 -> 12, clamped to 8..25).
+  double get statusFontSize => (headerFooterFontSize == 0 ? 12 : headerFooterFontSize.clamp(8, 25)).toDouble();
 
   /// The colours of background id [id] (0x245b64 / 0x245728 / 0xecc920).
   ReadConfig config([int? id]) {
@@ -582,15 +693,11 @@ class ReadSetting extends ChangeNotifier {
   }
 
   /// Height of the header line / footer line (0 when hidden).
-  double get headerHeight => showTop ? headerFooterFontSize + 14.0 : 0;
-  double get footerHeight => showBottom ? headerFooterFontSize + 14.0 : 0;
+  double get headerHeight => showTop ? statusFontSize + 14.0 : 0;
+  double get footerHeight => showBottom ? statusFontSize + 14.0 : 0;
 
-  /// Columns on a screen of [size]: `fen` 1 = 单列, 2 = 双列, 0 = automatic (two on wide screens).
-  int columnsFor(Size size) {
-    if (fen == 2) return 2;
-    if (fen == 1) return 1;
-    return size.width > 700 && size.width > size.height ? 2 : 1;
-  }
+  /// Columns: 界面设置 单列 / 双列 writes `ispad` (0xfa2690).
+  int columnsFor(Size size) => ispad ? 2 : 1;
 
   /// The layout style for a page area of [size] with the system [safe] insets.
   ReadLayoutStyle layoutStyle(Size size, EdgeInsets safe) {

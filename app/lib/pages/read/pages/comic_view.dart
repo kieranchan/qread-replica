@@ -4,15 +4,18 @@
 // 预加载图片时出错:  · 已切换到白天模式 / 已切换到夜间模式 · 当前章节超出目录总章节，请前往目录重新选择章节 · 初始化失败: .
 // Images come from the chapter content (image blocks: EPUB images, `<img>` of a source); a source's `imageDecode` script can be applied
 // through [ComicView.imageBytes] (the app points it at `SourceApi.decodeImage`).
-// TODO(asm comic_view): two-page mode (`two`), smart crop (`smart`), menu slider type (`menuSliderType2`) are not ported.
+// Settings read at start (0x10c4230): `two` = 双指缩放 (pinch zoom, a double tap restores), `menuSliderType2` = the menu slider 按章节 (0,
+// chapters) / 按分页 (1, the scroll position), `smart` (default true) = the volume keys keep their system function; off, they page
+// (`_goToNextPage` / `_goToPreviousPage`: one screen less 100 px, "正在前往下一章" at the end; 0xf2331c / 0x2b17b4 / 0x2b2ac4).
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../models/book.dart';
 import '../../../models/bookchapter.dart';
 import '../../../read/api/readapi.dart';
+import '../../../storage/storage.dart';
 import '../../../util/toast.dart';
 import '../../image/gallery_viewer_page.dart';
 import 'novel_view.dart' show ChapterListLoader;
@@ -53,6 +56,14 @@ class ComicViewState extends State<ComicView> {
   String? _error;
   bool _ready = false;
 
+  /// 双指缩放 (`two`), 菜单滑动条 (`menuSliderType2`), volume keys page unless `smart`.
+  final bool _zoom = Storage.getBool('two');
+  final int _sliderType = Storage.getInt('menuSliderType2');
+  final bool _smart = Storage.getString('smart').isEmpty || Storage.getBool('smart', true);
+  final TransformationController _zoomCtl = TransformationController();
+  final FocusNode _focus = FocusNode(debugLabel: 'comic');
+  double? _slider;
+
   int get chapterIndex => _ci;
   int get imageCount => _loaded.fold(0, (n, c) => n + c.images.length);
 
@@ -63,9 +74,76 @@ class ComicViewState extends State<ComicView> {
     _init();
   }
 
+  /// `_goToNextPage` / `_goToPreviousPage`: one screen less 100 px; at the end the next chapter.
+  Future<void> page(int dir) async {
+    if (!_scroll.hasClients) return;
+    final p = _scroll.position;
+    final step = (p.viewportDimension - 100).clamp(50.0, double.infinity);
+    if (dir > 0 && p.pixels >= p.maxScrollExtent - 1) {
+      if (_ci + 1 < _chapters.length) {
+        Toast.show('正在前往下一章');
+        await _open(_ci + 1);
+      }
+      return;
+    }
+    final to = (p.pixels + dir * step).clamp(0.0, p.maxScrollExtent);
+    await _scroll.animateTo(to, duration: const Duration(milliseconds: 200), curve: Curves.linear);
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent e) {
+    if (e is! KeyDownEvent) return KeyEventResult.ignored;
+    final k = e.logicalKey;
+    final volume = k == LogicalKeyboardKey.audioVolumeDown || k == LogicalKeyboardKey.audioVolumeUp;
+    if (volume && _smart) return KeyEventResult.ignored;
+    if (k == LogicalKeyboardKey.audioVolumeDown || k == LogicalKeyboardKey.arrowDown || k == LogicalKeyboardKey.pageDown) {
+      page(1);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.audioVolumeUp || k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.pageUp) {
+      page(-1);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  /// The bottom slider: chapters (按章节) or the scroll position (按分页).
+  Widget _menuSlider() {
+    if (_sliderType == 1) {
+      final max = _scroll.hasClients ? _scroll.position.maxScrollExtent : 0.0;
+      if (max <= 0) return const Slider(key: ValueKey('comic_slider_page'), value: 0, onChanged: null);
+      final v = (_slider ?? _scroll.offset).clamp(0.0, max);
+      return Slider(
+        key: const ValueKey('comic_slider_page'),
+        value: v,
+        max: max,
+        onChanged: (x) => setState(() => _slider = x),
+        onChangeEnd: (x) {
+          _slider = null;
+          _scroll.jumpTo(x);
+        },
+      );
+    }
+    if (_chapters.length < 2) return const SizedBox.shrink();
+    final v = (_slider ?? _ci.toDouble()).clamp(0.0, (_chapters.length - 1).toDouble());
+    return Slider(
+      key: const ValueKey('comic_slider_chapter'),
+      value: v,
+      max: (_chapters.length - 1).toDouble(),
+      divisions: _chapters.length - 1,
+      label: _chapters[v.round()].name,
+      onChanged: (x) => setState(() => _slider = x),
+      onChangeEnd: (x) {
+        _slider = null;
+        _open(x.round());
+      },
+    );
+  }
+
   @override
   void dispose() {
     _save();
+    _zoomCtl.dispose();
+    _focus.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -206,87 +284,125 @@ class ComicViewState extends State<ComicView> {
     final bg = _night ? Colors.black : Colors.white;
     Widget body;
     if (_error != null) {
-      body = Center(child: Text(_error!, style: TextStyle(color: _night ? Colors.white70 : Colors.black87)));
+      body = Center(
+        child: Text(_error!, style: TextStyle(color: _night ? Colors.white70 : Colors.black87)),
+      );
     } else if (!_ready) {
       body = const Center(child: Text('内容加载中...'));
     } else {
       final children = <Widget>[];
       for (final c in _loaded) {
         final chapter = _chapters[c.index];
-        children.add(Padding(
-          key: _keys.putIfAbsent(c.index, GlobalKey.new),
-          padding: const EdgeInsets.all(8),
-          child: Text(c.title, style: TextStyle(color: _night ? Colors.white54 : Colors.black54)),
-        ));
+        children.add(
+          Padding(
+            key: _keys.putIfAbsent(c.index, GlobalKey.new),
+            padding: const EdgeInsets.all(8),
+            child: Text(c.title, style: TextStyle(color: _night ? Colors.white54 : Colors.black54)),
+          ),
+        );
         for (var k = 0; k < c.images.length; k++) {
-          children.add(GestureDetector(
-            onLongPress: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => GalleryViewerPage(images: c.images, initialIndex: k)),
+          children.add(
+            GestureDetector(
+              onLongPress: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => GalleryViewerPage(images: c.images, initialIndex: k),
+                ),
+              ),
+              child: _image(chapter, c.images[k]),
             ),
-            child: _image(chapter, c.images[k]),
-          ));
+          );
         }
       }
       if (_loaded.last.index + 1 >= _chapters.length) {
-        children.add(const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('已经到底了'))));
+        children.add(
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: Text('已经到底了')),
+          ),
+        );
       }
       body = ListView(controller: _scroll, children: children);
+      if (_zoom) {
+        // 允许双指缩小或者放大内容（连点两下可恢复）
+        body = GestureDetector(
+          onDoubleTap: () => _zoomCtl.value = Matrix4.identity(),
+          child: InteractiveViewer(transformationController: _zoomCtl, minScale: 0.5, maxScale: 4, panEnabled: false, child: body),
+        );
+      }
     }
     final title = _chapters.isEmpty || _ci >= _chapters.length ? widget.book.name : _chapters[_ci].name;
-    return Scaffold(
-      backgroundColor: bg,
-      body: Stack(children: [
-        Positioned.fill(child: GestureDetector(onTap: () => setState(() => _menu = !_menu), child: body)),
-        if (_menu)
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: Material(
-              elevation: 4,
-              child: SafeArea(
-                bottom: false,
-                child: ListTile(
-                  leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.of(context).maybePop()),
-                  title: Text(widget.book.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  subtitle: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+    return Focus(
+      focusNode: _focus,
+      autofocus: true,
+      onKeyEvent: _onKey,
+      child: Scaffold(
+        backgroundColor: bg,
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(onTap: () => setState(() => _menu = !_menu), child: body),
+            ),
+            if (_menu)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Material(
+                  elevation: 4,
+                  child: SafeArea(
+                    bottom: false,
+                    child: ListTile(
+                      leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.of(context).maybePop()),
+                      title: Text(widget.book.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      subtitle: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-        if (_menu)
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Material(
-              elevation: 4,
-              child: SafeArea(
-                top: false,
-                child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-                  TextButton(onPressed: _ci > 0 ? () => _open(_ci - 1) : null, child: const Text('上一话')),
-                  TextButton(onPressed: _catalog, child: const Text('目录')),
-                  TextButton(
-                    onPressed: () {
-                      setState(() => _night = !_night);
-                      Toast.show(_night ? '已切换到夜间模式' : '已切换到白天模式');
-                    },
-                    child: Text(_night ? '白天' : '夜间'),
+            if (_menu)
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Material(
+                  elevation: 4,
+                  child: SafeArea(
+                    top: false,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _menuSlider(),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            TextButton(onPressed: _ci > 0 ? () => _open(_ci - 1) : null, child: const Text('上一话')),
+                            TextButton(onPressed: _catalog, child: const Text('目录')),
+                            TextButton(
+                              onPressed: () {
+                                setState(() => _night = !_night);
+                                Toast.show(_night ? '已切换到夜间模式' : '已切换到白天模式');
+                              },
+                              child: Text(_night ? '白天' : '夜间'),
+                            ),
+                            TextButton(
+                              onPressed: _ci + 1 < _chapters.length
+                                  ? () {
+                                      Toast.show('正在前往下一章');
+                                      _open(_ci + 1);
+                                    }
+                                  : null,
+                              child: const Text('下一话'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                  TextButton(
-                    onPressed: _ci + 1 < _chapters.length
-                        ? () {
-                            Toast.show('正在前往下一章');
-                            _open(_ci + 1);
-                          }
-                        : null,
-                    child: const Text('下一话'),
-                  ),
-                ]),
+                ),
               ),
-            ),
-          ),
-      ]),
+          ],
+        ),
+      ),
     );
   }
 }

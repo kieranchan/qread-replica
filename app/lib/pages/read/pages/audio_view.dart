@@ -3,8 +3,10 @@
 // 片头片尾设置 · 片头跳过时间 · 片尾跳过时间 · 输入跳过秒数 · 请输入有效的时间 · 取消定时 · 当前已设置定时，是否确认要取消定时？ · 定时停止 ·
 // 分钟 · 刷新章节失败: . Per-book prefs `skipStartTime<bookUrl>` / `skipEndTime<bookUrl>` (seconds), timer `audioTimerMinutes`.
 // Playback goes through [ReaderAudioPlayer] (default: just_audio) so tests can use a fake.
-// TODO(asm audio_view): the lyrics fetch of the original (字幕 via the source's lyric rule) is not ported; [LyricsView] shows LRC text when
-// the chapter content carries it after the URL.
+// 字幕: the source's content rule hands the lyric over with the JS bridge's `putLyric` (or the 正文副本 rule, "┌获取副文歌词"); the
+// original keeps it in its cache under `book_<bookUrl>_<index>_chapter_lyric` (0xe8e9f0 writes, 0xf98118 reads) and the audio view shows
+// it. [AudioLyrics.read] reads that key from the item store (the engine's `putLyric` must write it there); LRC lines after the audio URL
+// in the chapter text are used as well.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -16,6 +18,7 @@ import '../../../models/bookchapter.dart';
 import '../../../read/api/readapi.dart';
 import '../../../storage/storage.dart';
 import '../../../util/toast.dart';
+import '../tts_bridge.dart';
 import 'lyrics_view.dart';
 import 'novel_view.dart' show ChapterListLoader;
 
@@ -70,6 +73,21 @@ class JustAudioReaderPlayer implements ReaderAudioPlayer {
   bool get playing => _p.playing;
 }
 
+/// The chapter lyric store shared with the engine's `putLyric`.
+abstract class AudioLyrics {
+  static String key(String bookUrl, int index) => 'book_${bookUrl}_${index}_chapter_lyric';
+
+  static Future<String> Function(String bookUrl, int index) read = (bookUrl, index) async {
+    try {
+      return await Storage.read(key(bookUrl, index));
+    } catch (_) {
+      return '';
+    }
+  };
+
+  static Future<void> write(String bookUrl, int index, String lrc) => Storage.write(key(bookUrl, index), lrc);
+}
+
 class AudioView extends StatefulWidget {
   final Book book;
   final List<BookChapter>? chapters;
@@ -115,13 +133,38 @@ class AudioViewState extends State<AudioView> {
     }));
     _subs.add(_player.playingStream.listen((v) {
       if (mounted) setState(() => _playing = v);
+      _media(v);
     }));
     _subs.add(_player.completedStream.listen((_) => _next()));
     _init();
   }
 
+  /// Lock-screen / Control Center state of the audio book (the session of tts_bridge.dart, when installed).
+  void _media(bool playing) {
+    final m = ListenMediaSession.backend;
+    if (m == null) return;
+    m.onCommand = (cmd) {
+      if (!mounted) return;
+      switch (cmd) {
+        case 'play':
+          _player.play();
+        case 'pause':
+        case 'stop':
+          _player.pause();
+        case 'next':
+          if (_ci + 1 < _chapters.length) _open(_ci + 1);
+        case 'previous':
+          if (_ci > 0) _open(_ci - 1);
+      }
+    };
+    final title = _ci < _chapters.length ? _chapters[_ci].name : '';
+    m.update(title: title, album: widget.book.name, artUri: widget.book.coverUrl, playing: playing, active: true).catchError((_) {});
+  }
+
   @override
   void dispose() {
+    final m = ListenMediaSession.backend;
+    if (m != null) m.update(title: '', album: widget.book.name, artUri: '', playing: false, active: false).catchError((_) {});
     _save();
     _timer?.cancel();
     for (final s in _subs) {
@@ -159,6 +202,7 @@ class AudioViewState extends State<AudioView> {
       final lines = rc.content.text.trim().split('\n');
       final url = lines.first.trim();
       _lyrics = lines.skip(1).join('\n');
+      if (_lyrics.trim().isEmpty) _lyrics = await AudioLyrics.read(widget.book.bookUrl, i);
       final d = await _player.setUrl(url);
       await _player.setSpeed(_speed);
       final skip = Duration(seconds: Storage.getInt(_skipStartKey));

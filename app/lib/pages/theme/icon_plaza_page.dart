@@ -22,11 +22,22 @@ class IconPlazaPage extends StatefulWidget {
     '11.png', '12.jpg', '13.png', '14.png', '15.png', '16.png', '17.png', '18.jpg', '19.jpeg', '20.png',
   ];
 
-  /// Hook for the platform call that switches the home-screen icon (iOS `setAlternateIconName`); 0x10d0708 itself only reads
-  /// `icon.txt`. The original's Info.plist declares `CFBundleIcons/CFBundleAlternateIcons` `icon1` … `icon19` (+ `AppIcon`).
-  /// TODO(asm 0x10d0708): the replica's iOS project has no alternate icons and no channel yet (lead: Info.plist entries + icon
-  /// files + a method channel calling `UIApplication.shared.setAlternateIconName`), so the default only records the choice.
-  static Future<void> Function(String name) setAppIcon = (_) async {};
+  /// Switches the home-screen icon: the original invokes `changeAppIcon` with `{iconIndex: n}` on a method channel (0x1054bb4;
+  /// the channel name is a const object not in the dump, the replica's is `newread/app_icon`) and shows
+  /// `Failed to change app icon: $e` on failure. The iOS side (AppDelegate.swift `AppIconChannel`) sets the alternate icon `icon<n>`;
+  /// the replica builds `icon1` … `icon20` from the 20 previews (the original's asset catalog with `icon1` … `icon19` is compiled
+  /// into Assets.car and not extracted). Tests replace this hook.
+  static Future<void> Function(String name) setAppIcon = _changeAppIcon;
+
+  static const MethodChannel _channel = MethodChannel('newread/app_icon');
+
+  static Future<void> _changeAppIcon(String name) async {
+    try {
+      await _channel.invokeMethod<bool>('changeAppIcon', {'iconIndex': int.tryParse(name) ?? 0});
+    } catch (e) {
+      Toast.show('Failed to change app icon: $e', iserror: true);
+    }
+  }
 
   static File get iconFile => File(p.join(AppDirs.root.path, 'icon.txt'));
 

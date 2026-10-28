@@ -27,12 +27,14 @@ import '../../../read/api/calculate/calculate_hapter.dart';
 import '../../../read/api/readapi.dart';
 import '../../../read/model/mypage.dart';
 import '../../../read/model/page.dart';
+import '../../../read/pdf/pdf_file.dart';
 import '../../../read/setting/read_layout_style.dart';
 import '../../../read/setting/read_setting.dart';
 import '../../../read/util/chapter_content.dart';
 import '../../../read/util/highlight_apply.dart';
 import '../../../read/util/list_content.dart';
 import '../../../read/util/listcontroller.dart';
+import '../../../read/util/read.dart';
 import '../../../util/epub/epub_zh_convert.dart';
 import '../../../util/image/image_service.dart';
 import '../../../util/toast.dart';
@@ -95,6 +97,9 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
   int? _pendingOffset;
 
   ReadLayoutStyle? _style;
+  late int _simplified = _setting.simplified;
+  (bool, double)? _brightness;
+  int _wakelock = 0;
   Size? _size;
   EdgeInsets _safe = EdgeInsets.zero;
   int _gen = 0;
@@ -152,6 +157,8 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
   ReadAloudController? get aloud => _aloud;
   ReadLayoutStyle? get layoutStyle => _style;
 
+  void _aiError(String m) => Toast.show(m);
+
   void _logLine(String s) {
     _log.add('${clockText()} $s');
     if (_log.length > 300) _log.removeAt(0);
@@ -171,8 +178,11 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     if (ReadApi.log == _logLine) ReadApi.log = null;
+    if (ReadApi.aiError == _aiError) ReadApi.aiError = null;
     _setting.removeListener(_onSetting);
     _autoTimer?.cancel();
+    ReaderWakelock.stop();
+    if (_brightness != null) ReaderBrightness.restore();
     _aloud?.dispose();
     _list.dispose();
     _focus.dispose();
@@ -186,6 +196,10 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     if (state == AppLifecycleState.paused && _inited) {
       _logLine('进入后台');
       _saveProgress();
+    } else if (state == AppLifecycleState.resumed && _inited) {
+      // 0x2b48ac: back in the foreground the idle clock restarts.
+      ReaderWakelock.touch();
+      ReaderWakelock.start(_setting.wakelockTimeout);
     }
   }
 
@@ -219,6 +233,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     }
     _api = ReadApi(widget.book, chapters: _chapters, loader: widget.loader, replaceRules: ReplaceData.rules);
     ReadApi.log ??= _logLine;
+    ReadApi.aiError = _aiError;
     final b = widget.book;
     var start = widget.chapterIndex ?? b.durChapterIndex;
     var progress = widget.chapterIndex == null || widget.chapterIndex == b.durChapterIndex ? b.durChapterPos : 0.0;
@@ -232,6 +247,9 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     _ci = start;
     _pendingProgress = progress;
     _inited = true;
+    _wakelock = _setting.wakelockTimeout;
+    ReaderWakelock.start(_wakelock);
+    _applyBrightness();
     _status = '正文加载中...';
     if (mounted) setState(() {});
     _applySystemUi();
@@ -250,6 +268,18 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
 
   void _onSetting() {
     if (!mounted) return;
+    _applyBrightness();
+    if (_inited && _setting.wakelockTimeout != _wakelock) {
+      _wakelock = _setting.wakelockTimeout;
+      ReaderWakelock.start(_wakelock);
+    }
+    if (_setting.simplified != _simplified) {
+      _simplified = _setting.simplified;
+      if (_inited) {
+        reloadChapter();
+        return;
+      }
+    }
     final size = _size;
     if (size == null || !_inited) {
       setState(() {});
@@ -284,10 +314,15 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
 
   // ------------------------------------------------------------------ chapters and pages
 
+  /// 简体繁体 (0x24d448): `simplified1` 1 = to simplified, 2 = to traditional; chapters over 100000 characters stay as they are.
   ChapterContent _convert(ChapterContent c) {
-    final fan = _setting.fan;
-    if (fan == FanMode.off || EpubZhConvert.converter == null) return c;
-    final toT = fan == FanMode.toTraditional;
+    final mode = _setting.simplified;
+    if (mode == FanMode.off || EpubZhConvert.converter == null) return c;
+    if (c.text.length > FanMode.maxLength) {
+      Toast.show('正本内容过长，暂不支持简繁转换');
+      return c;
+    }
+    final toT = mode == FanMode.toTraditional;
     if (c.isPlainText) return ChapterContent.fromText(EpubZhConvert.convert(c.text, toTraditional: toT));
     for (final b in c.blocks) {
       if (b.isImage) continue;
@@ -340,6 +375,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
   }
 
   static Future<Size?> _imageSize(String src) async {
+    if (src.startsWith(PdfFile.scheme)) return PdfFile.sizeOf(src);
     if (src.startsWith('http') || src.startsWith('data:')) return null;
     try {
       final m = await ImageService.readSizes([src]);
@@ -479,6 +515,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
   }
 
   void _turned(int d) {
+    ReaderWakelock.touch();
     final n = _neighbor(d);
     if (n == null) return;
     final chapterChanged = n.$1 != _ci;
@@ -608,6 +645,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
   // ------------------------------------------------------------------ taps, keys, pulls
 
   void _onTap(Offset pos, Size size) {
+    ReaderWakelock.touch();
     if (_sel != null) {
       setState(() => _sel = null);
       return;
@@ -910,7 +948,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     var a = _aloud;
     if (a == null) {
       a = ReadAloudController(
-        speaker: ReaderSpeaker.create(),
+        speaker: ReaderSpeaker.create(bookUrl: widget.book.bookUrl),
         chapterAt: (i) async {
           if (i < 0 || i >= _chapters.length) return null;
           try {
@@ -921,6 +959,8 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
         },
         chapterCount: () => _chapters.length,
       );
+      a.bookName = widget.book.name;
+      a.coverUrl = widget.book.coverUrl;
       a.onSegment = _followAloud;
       a.onStopped = () {
         if (mounted) setState(() {});
@@ -960,7 +1000,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
       _autoTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
         if (!_list.scroll.hasClients) return;
         final pos = _list.scroll.position;
-        final next = pos.pixels + _setting.turnsudu;
+        final next = pos.pixels + _setting.fan / 5;
         if (next >= pos.maxScrollExtent) {
           _onListEdge(1);
         }
@@ -1016,6 +1056,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
       bookProgress: _chapters.isEmpty ? 0 : (pos.$1 + cp) / _chapters.length,
       decorate: _decorate,
       onLongPress: delta == 0 ? _onLongPress : null,
+      bookName: widget.book.name,
     );
   }
 
@@ -1051,6 +1092,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
         config: config,
         safe: _safe,
         chapterTitle: chapterTitle,
+        bookName: widget.book.name,
         pageNum: _pi + 1,
         totalPage: pageCount,
         bookProgress: bookProgress,
@@ -1089,10 +1131,13 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     });
   }
 
-  Widget _brightnessLayer() {
-    if (_setting.autoBrightness || _setting.brightness < 0) return const SizedBox.shrink();
-    final alpha = ((1 - _setting.brightness) * 0.75).clamp(0.0, 0.75);
-    return IgnorePointer(child: Container(color: Colors.black.withValues(alpha: alpha)));
+  /// 亮度设置: the screen's brightness itself (screen_brightness), not an overlay.
+  Future<void> _applyBrightness() async {
+    final key = (_setting.autoBrightness, _setting.brightness);
+    if (key == _brightness) return;
+    _brightness = key;
+    final ok = await ReaderBrightness.apply(auto: _setting.autoBrightness, value: _setting.brightness);
+    if (!ok && !_setting.autoBrightness && _setting.brightness >= 0) Toast.show('当前设备不支持亮度调节');
   }
 
   @override
@@ -1115,7 +1160,6 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
             children: [
               Positioned.fill(child: Container(decoration: config.decoration)),
               Positioned.fill(child: _reader(config)),
-              Positioned.fill(child: _brightnessLayer()),
               if (hint != null)
                 Positioned(
                   top: _pull > 0 ? _safe.top + 8 : null,
@@ -1149,6 +1193,6 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
 
   void _openAiChat() {
     closeMenus();
-    showAiChatSheet(context, book: widget.book, chapterTitle: chapterTitle, chapterText: _content[_ci]?.content.text ?? '');
+    showAiChatSheet(context, book: widget.book, chapterTitle: chapterTitle, chapterText: _content[_ci]?.content.text ?? '', setting: _setting);
   }
 }

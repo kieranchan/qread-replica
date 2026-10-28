@@ -9,7 +9,6 @@ import '../../../../read/util/list_content.dart';
 import '../../../../read/util/listcontroller.dart';
 import '../../../../widget/read/list.dart';
 import 'content.dart';
-import 'views/battery_painter.dart';
 
 class ListPage extends StatelessWidget {
   final ReadListController controller;
@@ -18,6 +17,7 @@ class ListPage extends StatelessWidget {
   final ReadConfig config;
   final EdgeInsets safe;
   final String chapterTitle;
+  final String bookName;
   final int pageNum;
   final int totalPage;
   final double bookProgress;
@@ -35,6 +35,7 @@ class ListPage extends StatelessWidget {
     required this.config,
     required this.safe,
     required this.chapterTitle,
+    this.bookName = '',
     required this.pageNum,
     required this.totalPage,
     required this.bookProgress,
@@ -49,7 +50,6 @@ class ListPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final pad = style.padding;
     final dim = config.textColor.withValues(alpha: 0.55);
-    final small = TextStyle(fontSize: setting.headerFooterFontSize.toDouble(), color: dim, height: 1.2);
     final top = setting.safeTop >= 0 ? setting.safeTop.toDouble() : safe.top;
     final bottom = setting.safeBottom >= 0 ? setting.safeBottom.toDouble() : safe.bottom;
     return LayoutBuilder(builder: (context, box) {
@@ -86,11 +86,15 @@ class ListPage extends StatelessWidget {
               left: 0,
               right: 0,
               top: top,
-              child: StatusLine(
-                height: setting.headerHeight,
-                leftMargin: setting.headerLeftMargin.toDouble(),
-                rightMargin: setting.headerRightMargin.toDouble(),
-                left: Text(chapterTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: small),
+              child: ReaderStatusBar(
+                setting: setting,
+                header: true,
+                color: dim,
+                title: chapterTitle,
+                bookName: bookName,
+                pageNum: pageNum,
+                totalPage: totalPage,
+                bookProgress: bookProgress,
               ),
             ),
           if (setting.showBottom)
@@ -98,16 +102,15 @@ class ListPage extends StatelessWidget {
               left: 0,
               right: 0,
               bottom: bottom,
-              child: StatusLine(
-                height: setting.footerHeight,
-                leftMargin: setting.footerLeftMargin.toDouble(),
-                rightMargin: setting.footerRightMargin.toDouble(),
-                left: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Text(clockText(), style: small),
-                  const SizedBox(width: 6),
-                  BatteryIcon(color: dim, height: setting.headerFooterFontSize * 0.8),
-                ]),
-                right: Text(progressText(setting.showProgress, pageNum: pageNum, totalPage: totalPage, bookProgress: bookProgress), style: small),
+              child: ReaderStatusBar(
+                setting: setting,
+                header: false,
+                color: dim,
+                title: chapterTitle,
+                bookName: bookName,
+                pageNum: pageNum,
+                totalPage: totalPage,
+                bookProgress: bookProgress,
               ),
             ),
         ],

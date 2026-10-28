@@ -21,14 +21,21 @@ Five tabs in the original's default order (`bottomBarTabs`): 书架 · 发现 ·
 | Extras | `theme/`, `pages/{theme,setting,tts,webdav,fonts}/`, `ai/`, `util/audio/`, `data/cloud/`, `pages/me_page.dart` | themes + theme plaza, fonts, backgrounds, backup/restore (zip, WebDAV), AI models (OpenAI-compatible), HTTP TTS engines, WebDAV, statistics, Wi-Fi transfer (:5757) |
 | Lead glue | `main.dart`, `init/wiring.dart`, `init/glue_routes.dart`, `init/reader_ai_adapter.dart`, `common/nav.dart`, `pages/main_page.dart` | `Nav` hooks and route tables between the areas, tabs, start-up |
 
-Not available in this build (pages keep the original strings and say so): 时光源 execution, sherpa-onnx local TTS, Baidu/Weiyun
-drives, in-app video playback, camera QR scanning (manual input instead), app update check, 沉浸光感 effects.
-Approximations are marked `TODO(asm 0x…)` in the code.
+Fidelity pass (2026-10-28): settings keys, prompts, defaults and flows re-read from the original; added page-curl effects,
+header/footer slots, wakelock, screen brightness, PDF books, listening through every TTS engine (HTTP, Volcano, MiMo, web-view
+pages, multi-role) with background music and lock-screen controls, AI purification and chat tools, in-app video, dictionaries,
+highlight backgrounds, camera QR scanning, app links / open-with, Big5 + GB18030, per-source proxy, font de-obfuscation
+(queryTTF/replaceFont), drag-sorted shelf, explore actions, 沉浸光感 (liquid glass), 底栏标签配置 (订阅 hidden by default as in the
+original), backup devices on the owner's server, alternate home-screen icons.
+
+Not available (pages keep the original strings and say so): 时光源 execution and the browser reading mode built on it (they need
+qread.xyz services), Baidu/Weiyun drives (vendor credentials), the Edge voice (its client token is not copied), app update check.
+The remaining approximations are marked `TODO(asm 0x…)` with what was checked.
 
 ## Tests
 ```powershell
 . ..\env.ps1            # flutter on PATH, PUB_CACHE inside qread
-flutter analyze; flutter test     # 434 tests, about 1 minute
+flutter analyze; flutter test     # 524 tests, about 1.5 minutes
 ```
 * Per area: `test/{data,storage,util,read,reader_ui,shelf,sources,extras}/`; the engine runs against a fake site on 127.0.0.1.
 * `test/app_smoke_test.dart` starts the wired app and opens every tab; `test/route_coverage_test.dart` fails when a page opens a

@@ -1,8 +1,8 @@
 // read/api/chapter_json_store.dart — shared plumbing of `BookRules` / `BookHight` / `BookAi`: one JSON text file per (book, chapter)
 // under `<root>/<dir>/<md5(bookUrl)>/<md5(index)>.txt`, written through a temp file inside an isolate.
 //
-// TODO(asm 0xf0b7a8 / 0xf0bfc0): the original's file path has a single `md5(...)` component (`<dir>/<md5>.txt`); the per-book
-// sub-directory used here keeps deletion per book simple and is invisible to callers.
+// Path building of 0xf0b7a8 (register trace): "<root>/<dir>", then "/<md5(bookUrl)>", then "/<md5("$index")>.txt", each directory created
+// when missing.
 import 'dart:convert';
 import 'dart:io';
 

@@ -204,6 +204,28 @@ void main() {
       await pumpFor(tester, const Duration(seconds: 3));
       await binding.takeScreenshot(shot);
     }
+    // ---- a look at the settings pages (each opened through the same route names the 我的 page uses)
+    await tester.tap(find.byKey(const Key('tab_我的')));
+    await pumpFor(tester, const Duration(seconds: 1));
+    final meCtx = tester.element(find.byType(MainPage));
+    for (final (name, shot) in [
+      ('read_setting_page', '20_read_settings'),
+      ('source_page', '21_source_manager'),
+      ('tts_setting', '22_tts_engines'),
+      ('theme_manager', '23_themes'),
+      ('icon_plaza_page', '24_icon_plaza'),
+      ('backup_setting_page', '25_backup_settings'),
+      ('reading_statistics_page', '26_statistics'),
+      ('ai_model_page', '27_ai_models'),
+      ('about_page', '28_about'),
+    ]) {
+      unawaited(Nav.openNamed(meCtx, name));
+      await pumpFor(tester, const Duration(seconds: 2));
+      await binding.takeScreenshot(shot);
+      Get.until((route) => route.isFirst);
+      await pumpFor(tester, const Duration(milliseconds: 800));
+    }
+
     expect(softFailures, isEmpty, reason: 'book flow steps that failed');
   });
 }

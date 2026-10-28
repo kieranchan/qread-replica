@@ -248,7 +248,45 @@ void main() {
       await api.bookai.saveToLocal(book.bookUrl, 0, AiContext(oldtext: '原文', text: 'AI净化后'));
       expect((await api.loadChapter(0)).content.text, 'AI净化后');
       await api.bookai.saveToLocal(book.bookUrl, 0, AiContext(oldtext: '别的文本', text: '不应使用'));
-      expect((await api.loadChapter(0)).content.text, '原文');
+      ReadApi.aiPurifier = (t) async => throw Exception('offline');
+      final errors = <String>[];
+      ReadApi.aiError = errors.add;
+      addTearDown(() {
+        ReadApi.aiPurifier = (t) async => t;
+        ReadApi.aiError = null;
+      });
+      expect((await api.loadChapter(0)).content.text, '原文'); // the model failed: the chapter is shown unpurified
+      expect(errors.single, startsWith('Ai净化出错'));
+    });
+
+    test('Ai净化 asks the purify model for chapters without a result, keeps it, and runs at most `concurrent` at a time', () async {
+      final book = _webBook()..useai = true;
+      var running = 0, peak = 0, calls = 0;
+      ReadApi.aiConcurrency = () => 1;
+      ReadApi.aiPurifier = (t) async {
+        calls++;
+        running++;
+        if (running > peak) peak = running;
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        running--;
+        return '净化:$t';
+      };
+      addTearDown(() => ReadApi.aiConcurrency = () => 1);
+      final api = ReadApi(book, chapters: _chapters(3), loader: (c) async => ChapterContent.fromText('原文${c.index}'));
+      final r = await Future.wait([api.loadChapter(0), api.loadChapter(1), api.loadChapter(2)]);
+      expect(r.map((e) => e.content.text), ['净化:原文0', '净化:原文1', '净化:原文2']);
+      expect(peak, 1);
+      final stored = await api.bookai.readFromLocal(book.bookUrl, 1);
+      expect(stored!.oldtext, '原文1');
+      expect(stored.text, '净化:原文1');
+      ReadApi.resetCaches();
+      expect((await api.loadChapter(1)).content.text, '净化:原文1');
+      expect(calls, 3, reason: 'the stored result is reused');
+      ReadApi.aiConcurrency = () => 2;
+      book.bookUrl = 'https://example.com/book/2';
+      peak = 0;
+      await Future.wait([api.loadChapter(0), api.loadChapter(1), api.loadChapter(2)]);
+      expect(peak, 2);
     });
 
     test('local books are not cached in bookcache2', () async {

@@ -2,8 +2,11 @@
 // Original `_ThemePageState` (98 functions, 0x65dc5c layout: 基础设置 · 排版名称 · 背景色 · 文字颜色 · 朗读文字颜色 · 标题HTML样式 (注意：必须包含
 // $title 变量作为标题内容占位符) · 快速生成样式 · 背景图片 (正文背景图片 / 标题页背景图片 / 卷名页背景图片) · 高级设置 · 独立布局 (启用后，该排版将
 // 使用独立布局设置); save 0x1013330: 请填写排版名称 / 请填写背景色 / 请填写文字颜色 / 排版已更新 / 排版已添加; 导出配置 / 导入配置 (导入成功！)).
-// TODO(asm 0x100f288): colour picking from an image (取色) and uploading background images to the theme plaza are not ported.
+// 取色 (0x100f288): the 背景色 becomes the colour of the centre pixel of the 正文背景图片 (asset or file; "无法加载图片" / "无法解码图片" /
+// "取色失败: "). Uploading background images to the theme plaza belongs to the theme area.
 import 'dart:convert';
+import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,6 +18,22 @@ import '../../../../read/util/css.dart';
 import '../../../../util/toast.dart';
 
 class ThemePage extends StatefulWidget {
+  /// The colour (`#rrggbb`) of the centre pixel of an encoded image.
+  static Future<String> centerColor(Uint8List bytes) async {
+    final codec = await ui.instantiateImageCodec(bytes);
+    final img = (await codec.getNextFrame()).image;
+    try {
+      final data = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (data == null) throw const FormatException('无法解码图片');
+      final x = img.width ~/ 2, y = img.height ~/ 2;
+      final o = (y * img.width + x) * 4;
+      String h(int v) => v.toRadixString(16).padLeft(2, '0');
+      return '#${h(data.getUint8(o))}${h(data.getUint8(o + 1))}${h(data.getUint8(o + 2))}';
+    } finally {
+      img.dispose();
+    }
+  }
+
   final ReadSetting setting;
 
   /// The preset to edit; null = a new one from the current settings.
@@ -179,6 +198,31 @@ class _ThemePageState extends State<ThemePage> {
     });
   }
 
+  Future<void> _pickColor() async {
+    final path = _b.backgroundimage;
+    if (path.isEmpty) return;
+    Uint8List bytes;
+    try {
+      bytes = path.startsWith('lib/') || path.startsWith('assets/')
+          ? (await rootBundle.load(path)).buffer.asUint8List()
+          : await File(path).readAsBytes();
+    } catch (_) {
+      Toast.show('无法加载图片');
+      return;
+    }
+    try {
+      final c = await ThemePage.centerColor(bytes);
+      if (!mounted) return;
+      setState(() {
+        _bg.text = c;
+        _b.backgroundColor = c;
+      });
+    } catch (e) {
+      debugPrint('Error extracting color: $e');
+      Toast.show('取色失败: $e');
+    }
+  }
+
   Future<void> _export() async {
     _collect();
     await Clipboard.setData(ClipboardData(text: jsonEncode(_b.toJson())));
@@ -254,6 +298,16 @@ class _ThemePageState extends State<ThemePage> {
             child: TextField(controller: _name, decoration: const InputDecoration(labelText: '排版名称', hintText: '请输入排版名称', border: OutlineInputBorder())),
           ),
           _colorField('背景色', _bg, '请输入背景色'),
+          if (_b.backgroundimage.isNotEmpty)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                key: const ValueKey('theme_pick_color'),
+                icon: const Icon(Icons.colorize, size: 18),
+                label: const Text('取色'),
+                onPressed: _pickColor,
+              ),
+            ),
           _colorField('文字颜色', _text, '请输入文字颜色'),
           _colorField('朗读文字颜色', _read, '#1565C0'),
           Padding(
