@@ -5,7 +5,9 @@
 // Original `_WebviewRssPageState` (72 functions: InAppWebView, cookie injection `注入cookie成功:`, ua `修改ua错误:`, JS console
 // `JS 日志 [`, external schemes `外部跳转确认`, dark mode script `注入暗黑模式JavaScript失败: `, cache progress `缓存进度`; it also hosts
 // the book-matching panel of web sources: 切换书源 / 加载目录 / 匹配书籍 …). The book-matching panel is not ported.
-// TODO(asm 0xfbf010): `shouldOverrideUrlLoading` JavaScript of the source is not evaluated; navigations follow the browser policy.
+// Navigation (0xfbd220): import links (`yuedu` / `legado` / `qread`) go to the importers; then the source's `shouldOverrideUrlLoading`
+// decides (local sources run the JavaScript with `url`, backend sources ask `/rssshouldOverrideUrlLoading`); a true answer keeps
+// the page; other schemes ask 「外部跳转确认」. New windows (`onCreateWindow` 0xfbf010) open in this page.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -63,10 +65,29 @@ class _WebviewRssPageState extends State<WebviewRssPage> {
   void initState() {
     super.initState();
     _c = WebEngine.create();
-    _c.onNavigate = (u) => webNavigationPolicy(context, u);
+    _c.onNavigate = _onNavigate;
     _c.onPageFinished = _onPageFinished;
     _c.onConsole = (m) => debugPrint('JS 日志 [$m]');
     _load();
+  }
+
+  /// 0xfbd220.
+  Future<bool> _onNavigate(String u) async {
+    final scheme = Uri.tryParse(u)?.scheme.toLowerCase() ?? '';
+    final js = _src.shouldOverrideUrlLoading;
+    if (!importSchemes.contains(scheme) && u != _link && u != 'about:blank' && js != null && js.trim().isNotEmpty) {
+      try {
+        final handled = _isRemote(widget.source)
+            ? await RssApi.shouldOverrideUrlLoading(_src.sourceUrl, u)
+            : await RssRunapi.shouldOverrideUrlLoading(_src, u);
+        debugPrint('rssshouldOverrideUrlLoading $u $handled');
+        if (handled) return false;
+      } catch (e) {
+        debugPrint('rssshouldOverrideUrlLoading $u: $e');
+      }
+    }
+    if (!mounted) return false;
+    return webNavigationPolicy(context, u);
   }
 
   @override

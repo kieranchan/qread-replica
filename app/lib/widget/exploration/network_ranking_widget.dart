@@ -1,5 +1,5 @@
 // widget/exploration/network_ranking_widget.dart — 网络排行榜 (`NetworkRankingWidget`): a ranking taken from the source's explore
-// page, two columns on wide screens. TODO(asm 0x7b3450): the original may page (`page`, `hot`); one page is shown here.
+// page (one page, like the original: 0x7b3450 only wraps the component in a scroll-notification stop), two columns on wide screens.
 import 'package:flutter/material.dart';
 
 import '../../models/book.dart';

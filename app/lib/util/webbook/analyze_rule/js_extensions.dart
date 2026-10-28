@@ -26,6 +26,8 @@ import '../util/network_utils.dart';
 import '../util/str_response.dart';
 import 'analyze_url.dart';
 import 'js_encode_utils.dart';
+import 'js_files.dart';
+import 'query_ttf.dart';
 import 'rule_data.dart';
 
 abstract class JsExtensions extends JsBindable {
@@ -122,7 +124,7 @@ abstract class JsExtensions extends JsBindable {
     'tripleDESDecodeStr', 'tripleDESDecodeArgsBase64Str', 'tripleDESEncodeBase64Str', 'tripleDESEncodeArgsBase64Str',
     'createSymmetricCrypto', 'startBrowser', 'startBrowserAwait', 'openUrl', 'webView', 'webViewGetSource', 'webViewGetOverrideUrl',
     'getVerificationCode', 'copyText', 'reLoginView', 'upLoginData', 'readFile', 'readTxtFile', 'deleteFile', 'unzipFile',
-    'getTxtInFolder', 'cacheFile', 'downloadFile', 'queryTTF', 'replaceFont', 'getZipStringContent', 'getZipByteArrayContent',
+    'getTxtInFolder', 'unArchiveFile', 'cacheFile', 'downloadFile', 'queryTTF', 'queryBase64TTF', 'replaceFont', 'getZipStringContent', 'getZipByteArrayContent',
     'refreshBook', 'refreshContent', 'getString', 'getStringList', 'getElement', 'getElements', 'setContent', 'getSource',
   ];
 
@@ -431,22 +433,64 @@ abstract class JsExtensions extends JsBindable {
         return base64.encode(_symAny('DESede/${s(2)}/${s(3)}', args[1], args.length > 4 ? args[4] : null, utf8.encode(s(0)), true));
       case 'createSymmetricCrypto':
         return SymmetricCryptoBinding(s(0), args.length > 1 ? args[1] : '', args.length > 2 ? args[2] : null);
-      // ---- unsupported on this platform (file system / fonts / zip) ----
+      // ---- files (sandboxed like Legado, js_files.dart) / zip / fonts (query_ttf.dart) ----
       case 'readFile':
+        return JsFiles.readFile(s(0))?.toList();
       case 'readTxtFile':
+        return JsFiles.readTxtFile(s(0), so(1));
       case 'deleteFile':
+        return JsFiles.deleteFile(s(0));
       case 'unzipFile':
+      case 'unArchiveFile':
+        return JsFiles.unzipFile(s(0));
       case 'getTxtInFolder':
+        return JsFiles.getTxtInFolder(s(0));
       case 'cacheFile':
+        {
+          // the original (0x111922c): key md5Encode16(url), cached text or a fresh request stored with saveTime
+          final urlStr = s(0);
+          final saveTime = args.length > 1 && args[1] is num ? (args[1] as num).toInt() : int.tryParse(s(1)) ?? 0;
+          final key = JsEncodeUtils.md5Encode16(urlStr);
+          final cached = CacheManager.getString(key);
+          if (cached != null && cached.isNotEmpty) return cached;
+          return _await('cacheFile:$urlStr', () async {
+            final text = (await _connect(urlStr, null)).body ?? '';
+            CacheManager.put(key, text, saveTimeSeconds: saveTime);
+            return text;
+          });
+        }
       case 'downloadFile':
+        {
+          if (args.length > 1) {
+            // deprecated Legado form downloadFile(hexContent, url)
+            final url = s(1);
+            return JsFiles.saveDownload(url, JsEncodeUtils.hexDecodeBytes(s(0)), JsFiles.suffixOf(url));
+          }
+          final urlStr = s(0);
+          return _await('downloadFile:$urlStr', () async {
+            final au = await AnalyzeUrl.create(urlStr, source: getSource(), ruleData: ruleDataForJs, chapter: chapterForJs);
+            return JsFiles.saveDownload(urlStr, await au.getByteArray(), JsFiles.suffixOf(urlStr, au.type));
+          });
+        }
       case 'getZipStringContent':
       case 'getZipByteArrayContent':
-        // TODO(asm 0xe283a8): the file-system natives of the original are sandboxed to the app directory; not ported.
-        return null;
+        {
+          final urlStr = s(0), path = s(1);
+          final bytes = _bytesFromUrlOrHex(urlStr);
+          final entry = JsFiles.zipEntry(bytes, path);
+          if (name == 'getZipByteArrayContent') return entry?.toList();
+          if (entry == null) return '';
+          return AppHttp.decodeBody(entry, charset: so(2));
+        }
       case 'queryTTF':
+      case 'queryBase64TTF':
+        return _queryTTF(args.isEmpty ? null : args[0], args.length < 2 || args[1] != false);
       case 'replaceFont':
-        // TODO(asm 0xe283a8): font de-obfuscation (query_ttf.dart) is not ported; text is returned unchanged.
-        return name == 'replaceFont' && args.isNotEmpty ? args[0] : null;
+        {
+          QueryTTF? font(int i) => i < args.length && args[i] is QueryTTF ? args[i] as QueryTTF : null;
+          final filter = args.length > 3 && (args[3] == true || s(3) == 'true');
+          return QueryTTF.replaceFont(s(0), font(1), font(2), filter: filter);
+        }
       case 'refreshBook':
       case 'refreshContent':
         return null;
@@ -454,6 +498,65 @@ abstract class JsExtensions extends JsBindable {
         return getSource();
     }
     return super.jsCall(name, args);
+  }
+
+  /// Bytes of an absolute url (fetched through the source) or of a hex string (Legado `getZipByteArrayContent`).
+  List<int> _bytesFromUrlOrHex(String urlStr) {
+    if (urlStr.startsWith('http://') || urlStr.startsWith('https://')) {
+      final r = _await('bytes:$urlStr', () async {
+        final au = await AnalyzeUrl.create(urlStr, source: getSource(), ruleData: ruleDataForJs, chapter: chapterForJs);
+        return (await au.getByteArray()).toList();
+      });
+      return jsToBytes(r);
+    }
+    return JsEncodeUtils.hexDecodeBytes(urlStr);
+  }
+
+  static final Map<String, QueryTTF> _ttfCache = {};
+
+  static List<int>? _sandboxFile(String path) {
+    try {
+      return JsFiles.readFile(path);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Legado `queryTTF(data, useCache)`: [data] is a font url, a `data:` url, a file of the sandbox, base64 text or bytes.
+  QueryTTF? _queryTTF(Object? data, bool useCache) {
+    if (data == null) return null;
+    String key;
+    if (data is List) {
+      key = JsEncodeUtils.md5Encode16(String.fromCharCodes(jsToBytes(data)));
+    } else {
+      key = JsEncodeUtils.md5Encode16(jsToString(data));
+    }
+    if (useCache) {
+      final hit = _ttfCache[key];
+      if (hit != null) return hit;
+    }
+    List<int> bytes;
+    if (data is List) {
+      bytes = jsToBytes(data);
+    } else {
+      final str = jsToString(data).trim();
+      if (str.startsWith('http://') || str.startsWith('https://')) {
+        bytes = _bytesFromUrlOrHex(str);
+      } else if (str.startsWith('data:')) {
+        bytes = base64.decode(base64.normalize(str.substring(str.indexOf(',') + 1)));
+      } else if (str.length < 512 && (str.startsWith('/') || str.contains('.')) && _sandboxFile(str) != null) {
+        bytes = _sandboxFile(str)!;
+      } else {
+        bytes = JsEncodeUtils.base64DecodeBytes(str);
+      }
+    }
+    if (bytes.isEmpty) return null;
+    final q = QueryTTF(bytes);
+    if (useCache) {
+      if (_ttfCache.length >= 16) _ttfCache.remove(_ttfCache.keys.first);
+      _ttfCache[key] = q;
+    }
+    return q;
   }
 
   Map<String, Object?> _toUrl(String url, String? base) {

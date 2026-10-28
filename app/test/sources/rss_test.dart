@@ -174,6 +174,21 @@ void main() {
     await t.pump(const Duration(seconds: 30));
   });
 
+  testWidgets('the source\'s shouldOverrideUrlLoading keeps matching links out of the web view', (t) async {
+    final src = {...paged.source(), 'shouldOverrideUrlLoading': 'url.indexOf("/book/") > -1 ? "true" : "false"'};
+    await t.pumpWidget(app(WebviewRssPage(source: src, article: Article(title: '文章一', link: '${paged.base}/a/1'))));
+    await idleUntil(t, () => FakeWebController.created.isNotEmpty && FakeWebController.created.last.loads.isNotEmpty);
+    final web = FakeWebController.created.last;
+    bool? blocked, passed;
+    await t.runAsync(() async {
+      blocked = await web.navigate('https://site.test/book/12');
+      passed = await web.navigate('https://site.test/page/3');
+    });
+    expect(blocked, isFalse);
+    expect(passed, isTrue);
+    await t.pump(const Duration(seconds: 30));
+  });
+
   testWidgets('RSS manager: import from a file through the preview', (t) async {
     SourceImport.pickFileText = () async => fixture('rss_sources.json');
     await t.runAsync(() => Rssdata.load());

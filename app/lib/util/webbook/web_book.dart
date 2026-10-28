@@ -62,6 +62,7 @@ class WebBook {
     debug?.log('≡请求:${au.requestUrl}');
     var res = await au.getStrResponse();
     res = await _checkLogin(au, res);
+    debug?.body('search', res.body);
     return BookList.analyzeBookList(source, ruleData, au, res.url, res.body, true, debug: debug);
   }
 
@@ -74,6 +75,7 @@ class WebBook {
     debug?.log('≡请求:${au.requestUrl}');
     var res = await au.getStrResponse();
     res = await _checkLogin(au, res);
+    debug?.body('explore', res.body);
     return BookList.analyzeBookList(source, ruleData, au, res.url, res.body, false, debug: debug);
   }
 
@@ -89,6 +91,7 @@ class WebBook {
       final au = await AnalyzeUrl.create(book.bookUrl, source: source, ruleData: book, headerMapF: await source.getHeaderMap(true));
       var res = await au.getStrResponse();
       res = await _checkLogin(au, res);
+      debug?.body('book', res.body);
       await BookInfo.analyzeBookInfo(book, res.body, source, book.bookUrl, res.url, canReName, debug: debug);
     }
     return book;
@@ -117,6 +120,7 @@ class WebBook {
       final au = await AnalyzeUrl.create(tocUrl, source: source, ruleData: book, headerMapF: await source.getHeaderMap(true));
       var res = await au.getStrResponse();
       res = await _checkLogin(au, res);
+      debug?.body('toc', res.body);
       list = await BookChapterList.analyzeChapterList(source, book, tocUrl, res.url, res.body, debug: debug);
     }
     if (list.isEmpty) throw WebBookException('目录为空');
@@ -147,6 +151,7 @@ class WebBook {
           baseUrl: book.tocUrl, source: source, ruleData: book, chapter: chapter, headerMapF: await source.getHeaderMap(true));
       var res = await au.getStrResponse(jsStr: contentRule.webJs, sourceRegex: contentRule.sourceRegex);
       res = await _checkLogin(au, res);
+      debug?.body('content', res.body);
       text = await BookContent.analyzeContent(source, book, chapter, abs, res.url, res.body, nextChapterUrl, debug: debug);
     }
     if (text.trim().isEmpty) throw WebBookException('内容为空');

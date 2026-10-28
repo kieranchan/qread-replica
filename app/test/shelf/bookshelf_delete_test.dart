@@ -8,7 +8,7 @@ import 'package:newread/read/api/book_content.dart';
 import 'support.dart';
 
 void main() {
-  testWidgets('long press → 删除书籍 removes the book; with the cache option its chapter cache goes too', (t) async {
+  testWidgets('long press → 删除书籍 removes the shelf entry only (the chapter cache stays, as in the original)', (t) async {
     final env = await pumpPage(t, const BookshelfPage(), books: fixtureBooks().take(2).toList());
     addTearDown(env.dispose);
     const url = 'http://src-a.test/book/1';
@@ -22,13 +22,12 @@ void main() {
     expect(find.byKey(const Key('op_更换书源')), findsOneWidget);
     await t.tap(find.byKey(const Key('op_删除书籍')));
     await t.pumpAndSettle();
-    await t.tap(find.byKey(const Key('del_with_cache')));
-    await t.pump();
+    expect(find.text('确定要删除这些书本吗？'), findsOneWidget);
     await t.tap(find.byKey(const Key('del_ok')));
     await settle(t);
     expect(BookSelfN.contains(url), isFalse);
     expect(BookSelfN.contains('http://src-a.test/book/2'), isTrue);
     expect(find.text('斗破苍穹'), findsNothing);
-    expect(const BookContent().existsSync(url, 0), isFalse);
+    expect(const BookContent().existsSync(url, 0), isTrue);
   });
 }

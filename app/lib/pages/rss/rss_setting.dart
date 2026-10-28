@@ -12,6 +12,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../common/immersive_light.dart';
 import '../../data/rss.dart';
 import '../../data/source.dart' show SourceImportResult;
 import '../../qread/api/rssapi.dart';
@@ -19,6 +20,7 @@ import '../../qread/qread.dart';
 import '../../qread/rssdata.dart';
 import '../../util/toast.dart';
 import '../../util/webbook/model/rss_source.dart';
+import '../../widget/ui/q_glass.dart';
 import '../source/login_dialog.dart';
 import '../source/source_setting.dart' show SourceImport;
 import 'debug.dart';
@@ -523,9 +525,10 @@ class _RssSettingPageState extends State<RssSettingPage> {
       ),
       bottomNavigationBar: _items.isEmpty
           ? null
-          : Material(
-              elevation: 6,
-              color: cs.surfaceContainer,
+          : QGlassContainer(
+              // 0x54f484: the bar is a QGlassContainer (沉浸光感)
+              borderRadius: 0,
+              color: ImmersiveLight.level.value == ImmersiveLight.off ? cs.surfaceContainer : null,
               child: SafeArea(
                 top: false,
                 child: SingleChildScrollView(

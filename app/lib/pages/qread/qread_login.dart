@@ -69,7 +69,8 @@ class _QReadLoginPageState extends State<QReadLoginPage> {
     }
   }
 
-  // TODO(asm 0x100d7b4): the original launches the vendor documentation page here.
+  // 0x100d7b4 opens `http://www.qread.xyz/docs.html`, the vendor's documentation of its own backend; the replica binds the owner's
+  // backend, so it explains the fields in a dialog instead of sending the user to qread.xyz.
   Future<void> _launchHelpUrl() => showDialog<void>(
         context: context,
         builder: (c) => AlertDialog(
