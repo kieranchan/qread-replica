@@ -1,7 +1,8 @@
 name: ios-unsigned
 
 # Builds the replica for iOS on a macOS runner and uploads an UNSIGNED .ipa (install with Sideloadly, which signs it with
-# your Apple ID). Nothing here needs secrets. Repo layout expected: app/ (Flutter), server/ (Node, used by the contract tests),
+# your Apple ID). One optional secret: QREAD_SOURCE_AES_KEY (key of `@aes` 时光源 pages; without it the build refuses such
+# pages). Repo layout expected: app/ (Flutter), server/ (Node, used by the contract tests),
 # docs/. Large local-only folders (tools/, analysis/) are excluded by .gitignore.
 on:
   workflow_dispatch:
@@ -42,7 +43,9 @@ jobs:
           xcodebuild -version
 
       - name: Build (no code signing)
-        run: flutter build ios --release --no-codesign
+        env:
+          QREAD_SOURCE_AES_KEY: ${{ secrets.QREAD_SOURCE_AES_KEY }}
+        run: flutter build ios --release --no-codesign --dart-define=QREAD_SOURCE_AES_KEY="$QREAD_SOURCE_AES_KEY"
 
       - name: Pack the unsigned IPA
         run: |

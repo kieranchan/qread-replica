@@ -4,7 +4,9 @@
 //
 // Original control flow:
 //   * page (0xe88cd8): a `http(s)` html is downloaded (`获取html` … `完成获取html`; on failure the last copy, `html 加载失败 使用缓存`,
-//     else `获取在线书源失败`); `@aes…` pages are decrypted (0xe8a4c0); jQuery CDN links are rewritten to the app's mirrors.
+//     else `获取在线书源失败`); `@aes…` pages are decrypted (0xe8a4c0: the text after `@aes` is base64, AES-CBC with PKCS7, key and
+//     IV both the UTF-8 bytes of one 16-character constant; a failure logs `解密失败: e` and leaves an empty page); jQuery CDN links
+//     are rewritten to the app's mirrors.
 //   * ready (0xe097d8): poll every 10 ms until the page called `CookieJar`; 60 s -> `等待页面就绪超时`, disposed -> `页面已销毁`.
 //   * call (0xd5e58 id, 0xd5dd8 wrapper, 0xd5924 evaluate, 0xe092cc wait): `await fn(args)` inside an async IIFE that posts the
 //     value through the `call` handler; arguments are JSON-encoded (0xe07fe4) except numbers; the value is normalised (0xd576c).
@@ -17,12 +19,14 @@
 //   * idle runners are dropped after 5 minutes (0x8e7c0c, `300000` ms since the last call).
 //
 // Replica differences: the page runs in a HeadlessInAppWebView instead of QuickJS (see js_engine.dart); jQuery links are left as
-// the page wrote them (the original's iOS mirror is on qread.xyz, which the replica never calls); `@aes` pages are refused because
-// the decryption key is a constant of the original binary (TODO(asm 0xe8a4c0)); the original's extra `X-Requested-With` header
+// the page wrote them (the original's iOS mirror is on qread.xyz, which the replica never calls); the `@aes` key is not in the
+// repository but comes from `--dart-define=QREAD_SOURCE_AES_KEY=…` (builds without it refuse `@aes` pages), and a page that does
+// not decrypt fails at once with `解密失败` instead of waiting 60 s for an empty page; the original's extra `X-Requested-With` header
 // with its own package name is not sent when the page is downloaded (0xe8a944).
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:encrypt/encrypt.dart' as enc;
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
@@ -236,6 +240,22 @@ class SourceRun extends Baswebview {
   /// Storage key of the last downloaded copy of an html URL (used when the download fails).
   static String htmlCacheKey(String url) => 'sourcehtml_$url';
 
+  /// Key (and IV) of `@aes` pages; empty when the build was made without `QREAD_SOURCE_AES_KEY`.
+  static String aesKey = const String.fromEnvironment('QREAD_SOURCE_AES_KEY');
+
+  /// 0xe8a4c0: base64 -> AES-CBC/PKCS7 with key = iv = utf8([aesKey]) -> UTF-8 text; on failure logs `解密失败: e` and gives ''.
+  static String decryptPage(String data, {void Function(String line)? log}) {
+    try {
+      final bytes = base64.decode(data);
+      final key = Uint8List.fromList(utf8.encode(aesKey));
+      final aes = enc.Encrypter(enc.AES(enc.Key(key), mode: enc.AESMode.cbc, padding: 'PKCS7'));
+      return aes.decrypt(enc.Encrypted(bytes), iv: enc.IV(key));
+    } catch (e) {
+      log?.call('解密失败: $e');
+      return '';
+    }
+  }
+
   /// 0xe88cd8: the page text and the address it is loaded under.
   static Future<({String html, String baseUrl})> loadPage(BaseSource s, {void Function(String line)? log}) async {
     var html = s.html.trim();
@@ -258,7 +278,11 @@ class SourceRun extends Baswebview {
       }
       base = url;
     }
-    if (html.startsWith('@aes')) throw Exception('解密失败: 不支持加密书源');
+    if (html.startsWith('@aes')) {
+      if (aesKey.isEmpty) throw Exception('解密失败: 不支持加密书源');
+      html = decryptPage(html.substring(4), log: log);
+      if (html.isEmpty) throw Exception('解密失败: 书源无法解密');
+    }
     return (html: html, baseUrl: base);
   }
 

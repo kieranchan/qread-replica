@@ -37,8 +37,11 @@ buttons, 段评 bubbles (`dp:N`, tap → `showCmt` sheet) and `showsvg`/`getsvg`
 rules with font size / line height measured in paging; 谷歌汉字 font; the original's TXT rule choice; 轻阅读 backend device jobs and
 导入后端; TOC cache under `book_chapter:<url>,<type>`; browsers import links to `.json` source files.
 
-Not available (pages keep the original strings and say so): the browser reading mode (it needs qread.xyz services), 时光源 pages
-encrypted with `@aes` (the key is a constant of the original), Baidu/Weiyun drives (vendor credentials), the Edge voice (its client token is not copied). The update check (关于 page and main-page start-up) asks the owner's server, which
+时光源 pages encrypted with `@aes` are decrypted as in the original (0xe8a4c0) when the build gets the key with
+`--dart-define=QREAD_SOURCE_AES_KEY=…` (CI: the repository secret of the same name; the key is not in the repository).
+
+Not available (pages keep the original strings and say so): the browser reading mode (it needs qread.xyz services), Baidu/Weiyun
+drives (vendor credentials), the Edge voice (its client token is not copied). The update check (关于 page and main-page start-up) asks the owner's server, which
 answers from `qread-admin set-update`.
 The remaining approximations are marked `TODO(asm 0x…)` with what was checked.
 

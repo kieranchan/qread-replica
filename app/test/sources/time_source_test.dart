@@ -306,6 +306,23 @@ void main() {
       await expectLater(SourceRun.loadPage(const BaseSource(bookSourceUrl: 'x', html: '@aes:abc')), throwsA(predicate((e) => '$e'.contains('解密失败'))));
     });
 
+    test('@aes pages: base64, AES-CBC/PKCS7 with key = iv (0xe8a4c0)', () async {
+      final saved = SourceRun.aesKey;
+      addTearDown(() => SourceRun.aesKey = saved);
+      // made with Python `cryptography` (AES-CBC, PKCS7, key = iv = b'0123456789abcdef'), not with the Dart package under test
+      const page = '@aesyubm0jCDqQCM4IFgXWvOnypviquy40O6H/LJ/1VOQz67YOjTp65sNOwdlMYpHwLlL2RzVboa/vbUxlp/fsenvg==';
+      SourceRun.aesKey = '';
+      await expectLater(SourceRun.loadPage(const BaseSource(bookSourceUrl: 'x', html: page)), throwsA(predicate((e) => '$e'.contains('不支持加密书源'))));
+      SourceRun.aesKey = '0123456789abcdef';
+      final loaded = await SourceRun.loadPage(const BaseSource(bookSourceUrl: 'x', html: page));
+      expect(loaded.html, '<script>var isCookieJar = true;// 测试时光源</script>');
+      final logs = <String>[];
+      expect(SourceRun.decryptPage('not base64!', log: logs.add), '');
+      expect(logs.single, startsWith('解密失败: '));
+      SourceRun.aesKey = 'fedcba9876543210';
+      await expectLater(SourceRun.loadPage(const BaseSource(bookSourceUrl: 'x', html: page)), throwsA(predicate((e) => '$e'.contains('书源无法解密'))));
+    });
+
     test('the debugger runs search -> info -> toc -> content and keeps the page text output', () async {
       final lines = <String>[];
       final log = await SourceApi.debug(engineSource(), '测试', onLine: lines.add);
