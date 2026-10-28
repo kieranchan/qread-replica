@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 
 import '../../common/app_dirs.dart';
+import 'content_painter.dart';
 
 /// One rule's background image for day or night.
 class RuleBgImage {
@@ -128,6 +129,7 @@ class NinePatchPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final tp = TextPainter(text: span, textAlign: align, strutStyle: strut, textDirection: TextDirection.ltr, textScaler: TextScaler.noScaling)
+      ..setPlaceholderDimensions(ReadTextBuilder.dimensionsOf(span))
       ..layout(minWidth: size.width, maxWidth: size.width);
     for (final (s, e, bg) in ranges) {
       final img = HighlightBgImages.get(bg.path);

@@ -77,8 +77,13 @@ class PageBody extends StatelessWidget {
   Widget _image(String href, BoxFit fit) {
     if (href.startsWith(PdfFile.scheme)) return PdfPageView(src: href, fit: fit);
     if (href.isEmpty) return const SizedBox();
-    // book-source images: `src,{json}` (js / headers), `dp:N` bubbles, data: images (util/source/image_meta.dart)
     final m = ImageMeta.parse(href);
+    return _tappable(m, _picture(m, fit));
+  }
+
+  /// The picture of a book-source image: `src,{json}` (js / headers), `dp:N` bubbles in the text colour, data: images
+  /// (util/source/image_meta.dart).
+  Widget _picture(ImageMeta m, BoxFit fit) {
     Widget img;
     if (m.isDp) {
       img = SvgPicture.string(m.dpSvg(textColor), fit: fit, errorBuilder: (_, _, _) => const SizedBox());
@@ -94,20 +99,38 @@ class PageBody extends StatelessWidget {
     } else {
       img = Image.file(File(m.url), fit: fit, errorBuilder: (_, _, _) => const SizedBox());
     }
-    // an image with `js` runs it in the source page when tapped (段评: showCmt → the half-height comment sheet)
-    if (m.js.isEmpty) return img;
-    return GestureDetector(behavior: HitTestBehavior.opaque, onTap: () => ParagraphComments.click(m.js), child: img);
+    return img;
+  }
+
+  /// An image with `js` runs it in the source page when tapped (段评: showCmt → the half-height comment sheet). The detector wins the tap
+  /// over the page's own tap recognizer (page turn / menu), which therefore does not fire.
+  Widget _tappable(ImageMeta m, Widget child) {
+    if (m.js.isEmpty) return child;
+    return GestureDetector(behavior: HitTestBehavior.opaque, onTap: () => ParagraphComments.click(m.js), child: child);
+  }
+
+  /// An image inside a line (a 段评 bubble or another image on the same line as text) in its [box] (the "我的" box the layout reserved,
+  /// [ReadTextBuilder.inlineImageSize]): the picture is [ReadTextBuilder.inlineImageHeight] high, as wide as the box, centred, fit
+  /// contain (0xffedf4 at 0x1002494: CacheBookImage in a Container(alignment: center) in a SizedBox of the box). The whole box takes
+  /// the tap.
+  Widget _inlineImage(String href, Size box) {
+    final m = ImageMeta.parse(href);
+    final picture = SizedBox(width: box.width, height: ReadTextBuilder.inlineImageHeight(style, box), child: _picture(m, BoxFit.contain));
+    return _tappable(m, SizedBox(width: box.width, height: box.height, child: Center(child: picture)));
   }
 
   /// Chapter offset of the character under [local] in block [c] (-1 when none).
   int _offsetAt(Content c, Offset local) {
+    final span = HighlightApply.span(c, style, color: textColor);
     final tp = TextPainter(
-      text: HighlightApply.span(c, style, color: textColor),
+      text: span,
       textAlign: HighlightApply.alignOf(c, style),
       strutStyle: HighlightApply.strutOf(c, style),
       textScaler: TextScaler.noScaling,
       textDirection: TextDirection.ltr,
-    )..layout(minWidth: width, maxWidth: width);
+    )
+      ..setPlaceholderDimensions(ReadTextBuilder.dimensionsOf(span))
+      ..layout(minWidth: width, maxWidth: width);
     var flat = tp.getPositionForOffset(local).offset;
     tp.dispose();
     final n = HighlightApply.flatText(c).length;
@@ -126,11 +149,20 @@ class PageBody extends StatelessWidget {
   Widget _block(Content c) {
     if (c.isImage) {
       final href = c.lines.isEmpty || c.lines.first.clines.isEmpty ? '' : c.lines.first.clines.first.href;
+      if (href.startsWith('dp:')) {
+        // a bubble on a line of its own: one line high (NovelViewState.imageSize), drawn like an inline bubble at the line start
+        return SizedBox(
+          width: width,
+          height: c.height,
+          child: Align(alignment: Alignment.centerLeft, child: _inlineImage(href, ReadTextBuilder.inlineImageSize(style))),
+        );
+      }
       return SizedBox(width: width, height: c.height, child: _image(href, c.fit));
     }
     final isTitle = c.lines.isNotEmpty && c.lines.first.paragraphIndex < 0;
     final decos = decorate?.call(c, chapterIndex) ?? const <TextDeco>[];
-    final span = HighlightApply.span(c, style, color: textColor, decos: decos);
+    // inline images (段评 bubbles) are WidgetSpans of the box the layout reserved, see ReadTextBuilder.inlineImage
+    final span = HighlightApply.span(c, style, color: textColor, decos: decos, inlineImage: (r, box) => _inlineImage(r.href, box));
     final align = HighlightApply.alignOf(c, style);
     final strut = HighlightApply.strutOf(c, style);
     Widget text = Text.rich(span, textAlign: align, strutStyle: strut, textScaler: TextScaler.noScaling);

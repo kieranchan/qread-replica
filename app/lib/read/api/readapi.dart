@@ -244,11 +244,11 @@ class ReadApi {
       await bookRules.saveToLocal(book.bookUrl, index, RuleContext(md5: '$digest|$signature', text: out, rules: rules));
       return (ChapterContent.fromText(out), true);
     }
-    // Rich content (EPUB / MOBI): rules run over each run's text; offsets are rebuilt.
+    // Rich content (EPUB / MOBI, source text with images): rules run over the text of each run (inline images stay); offsets are rebuilt.
     for (final b in raw.blocks) {
       if (b.isImage) continue;
       for (final r in b.runs) {
-        r.str = ReplaceRuleEngine.apply(r.str, rules, onTimeout: _ruleTimeout);
+        if (!r.isImage) r.str = ReplaceRuleEngine.apply(r.str, rules, onTimeout: _ruleTimeout);
       }
     }
     return (ChapterContent.fromBlocks(raw.blocks), true);

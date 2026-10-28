@@ -7,7 +7,7 @@
 // weight, italic) plus the rule's background image, drawn as a nine-patch behind the range (highlight_bg.dart). `fontSize` /
 // `lineHeight` / `fontFamily` of a rule are measured by CalculateChapter (runs tagged `rule:N`, ReadLayoutStyle.metricRules) and
 // drawn through the same run styles; a block holding such runs uses the growing strut ([strutOf]).
-import 'package:flutter/painting.dart';
+import 'package:flutter/widgets.dart';
 
 import '../../models/highlight_rule.dart';
 import '../model/line.dart';
@@ -56,8 +56,8 @@ class TextDeco {
 }
 
 abstract class HighlightApply {
-  /// The painter text of [c] (indent + run text).
-  static String flatText(Content c) => ReadTextBuilder.runsOf(c).map((r) => r.text).join();
+  /// The painter text of [c] (indent + run text; an inline image is its placeholder character).
+  static String flatText(Content c) => ReadTextBuilder.runsOf(c).map((r) => r.prefix + ReadTextBuilder.bodyOf(r)).join();
 
   /// Painter range of the chapter-text range `[srcStart, srcEnd)` inside [c], or null when it does not touch the block.
   static ({int start, int end})? flatRange(Content c, int srcStart, int srcEnd) {
@@ -67,7 +67,7 @@ abstract class HighlightApply {
     var pos = 0;
     for (final r in ReadTextBuilder.runsOf(c)) {
       pos += r.prefix.length;
-      if (r.start >= 0 && r.str.isNotEmpty) {
+      if (!r.isImage && r.start >= 0 && r.str.isNotEmpty) {
         final os = srcStart > r.start ? srcStart : r.start;
         final oe = srcEnd < r.end ? srcEnd : r.end;
         if (oe > os) {
@@ -77,7 +77,7 @@ abstract class HighlightApply {
           if (e == null || fe > e) e = fe;
         }
       }
-      pos += r.str.length;
+      pos += ReadTextBuilder.bodyOf(r).length;
     }
     return s == null ? null : (start: s, end: e!);
   }
@@ -146,13 +146,16 @@ abstract class HighlightApply {
     return v == null ? null : Color(v);
   }
 
-  /// The styled text of [c] with [decos] applied on top of the layout styles (same metrics as `ReadTextBuilder.span`).
+  /// The styled text of [c] with [decos] applied on top of the layout styles (same metrics as `ReadTextBuilder.span`). Inline image runs
+  /// become their [InlineImageSpan] (decorations do not apply to them); [inlineImage] builds what is drawn in the box (the page passes
+  /// the bubble / picture; without it the box stays empty, enough for hit testing and measuring).
   static TextSpan span(
     Content c,
     ReadLayoutStyle style, {
     required Color color,
     Color? linkColor,
     List<TextDeco> decos = const [],
+    Widget Function(CLine run, Size box)? inlineImage,
   }) {
     final isTitle = c.lines.isNotEmpty && c.lines.first.paragraphIndex < 0;
     final runs = ReadTextBuilder.runsOf(c).toList();
@@ -167,6 +170,12 @@ abstract class HighlightApply {
       final indentEnd = pos + r.prefix.length;
       if (r.prefix.isNotEmpty) {
         children.add(TextSpan(text: text.substring(0, r.prefix.length), style: base.copyWith(color: const Color(0x00000000))));
+      }
+      if (r.isImage) {
+        final box = ReadTextBuilder.inlineImageSize(style);
+        children.add(ReadTextBuilder.inlineImage(style, child: inlineImage?.call(r, box)));
+        pos = indentEnd + 1;
+        continue;
       }
       if (decos.isEmpty) {
         children.add(TextSpan(text: text.substring(r.prefix.length), style: base));

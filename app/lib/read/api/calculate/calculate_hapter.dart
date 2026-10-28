@@ -18,6 +18,12 @@
 // are split at the matches and tagged `rule:N`, the paragraph is measured with a strut that only sets the minimum line height, and
 // each line keeps its own height (the drawing uses the same styles and strut, see HighlightApply / ReadTextBuilder).
 //
+// Images inside a paragraph (image runs of a text block: 段评 bubbles and the other images on the same line as text, see
+// WebBookLoader.parseContent) are measured as the original does it: a CLine of `type != 0` in a Line becomes a WidgetPlaceholderSpan
+// of the "我的" box (PitchInfo.field_27 / field_2f, 0xeb964c at 0xeba3e0), here [ReadTextBuilder.inlineImage]. It takes one character of
+// the flat paragraph text (U+FFFC) and none of the chapter text; it wraps to the next line only when the line has no room left. Its
+// CLine on the laid-out line is `type: image`, `str: ''`, `start`/`end` -1.
+//
 // The engine is deterministic: the same blocks, size and [ReadLayoutStyle] always give the same pages, so results can be
 // cached.
 import 'dart:async';
@@ -28,6 +34,7 @@ import 'package:flutter/painting.dart';
 import '../../model/line.dart';
 import '../../model/page.dart';
 import '../../setting/read_layout_style.dart';
+import '../../util/content_painter.dart';
 
 typedef ImageSizeResolver = FutureOr<Size?> Function(String src);
 
@@ -177,6 +184,10 @@ class CalculateChapter {
     final out = <CLine>[];
     var pos = 0;
     for (final r in runs) {
+      if (r.isImage) {
+        out.add(r); // an inline image has no text to match
+        continue;
+      }
       final s = r.str;
       var a = 0;
       for (var j = 1; j <= s.length; j++) {
@@ -202,9 +213,9 @@ class CalculateChapter {
     return out;
   }
 
-  /// Null when the paragraph has no visible text.
+  /// Null when the paragraph has no visible text (and no inline image).
   _Measured? _layoutParagraph(CalcuPages block, int paragraphIndex, double width) {
-    final runs = _ruleRuns(block.runs.where((r) => r.str.isNotEmpty).toList());
+    final runs = _ruleRuns(block.runs.where((r) => r.isImage || r.str.isNotEmpty).toList());
     if (runs.isEmpty) return null;
     final grow = style.hasRuleRuns(runs);
 
@@ -222,6 +233,16 @@ class CalculateChapter {
     for (var i = 0; i < runs.length; i++) {
       final r = runs[i];
       final pl = i == 0 ? prefix.length : 0;
+      if (r.isImage) {
+        // the placeholder of an inline image (one U+FFFC in the flat text), after the indent when the paragraph starts with it
+        if (pl > 0) children.add(TextSpan(text: prefix, style: style.textStyle(r.styles, scale: scale)));
+        children.add(ReadTextBuilder.inlineImage(style));
+        final text = (i == 0 ? prefix : '') + ReadTextBuilder.placeholderChar;
+        segs.add(_Seg(pos, pos + text.length, pl, r, i == 0));
+        flat.write(text);
+        pos += text.length;
+        continue;
+      }
       final text = (i == 0 ? prefix : '') + r.str;
       segs.add(_Seg(pos, pos + text.length, pl, r, i == 0));
       children.add(TextSpan(text: text, style: style.textStyle(r.styles, scale: scale)));
@@ -230,13 +251,16 @@ class CalculateChapter {
     }
     final flatText = flat.toString();
 
+    final span = TextSpan(style: style.textStyle(const {}, scale: scale), children: children);
     final tp = TextPainter(
-      text: TextSpan(style: style.textStyle(const {}, scale: scale), children: children),
+      text: span,
       textDirection: TextDirection.ltr,
       textAlign: TextAlign.left,
       textScaler: TextScaler.noScaling,
       strutStyle: style.strut(scale: scale, grow: grow),
-    )..layout(maxWidth: width);
+    )
+      ..setPlaceholderDimensions(ReadTextBuilder.dimensionsOf(span))
+      ..layout(maxWidth: width);
     final ranges = _lineRanges(tp, flatText.length);
     final lh = _lineHeight(tp, style.fontSize * scale * style.lineHeight);
     final metrics = grow ? tp.computeLineMetrics() : const <LineMetrics>[];
@@ -261,10 +285,24 @@ class CalculateChapter {
       if (oe <= os) continue;
       final prefixEnd = seg.flatStart + seg.prefixLen;
       final prefixStr = os < prefixEnd ? flat.substring(os, math.min(oe, prefixEnd)) : '';
+      final run = seg.run;
+      if (run.isImage) {
+        // the placeholder sits at prefixEnd; a line holding only the indent before it keeps a text run with that indent
+        final here = os <= prefixEnd && prefixEnd < oe;
+        out.add(CLine(
+          str: '',
+          style: here ? run.style : '',
+          type: here ? CLineType.image : CLineType.text,
+          id: here ? run.id : '',
+          isfirst: seg.first && os == seg.flatStart,
+          href: here ? run.href : '',
+          prefix: prefixStr,
+        ));
+        continue;
+      }
       final bs = math.max(os, prefixEnd);
       final str = oe > bs ? flat.substring(bs, oe) : '';
       if (prefixStr.isEmpty && str.isEmpty) continue;
-      final run = seg.run;
       final startsRun = bs == prefixEnd;
       var start = -1;
       var end = -1;
