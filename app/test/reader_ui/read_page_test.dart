@@ -46,6 +46,21 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
     await settle(tester, until: () => s.pageIndex == 0);
 
+    // --- half a cover turn: header and footer stay put, drawn once (the next page has none of its own)
+    final total = s.pageCount;
+    final hold = await tester.startGesture(const Offset(300, 400));
+    for (var i = 0; i < 8; i++) {
+      await hold.moveBy(const Offset(-20, 0));
+      await tester.pump();
+    }
+    expect(find.text('1/$total'), findsOneWidget);
+    expect(find.text('2/$total'), findsNothing);
+    await hold.up();
+    await settle(tester, until: () => s.pageIndex == 1);
+    expect(find.text('2/$total'), findsOneWidget);
+    await tester.tapAt(const Offset(20, 400));
+    await settle(tester, until: () => s.pageIndex == 0);
+
     // --- drag left (cover animation)
     await tester.dragFrom(const Offset(300, 400), const Offset(-200, 0));
     await settle(tester, until: () => s.pageIndex == 1);

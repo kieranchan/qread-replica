@@ -1106,6 +1106,25 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
       decorate: _decorate,
       onLongPress: delta == 0 ? _onLongPress : null,
       bookName: widget.book.name,
+      showStatus: false,
+    );
+  }
+
+  /// Header and footer of the current page, drawn once over the pager: they stay put while the pages turn.
+  Widget _statusBars(ReadConfig config) {
+    final page = _myPage(_ci, _pi);
+    if (page == null) return const SizedBox();
+    return IgnorePointer(
+      child: Stack(
+        children: ContentPage.statusBars(
+          page: page,
+          setting: _setting,
+          config: config,
+          safe: _safe,
+          bookProgress: bookProgress,
+          bookName: widget.book.name,
+        ),
+      ),
     );
   }
 
@@ -1152,18 +1171,25 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
         onEdge: _onListEdge,
       );
     }
-    return NovelPager(
-      mode: _setting.turn,
-      duration: Duration(milliseconds: _setting.pageTurnSpeed),
-      controller: _pager,
-      paperColor: config.backgroundColor,
-      pageBuilder: (d) => _screen(d, config),
-      canTurn: _canTurn,
-      onTurned: _turned,
-      onBlocked: _blocked,
-      onTap: _onTap,
-      onVerticalPull: (_setting.downmark || _setting.exit) ? _onPull : null,
-      onVerticalPullUpdate: _onPullUpdate,
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: NovelPager(
+            mode: _setting.turn,
+            duration: Duration(milliseconds: _setting.pageTurnSpeed),
+            controller: _pager,
+            paperColor: config.backgroundColor,
+            pageBuilder: (d) => _screen(d, config),
+            canTurn: _canTurn,
+            onTurned: _turned,
+            onBlocked: _blocked,
+            onTap: _onTap,
+            onVerticalPull: (_setting.downmark || _setting.exit) ? _onPull : null,
+            onVerticalPullUpdate: _onPullUpdate,
+          ),
+        ),
+        Positioned.fill(child: _statusBars(config)),
+      ],
     );
   }
 

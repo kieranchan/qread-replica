@@ -6,7 +6,9 @@
 // Header and footer ([ReaderStatusBar]) are the original's three slots each (`customHeaderLeft` ... `customFooterRight`, items
 // 时间 · 内置百分比电池 · 外置百分比电池 · 章节进度 · 全文进度 · 标题 · 书名; defaults 标题 | | and 时间 | 章节进度 | 外置百分比电池), text size
 // `headerFooterFontSize` (0 -> 12, 8..25, 0x6342b8), with the `fen` divider lines (分割线). Battery level / charging ("充电中", "level" + "%",
-// 0x6339a0) come from [ReaderBattery].
+// 0x6339a0) come from [ReaderBattery]. The original builds them inside every page (ContentPageState.build 0xffa01c checks only the
+// show-header / show-footer settings); the paged reader here draws them once over the pager instead (`showStatus: false`), at the
+// owner's request, so a cover turn no longer shows the next page's footer beside the current one.
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -314,6 +316,10 @@ class ContentPage extends StatelessWidget {
   /// Draws the background (false when a parent already paints it, e.g. scroll mode).
   final bool paintBackground;
 
+  /// Draws the header and footer. The paged reader passes false and draws them once over the pager ([statusBars]), so they stay
+  /// put while the pages turn (the owner's choice; the original draws them in every page, and a cover turn shows two footers).
+  final bool showStatus;
+
   const ContentPage({
     super.key,
     required this.page,
@@ -326,7 +332,56 @@ class ContentPage extends StatelessWidget {
     this.onLongPress,
     this.bookName = '',
     this.paintBackground = true,
+    this.showStatus = true,
   });
+
+  /// The header and footer of [page] as positioned children of a screen-sized [Stack].
+  static List<Widget> statusBars({
+    required MyPage page,
+    required ReadSetting setting,
+    required ReadConfig config,
+    required EdgeInsets safe,
+    double bookProgress = 0,
+    String bookName = '',
+  }) {
+    final dim = config.textColor.withValues(alpha: 0.55);
+    final top = setting.safeTop >= 0 ? setting.safeTop.toDouble() : safe.top;
+    final bottom = setting.safeBottom >= 0 ? setting.safeBottom.toDouble() : safe.bottom;
+    return [
+      if (setting.showTop)
+        Positioned(
+          left: 0,
+          right: 0,
+          top: top,
+          child: ReaderStatusBar(
+            setting: setting,
+            header: true,
+            color: dim,
+            title: page.isFirstPageOfChapter && !setting.hidetitle ? '' : page.chapterName,
+            bookName: bookName,
+            pageNum: page.pageNum,
+            totalPage: page.totalPage,
+            bookProgress: bookProgress,
+          ),
+        ),
+      if (setting.showBottom)
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: bottom,
+          child: ReaderStatusBar(
+            setting: setting,
+            header: false,
+            color: dim,
+            title: page.chapterName,
+            bookName: bookName,
+            pageNum: page.pageNum,
+            totalPage: page.totalPage,
+            bookProgress: bookProgress,
+          ),
+        ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -335,9 +390,6 @@ class ContentPage extends StatelessWidget {
       final pad = style.padding;
       final w = size.width - pad.horizontal;
       final colW = style.columns == 2 ? (w - style.columnGap) / 2 : w;
-      final dim = config.textColor.withValues(alpha: 0.55);
-      final top = setting.safeTop >= 0 ? setting.safeTop.toDouble() : safe.top;
-      final bottom = setting.safeBottom >= 0 ? setting.safeBottom.toDouble() : safe.bottom;
       final body = Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -353,22 +405,6 @@ class ContentPage extends StatelessWidget {
         decoration: paintBackground ? config.decoration : null,
         child: Stack(
           children: [
-            if (setting.showTop)
-              Positioned(
-                left: 0,
-                right: 0,
-                top: top,
-                child: ReaderStatusBar(
-                  setting: setting,
-                  header: true,
-                  color: dim,
-                  title: page.isFirstPageOfChapter && !setting.hidetitle ? '' : page.chapterName,
-                  bookName: bookName,
-                  pageNum: page.pageNum,
-                  totalPage: page.totalPage,
-                  bookProgress: bookProgress,
-                ),
-              ),
             Positioned(
               left: pad.left,
               top: pad.top,
@@ -376,22 +412,8 @@ class ContentPage extends StatelessWidget {
               bottom: pad.bottom,
               child: ClipRect(child: OverflowBox(alignment: Alignment.topLeft, maxHeight: double.infinity, child: body)),
             ),
-            if (setting.showBottom)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: bottom,
-                child: ReaderStatusBar(
-                  setting: setting,
-                  header: false,
-                  color: dim,
-                  title: page.chapterName,
-                  bookName: bookName,
-                  pageNum: page.pageNum,
-                  totalPage: page.totalPage,
-                  bookProgress: bookProgress,
-                ),
-              ),
+            if (showStatus)
+              ...statusBars(page: page, setting: setting, config: config, safe: safe, bookProgress: bookProgress, bookName: bookName),
           ],
         ),
       );
