@@ -236,11 +236,13 @@ class _ButtomMenuState extends State<ButtomMenu> {
     );
   }
 
+  // 0x683c40: the label at its own width (14), 8 apart from the options, so 「简体繁体」 stays on one line
   Widget _row(String label, Widget child) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
     child: Row(
       children: [
-        SizedBox(width: 56, child: Text(label)),
+        Text(label, style: const TextStyle(fontSize: 14)),
+        const SizedBox(width: 8),
         Expanded(child: child),
       ],
     ),

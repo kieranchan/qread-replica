@@ -172,7 +172,8 @@ abstract class BaseBook extends JsBindable implements RuleDataInterface {
 }
 
 class Book extends BaseBook {
-  static final RegExp _authorRegex = RegExp(r'^\s*作\s*者[:：\s]+|\s+作\s*者\s*$');
+  // 0x180980 / 0x1809f4
+  static final RegExp _authorRegex = RegExp(r'^\s*作\s*者[:：\s]+|\s+著');
   static final RegExp _nameRegex = RegExp(r'\s+作\s*者.*|\s+\S+\s+著');
 
   String tocUrl = '';

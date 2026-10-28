@@ -104,6 +104,7 @@ void main() {
     await tester.tap(find.text('界面'));
     await settle(tester, max: 3);
     expect(find.text('界面设置'), findsOneWidget);
+    expect(tester.getSize(find.text('简体繁体')).height, lessThan(14 * 1.6)); // one line (0x683c40: label at its own width)
     final size = s.setting.fontSize;
     for (var i = 0; i < 8; i++) {
       await tester.tap(find.byKey(const ValueKey('font_plus')));
