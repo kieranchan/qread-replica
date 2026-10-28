@@ -18,6 +18,7 @@ import 'dart:convert';
 import '../api/userapi.dart' show CloudKind;
 import '../models/source.dart';
 import '../storage/storage.dart';
+import '../util/source/browser_source.dart';
 import '../util/source/source.dart';
 import 'cloud_api.dart';
 import 'cloud_sync.dart';
@@ -55,6 +56,8 @@ abstract class Sourcedata {
 
   /// The raw map of the source with this `bookSourceUrl`, null when unknown.
   static Map<String, dynamic>? byUrl(String url) {
+    // the built-in 「浏览器」 source of the in-app browser's 阅读模式 (SourceApi.getSource 0x1b9adc: an origin ending in `@chrome`)
+    if (BrowserSource.isOrigin(url)) return BrowserSource.raw(url);
     for (final m in store.items) {
       if ('${m['bookSourceUrl']}' == url) return m;
     }

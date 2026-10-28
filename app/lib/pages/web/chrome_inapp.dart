@@ -4,15 +4,20 @@
 //
 // Original `_ChromePageState` (build 0x5d73a8, InAppWebView 0x5d81d4, policy 0xfcdba4, bookmark tiles 0x5d8b38, menu sheet
 // 0x5d9cd8, UA dialog 0x5da7d8 / 0xfceb00 `UA设置已应用,重新打开页面后生效`, reading mode 0xfcec20 + hint dialog 0x5e5c30
-// `neverShowReadingModeHint`, star 0xfd1494 `已从收藏夹移除` / `已添加到收藏夹`, search 0xfd1934 + history 0xfd1cf8, cookie save
+// `neverShowReadingModeHint` -> util/source/browser_source.dart, star 0xfd1494 `已从收藏夹移除` / `已添加到收藏夹`, search 0xfd1934 + history 0xfd1cf8, cookie save
 // 0xfce524 `保存cookie成功 `).
 import 'package:flutter/material.dart';
 
+import '../../common/nav.dart';
 import '../../data/chromemark.dart';
 import '../../models/chromemark.dart';
 import '../../storage/storage.dart';
+import '../../util/source/browser_source.dart';
+import '../../util/source/time_source_api.dart';
 import '../../util/legado/cookie_jar.dart';
 import '../../util/toast.dart';
+import '../../util/webbook/model/book.dart' as wb;
+import '../../util/webbook/model/book_source.dart';
 import 'bookmark_manager_page.dart';
 import 'chrome.dart';
 import 'search_page.dart';
@@ -239,10 +244,18 @@ class _ChromeInappPageState extends State<ChromeInappPage> {
       if (never) await Storage.write('neverShowReadingModeHint', 'true');
     }
     try {
-      // 0xfcec20 opens BookDetailPage for Book(bookUrl: page, origin: …@chrome); an `@chrome` origin resolves (0x1b9adc) to the
-      // 时光源 「浏览器」 whose html is fetched from `http://yuan.qread.xyz/get-html?url=` and parsed with `getinfo(` (0xfcf350) in the
-      // 时光源 engine. That service belongs to qread.xyz and the engine is not in this build, so the mode stops here.
-      throw StateError('需要原版的「浏览器」时光源（qread.xyz 服务），此版本不可用');
+      // 0xfcf548: the page as the web view holds it; 0xfcec20: Book(bookUrl: page, origin: page@chrome) filled by the 「浏览器」 source's
+      // `getinfo(html, url)` (0xfcf074 / 0xfcf350), then `isinfo`, the 替换净化 default (0x53d688 `useReplaceRule`) and the detail page.
+      final url = _c.url.value;
+      final html = await _c.evaluate("window.document.getElementsByTagName('html')[0].outerHTML;");
+      final origin = BrowserSource.originOf(url);
+      final source = BookSource.fromJson(BrowserSource.raw(origin));
+      final info = await TimeSourceApi.bookInfoFromHtml(source, wb.Book(bookUrl: url, origin: origin, originName: BrowserSource.name), html);
+      final book = info.toModel()
+        ..isinfo = true
+        ..useReplaceRule = Storage.getBool('useReplaceRule', false);
+      if (!mounted) return;
+      await Nav.openBook(context, book);
     } catch (e) {
       Toast.show('进入阅读模式失败:$e');
     }

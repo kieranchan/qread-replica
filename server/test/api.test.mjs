@@ -402,3 +402,18 @@ test('admin CLI: users, grants, codes', () => {
   assert.equal(lines.filter((l) => /unused/.test(l)).length, 3);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('static/browser.html: 404 until an admin sets the 阅读模式 parser page, then the page as html', async () => {
+  const r404 = await fetch(base + '/static/browser.html');
+  assert.equal(r404.status, 404);
+  const f = path.join(tmp, 'browser.html');
+  fs.writeFileSync(f, '<html><script>async function getinfo(h,u){} async function chapter(t,b){}</script></html>');
+  const out = [];
+  admin(['set-static', 'browser', f], { cfg: { ...app.cfg }, out: (m) => out.push(m) });
+  const r = await fetch(base + '/static/browser.html');
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('content-type'), /text\/html/);
+  assert.match(await r.text(), /async function getinfo/);
+  fs.writeFileSync(f, '<html>no functions</html>');
+  assert.throws(() => admin(['set-static', 'browser', f], { cfg: { ...app.cfg }, out: () => {} }), /getinfo/);
+});

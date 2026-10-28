@@ -23,6 +23,7 @@ const name = 'smoke' + crypto.randomBytes(4).toString('hex');
 const pw = crypto.randomBytes(9).toString('base64url');
 try {
   check('healthz', (await (await fetch(base + '/healthz')).json()).ok === true);
+  check('browser page (阅读模式 parser) is served', (await fetch(base + '/static/browser.html')).status === 200);
   const invite = admin('make-codes', 'invite', '--valid-days', '1');
   check('register with invite', (await post('/register', { username: name, email: `${name}@example.invalid`, password: pw, code: invite })).code === 0);
   check('register again with the same invite is refused', (await post('/register', { username: name + 'x', email: `${name}x@example.invalid`, password: pw, code: invite })).code !== 0);

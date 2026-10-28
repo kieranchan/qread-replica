@@ -15,6 +15,7 @@ import '../webbook/model/book_chapter.dart';
 import '../webbook/model/book_source.dart';
 import '../webbook/model/search_book.dart';
 import 'baswebview.dart';
+import 'browser_source.dart';
 import 'cache.dart';
 import 'run.dart';
 import 'source.dart';
@@ -95,6 +96,18 @@ abstract class TimeSourceApi {
   /// `info(bookurl)`: fills [book] (its `bookUrl` stays the key of the book).
   static Future<Book> bookInfo(BookSource s, Book book, {DebugLog? debug}) async {
     final r = await (await runOf(s)).info(book.bookUrl, log: _log(debug), text: _text(debug));
+    return _merge(s, book, r);
+  }
+
+  /// `getinfo(html, bookurl)` (0xfcf350): the detail of a page the app already holds — the in-app browser's 阅读模式 hands the page
+  /// it shows to the 「浏览器」 source (util/source/browser_source.dart) instead of having it fetched again.
+  static Future<Book> bookInfoFromHtml(BookSource s, Book book, String html, {DebugLog? debug}) async {
+    final r = await (await runOf(s)).getinfo(html, book.bookUrl, log: _log(debug), text: _text(debug));
+    return _merge(s, book, r);
+  }
+
+  /// 0xfcf074: what the page's book fills in (empty fields keep the book's own), origin set to the source.
+  static Book _merge(BookSource s, Book book, m.Book r) {
     if (r.name.isNotEmpty) book.name = r.name;
     if (r.author.isNotEmpty) book.author = r.author;
     if (r.kind.isNotEmpty) book.kind = r.kind;
@@ -113,7 +126,8 @@ abstract class TimeSourceApi {
   /// `chapter(tocUrl, bookurl)`. A book whose toc url is not known yet (empty, or still the book url a search result carries) gets
   /// its `info()` first, as the detail page would: pages often hand the real toc url out of `info()` only.
   static Future<List<BookChapter>> chapters(BookSource s, Book book, {DebugLog? debug}) async {
-    if (book.tocUrl.isEmpty || book.tocUrl == book.bookUrl) await bookInfo(s, book, debug: debug);
+    // the 「浏览器」 source's toc url is the page itself: no `info()` round trip
+    if ((book.tocUrl.isEmpty || book.tocUrl == book.bookUrl) && !BrowserSource.isOrigin(s.bookSourceUrl)) await bookInfo(s, book, debug: debug);
     final tocUrl = book.tocUrl.isNotEmpty ? book.tocUrl : book.bookUrl;
     final list = await (await runOf(s)).chapter(tocUrl, book.bookUrl, log: _log(debug), text: _text(debug));
     return [

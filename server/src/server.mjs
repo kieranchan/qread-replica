@@ -2,7 +2,7 @@
 //   <endpoint>              account / cloud API (userapi.mjs), GET or POST, JSON / form / multipart bodies
 //   /vip, /vip.js           会员中心 page          /redeem  activation-code redemption (used by the page)
 //   /public/themes[/:id], /public/categories, /public/files/*   theme plaza
-//   /images/*, /static/down.json, /static/qq.json, /healthz, /api/allocate (stub)
+//   /images/*, /static/down.json, /static/qq.json, /static/browser.html, /healthz, /api/allocate (stub)
 //   PUT|GET /autobackup/<key>   upload / download of a device backup (urls handed out by openAuto / newopenAuto2 / getBookSelf ...)
 import fs from 'node:fs';
 import http from 'node:http';
@@ -94,6 +94,12 @@ export function createApp(overrides = {}) {
         if (pathname === '/static/down.json' || pathname === '/static/qq.json') {
           const f = path.join(cfg.dataDir, 'static', path.basename(pathname));
           return send(res, 200, fs.existsSync(f) ? fs.readFileSync(f) : '{}');
+        }
+        if (pathname === '/static/browser.html') {
+          // the 「浏览器」 时光源 page of the app's 阅读模式 (`qread-admin set-static browser <file.html>`); 404 = the app uses its built-in page
+          const f = path.join(cfg.dataDir, 'static', 'browser.html');
+          if (!fs.existsSync(f)) { status = 404; return send(res, 404, { code: CODE.ERR, errorMsg: 'not found' }); }
+          return send(res, 200, fs.readFileSync(f), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
         }
       }
       if (pathname === '/api/allocate') return send(res, 200, { code: -1, msg: '兼容层服务未启用' });

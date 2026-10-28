@@ -160,6 +160,12 @@ class FakeTimePage {
           ..['intro'] = '@html:<p>${b['intro']}</p>'
           ..['tocUrl'] = await h('base64encode', [jsonEncode({'id': b['id']})]);
         return jsonEncode(book);
+      case 'getinfo':
+        // the 「浏览器」 page's parse of a page handed over by 阅读模式: title and meta author of the html
+        final html = '${a[0]}';
+        final title = RegExp(r'<title>([^<]*)</title>').firstMatch(html)?.group(1)?.trim() ?? '';
+        final author = RegExp(r'author"\s+content="([^"]*)"').firstMatch(html)?.group(1) ?? '';
+        return jsonEncode({'name': title, 'author': author, 'bookUrl': a[1], 'tocUrl': a[1], 'intro': '', 'kind': '', 'coverUrl': '', 'wordCount': '', 'latestChapterTitle': ''});
       case 'chapter':
         final id = (jsonDecode('${await h('base64decode', [a[0]])}') as Map)['id'];
         final r = await get('${await server()}/catalog?id=$id');

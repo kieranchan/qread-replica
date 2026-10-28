@@ -363,6 +363,11 @@ class SourceRun extends Baswebview {
   Future<Book> info(String bookUrl, {void Function(String)? log, void Function(int, String)? text}) =>
       _debugged(log, text, () async => SourceParse.book(await call('info(${_q(bookUrl)})', infoTimeout, log: log, step: '︾开始解析详情页')));
 
+  /// 0xfcf350: `getinfo(html, bookurl)` — the page already in hand is parsed instead of being fetched (the in-app browser's 阅读模式
+  /// hands over the page it shows).
+  Future<Book> getinfo(String html, String bookUrl, {void Function(String)? log, void Function(int, String)? text}) =>
+      _debugged(log, text, () async => SourceParse.book(await call('getinfo(${_q(html)},${_q(bookUrl)})', infoTimeout, log: log, step: '︾开始解析详情页')));
+
   Future<List<BookChapter>> chapter(String tocUrl, String bookUrl, {void Function(String)? log, void Function(int, String)? text}) => _debugged(
       log, text, () async => SourceParse.chapters(await call('chapter(${_q(tocUrl)},${_q(bookUrl)})', chapterTimeout, log: log, step: '︾开始解析目录页')));
 

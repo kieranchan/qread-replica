@@ -9,6 +9,7 @@ import '../common/app_dirs.dart';
 import '../pages/read/pages/audio_view.dart';
 import '../data/tts.dart';
 import '../util/source/baswebview.dart';
+import '../util/source/browser_source.dart';
 import '../read/api/readapi.dart';
 import '../common/nav.dart';
 import '../data/bookself.dart';
@@ -87,6 +88,8 @@ abstract class Wiring {
     Sourcedata.store.onSaved = AutoBackup.scheduleSources;
     Rssdata.store.onSaved = AutoBackup.scheduleRss;
     unawaited(AutoBackup.reopen());
+    // the server copy of the 阅读模式 parser page (static/browser.html), when the owner's server has one
+    if (BrowserSource.autoRefresh) unawaited(BrowserSource.refresh());
     // sources / RSS / browser: engine hooks (browser, webview, captcha, toast, cookies), import links, own-backend binding;
     // sets Nav.openSourceEdit / Nav.openRss
     await SourcesArea.init();

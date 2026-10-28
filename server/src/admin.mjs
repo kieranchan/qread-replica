@@ -21,7 +21,7 @@ const HELP = `qread admin
   list-diag [--limit N] [--full]       self-check reports sent by the app (failures are always shown)
   add-category <name>
   add-theme --name N [--category C] [--zip F] [--layout F] [--image F] [--author A] [--mode day|night] [--version V] [--desc T] [--id ID]
-  set-static <down|qq> <file.json>
+  set-static <down|qq> <file.json> | set-static browser <file.html>   (browser: the 阅读模式 parser page, served at /static/browser.html)
   set-update <file.json> | set-update --clear | show-update
                                  release for check_update: {"version":"1.0.1","build":2,"notes":"…","url":"https://…","platform":"ios"}
 `;
@@ -145,10 +145,18 @@ export function run(argv, { cfg = loadConfig(), out = console.log } = {}) {
         break;
       }
       case 'set-static': {
-        if (!['down', 'qq'].includes(a[0])) throw new Error('down or qq');
-        JSON.parse(fs.readFileSync(a[1], 'utf8'));
+        if (!['down', 'qq', 'browser'].includes(a[0])) throw new Error('down, qq or browser');
+        if (!a[1]) throw new Error('set-static <name> <file>');
+        const text = fs.readFileSync(a[1], 'utf8');
+        let name = `${a[0]}.json`;
+        if (a[0] === 'browser') {
+          if (!text.includes('async function getinfo(') || !text.includes('async function chapter(')) throw new Error('not a 浏览器 source page (no getinfo/chapter)');
+          name = 'browser.html';
+        } else {
+          JSON.parse(text);
+        }
         fs.mkdirSync(path.join(cfg.dataDir, 'static'), { recursive: true });
-        fs.copyFileSync(a[1], path.join(cfg.dataDir, 'static', `${a[0]}.json`));
+        fs.copyFileSync(a[1], path.join(cfg.dataDir, 'static', name));
         out('ok');
         break;
       }

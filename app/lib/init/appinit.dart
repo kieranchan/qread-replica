@@ -22,6 +22,7 @@ import '../data/qsource.dart';
 import '../data/replace.dart';
 import '../data/rss.dart';
 import '../data/source.dart';
+import '../util/source/browser_source.dart';
 import '../data/svg.dart';
 import '../data/theme.dart';
 import '../data/tts.dart';
@@ -84,6 +85,7 @@ abstract class AppInit {
     final loaders = <String, Future<Object?> Function()>{
       'bookself': Bookdata.load,
       'source': Sourcedata.load,
+      'browserSource': BrowserSource.load,
       'sourcedata': QSources.load,
       'rss': Rssdata.load,
       'replaces': ReplaceData.load,

@@ -26,3 +26,5 @@
 
 # python caches (phone/)
 __pycache__/
+# the reading-mode parser page exported for the server (node server/tools/browser_page.mjs)
+/server/deploy/browser.html
