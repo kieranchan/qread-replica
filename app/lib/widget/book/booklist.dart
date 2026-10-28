@@ -26,6 +26,7 @@ class BookList extends StatelessWidget {
   final ValueChanged<String>? toggleSourceSelection;
   final VoidCallback? onLoadMore;
   final double bottom;
+  final Future<void> Function(Book dragged, Book target)? moveCallback;
 
   const BookList({
     super.key,
@@ -46,6 +47,7 @@ class BookList extends StatelessWidget {
     this.toggleSourceSelection,
     this.onLoadMore,
     this.bottom = 0,
+    this.moveCallback,
   });
 
   @override
@@ -70,6 +72,7 @@ class BookList extends StatelessWidget {
         toggleSourceSelection: toggleSourceSelection,
         onLoadMore: onLoadMore,
         bottom: bottom,
+        moveCallback: moveCallback,
       ),
     );
   }

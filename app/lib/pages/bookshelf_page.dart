@@ -38,6 +38,7 @@ import '../widget/book/booklist.dart';
 import '../widget/book/grouplist.dart';
 import '../widget/book/shelf_prefs.dart';
 import '../widget/book/toc_cache.dart';
+import '../widget/book/url_save_book.dart';
 import '../widget/book_page.dart';
 import '../widget/image/cached_cover_image.dart';
 import '../widget/ui/q_popup_menu_button.dart';
@@ -103,6 +104,25 @@ class BookshelfPageState extends BookApiPage<BookshelfPage> with AutomaticKeepAl
     final mode = ShelfPrefs.sort;
     final sort = switch (mode) { 0 => BookSort.recentRead, 1 => BookSort.name, 4 => BookSort.recentUpdate, _ => BookSort.manual };
     return BookSelfN.sorted(list, sort);
+  }
+
+  /// `moveCallback` (0x534530 → 0xf6fc8c): dropping [dragged] on [target] switches the shelf to 手动排序 (`booklistordrer` = 3), keeps
+  /// the order shown so far as the stored order and puts [dragged] at [target]'s place.
+  Future<void> moveCallback(Book dragged, Book target) async {
+    if (dragged.bookUrl == target.bookUrl) return;
+    if (!ShelfPrefs.isManualSort) {
+      // the order on screen becomes the stored order
+      final shown = booksOf(kAllGroup).map((b) => b.bookUrl).toList();
+      for (var i = 0; i < shown.length; i++) {
+        final from = BookSelfN.books.indexWhere((b) => b.bookUrl == shown[i]);
+        if (from >= 0 && from != i) await BookSelfN.move(from, i);
+      }
+    }
+    await ShelfPrefs.setSort(ShelfPrefs.manualSort);
+    final from = BookSelfN.books.indexWhere((b) => b.bookUrl == dragged.bookUrl);
+    final to = BookSelfN.books.indexWhere((b) => b.bookUrl == target.bookUrl);
+    if (from >= 0 && to >= 0) await BookSelfN.move(from, to);
+    if (mounted) setState(() {});
   }
 
   Future<void> _selectGroup(String g) async {
@@ -291,10 +311,10 @@ class BookshelfPageState extends BookApiPage<BookshelfPage> with AutomaticKeepAl
     );
     ctl.dispose();
     if (url == null || !mounted) return;
-    // TODO(asm 0xf7701c): the original asks the bound 轻阅读 backend (`urlsaveBook`); the replica matches the url against the
-    // sources' `bookUrlPattern` in the engine area later and opens the detail page with the source whose url prefix fits.
-    final src = Sourcedata.sources.where((s) => s.bookSourceUrl.isNotEmpty && url.startsWith(s.bookSourceUrl)).firstOrNull;
-    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => BookDetailPage(book: Book(bookUrl: url, origin: src?.bookSourceUrl ?? ''))));
+    // 0xf7701c → urlsaveBook (0xe69f74 / 0xe6a130): the first enabled local source whose bookUrlPattern matches opens the detail page
+    await urlSaveBook(context, url, (bookUrl, origin) async {
+      await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => BookDetailPage(book: Book(bookUrl: bookUrl, origin: origin))));
+    });
   }
 
   /// 0xf7713c / 0xf771c8: 「进度导入」 — a JSON list of books whose reading progress overwrites the shelf's (matched by bookUrl, then
@@ -625,6 +645,7 @@ class BookshelfPageState extends BookApiPage<BookshelfPage> with AutomaticKeepAl
                       onTap: _open,
                       showBookOperations: showBookOperations,
                       toggleSourceSelection: toggleSourceSelection,
+                      moveCallback: moveCallback,
                     ),
             ),
       bottomNavigationBar: _isedit ? _editBar() : null,

@@ -2,8 +2,8 @@
 // the download manager and the reader open without a network round trip; refreshed by the shelf's update check, the catalog's
 // 「刷新」 and the detail page. Local books use `LocalBookImporter.loadChapters` instead.
 //
-// TODO(asm 0xf6ede8): where the original keeps the fetched chapter lists is not recovered (the update task stores `needsave`);
-// the directory name is this port's choice.
+// TODO(asm 0xe66a0c): the original's update task (0xf6ede8 → 0xed6a58 `needsave`) keeps the list as `<documents>/<D>/<md5>` and
+// `<cachePath>/<D>/<md5>`, D being a static string (pool offset 0x1ed4) whose initial value is not in the dump; `toc` is this port's D.
 import 'dart:convert';
 import 'dart:io';
 

@@ -89,6 +89,9 @@ class AnalyzeUrl extends JsExtensions {
   String? webJs;
   String? sourceRegex;
 
+  /// `proxy` option or header (Legado: `http|socks4|socks5://host:port[@user@password]`).
+  String? proxy;
+
   late final ConcurrentRateLimiter _limiter;
 
   AnalyzeUrl._(
@@ -140,7 +143,12 @@ class AnalyzeUrl extends JsExtensions {
     final m = paramPattern.firstMatch(a.baseUrl);
     if (m != null) a.baseUrl = a.baseUrl.substring(0, m.start);
     final hf = a.headerMapF;
-    if (hf != null) a.headerMap.addAll(hf);
+    if (hf != null) {
+      a.headerMap.addAll(hf);
+      // Legado: a `proxy` entry of the source header is the proxy, not a header
+      final pk = a.headerMap.keys.where((k) => k.toLowerCase() == 'proxy').firstOrNull;
+      if (pk != null) a.proxy = a.headerMap.remove(pk);
+    }
     await a.initUrl();
     final mm = method?.toUpperCase();
     if (mm == 'POST') {
@@ -270,9 +278,8 @@ class AnalyzeUrl extends JsExtensions {
         useWebView = option.webView;
         webJs = option.webJs;
         sourceRegex = option.sourceRegex;
-        if (option.proxy != null && option.proxy!.isNotEmpty) {
-          // TODO(asm 0x174cb0): per-request proxy ("proxy" option / header) is not wired into the Dio adapter.
-        }
+        // the original keeps `proxy` on the analyzer (0xe3340c) without applying it; the replica sends through it (util/legado/proxy.dart)
+        if (option.proxy != null && option.proxy!.isNotEmpty) proxy = option.proxy;
         final js = option.js;
         if (js != null && js.isNotEmpty) {
           final r = await evalJS(js, url);
@@ -373,6 +380,7 @@ class AnalyzeUrl extends JsExtensions {
       timeout: _timeout,
       useCookieJar: src?.enabledCookieJar ?? true,
       retry: retry,
+      proxy: proxy,
     ));
   }
 

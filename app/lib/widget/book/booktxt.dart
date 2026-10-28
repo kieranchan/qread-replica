@@ -1,9 +1,11 @@
 // widget/book/booktxt.dart — `CacheTxtProgressDialog`: exports the cached chapters of a book as one TXT (「导出进度」, 「准备导出...」,
 // 「正在导出第 n 章...」, 「导出完成」, 「导出失败: 」, buttons 「关闭」 / 「保存」 → share sheet). Original 0x10cfbe4 / 0x1049d5c; the
-// file goes to `<root>/export/<name>.txt` (TODO(asm 0x1049d5c): the original writes into its documents folder root).
+// file is `<cachePath>/<name>.txt` like the original (0x1049d5c: `cachePath` = the temporary directory handed to the isolate at
+// start-up, name with `/ \ : * ? " < > |` turned into `_` by 0x538380), then 「保存」 shares it.
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../models/book.dart';
@@ -11,6 +13,15 @@ import '../../models/bookchapter.dart';
 import '../../read/api/book_content.dart';
 import '../../read/api/read_storage_root.dart';
 import '../base_page.dart';
+
+/// Where exported TXT files go: the app's cache directory (`cachePath`); tests point it elsewhere.
+Future<Directory> Function() exportDir = () async {
+  try {
+    return await getTemporaryDirectory();
+  } catch (_) {
+    return ReadStorageRoot.ensureSub('export');
+  }
+};
 
 /// Writes the cached chapters of [book] to [out]; [onProgress] gets the 1-based chapter number. Returns the number of chapters
 /// written (chapters without cache are skipped).
@@ -58,7 +69,7 @@ class _CacheTxtProgressDialogState extends BasePage<CacheTxtProgressDialog> {
   Future<void> _run() async {
     try {
       final name = widget.book.name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-      final f = File('${ReadStorageRoot.ensureSub('export').path}/$name.txt');
+      final f = File('${(await exportDir()).path}/$name.txt');
       await exportCachedTxt(widget.book, widget.chapters, f, onProgress: (n) {
         update(() {
           _msg = '正在导出第 $n 章...';

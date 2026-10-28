@@ -44,6 +44,18 @@ class ExploreKindStyle {
 /// One entry of the discovery page: a title (button label) and the URL rule to load. The app's `models/explore.dart` `Explore`
 /// carries the additional keys `type width default js chars action useShouldOverrideUrlLoading`, kept here as well.
 class ExploreKind {
+  /// Kind types (`type` is a number in the app's models; Legado writes the names): a list url, a section title, a button that
+  /// runs `action`, a text input, a choice from `chars`, a toggle through `chars`.
+  static const int typeUrl = 0, typeTitle = 1, typeButton = 2, typeText = 3, typeSelect = 4, typeToggle = 5;
+  static const Map<String, int> typeNames = {
+    'url': typeUrl, 'title': typeTitle, 'button': typeButton, 'text': typeText, 'select': typeSelect, 'toggle': typeToggle,
+  };
+
+  static int parseType(Object? v) {
+    if (v is String && typeNames.containsKey(v.trim().toLowerCase())) return typeNames[v.trim().toLowerCase()]!;
+    return jsonutil.asInt(v);
+  }
+
   String title;
   String? url;
   ExploreKindStyle? style;
@@ -68,7 +80,7 @@ class ExploreKind {
     final k = ExploreKind(jsonutil.asString(j['title']), jsonutil.optString(j['url']));
     final st = jsonutil.asMap(j['style']);
     if (st != null) k.style = ExploreKindStyle.fromJson(st);
-    k.type = jsonutil.asInt(j['type']);
+    k.type = parseType(j['type']);
     k.width = jsonutil.asInt(j['width']);
     k.defaultValue = jsonutil.asString(j['default']);
     k.chars = jsonutil.asList(j['chars']) ?? [];

@@ -69,7 +69,7 @@ abstract class QRssSources {
       if (list is String && list.trim().startsWith('[')) list = jsonDecode(list);
       final page = [for (final e in (list is List ? list : const [])) if (e is Map) RssSource.fromJson({...Map<String, dynamic>.from(e), 'isqread': true})];
       all.addAll(page);
-      // TODO(asm 0xf1cbd4): paging contract inferred
+      // `page` of the answer is the number of pages (0xf1cbd4 loops while its index < page)
       final more = data is Map ? (int.tryParse('${data['page'] ?? 0}') ?? 0) > p : false;
       if (page.isEmpty || !more) break;
     }

@@ -16,7 +16,9 @@ import '../util/http.dart';
 import '../util/webbook/debug.dart';
 import '../util/webbook/model/book.dart';
 import '../util/webbook/model/book_chapter.dart';
+import '../util/webbook/analyze_rule/js_extensions.dart';
 import '../util/webbook/model/book_source.dart';
+import '../util/webbook/model/shared_js_scope.dart';
 import '../util/webbook/model/search_book.dart';
 import '../util/webbook/web_book.dart';
 
@@ -51,10 +53,20 @@ class SearchCache {
   }
 
   void clear() => _m.clear();
+
+  /// Drops the cached results of one source (keys start with its url).
+  void removeSource(String sourceUrl) => _m.removeWhere((k, _) => k.startsWith('$sourceUrl\u0001'));
 }
 
 abstract class SourceApi {
   static final SearchCache cache = SearchCache();
+
+  /// 重载书源线程 (0xe77e8c removes the source's runner from `sourcerun`): the replica has no long-lived runner per source, so the
+  /// source's runtime state is dropped instead (cached search results, the resolved `jsLib`); the next call starts fresh.
+  static void reloadSource(String sourceUrl) {
+    cache.removeSource(sourceUrl);
+    SharedJsScope.forget(sourceUrl);
+  }
 
   /// A source JSON file may hold one source or an array.
   static List<BookSource> parseSources(String json) => BookSource.listFromJsonString(json);
@@ -111,6 +123,17 @@ abstract class SourceApi {
   /// The discovery entries of [source] (`exploreUrl`, evaluated once and cached for JS rules).
   static Future<List<ExploreKind>> exploreKinds(BookSource source, {bool refresh = false}) => source.exploreKinds(refresh: refresh);
 
+  /// Runs the `action` JavaScript of an explore kind (button / text / select / toggle) with `key` (the kind title) and `value`
+  /// (what the user typed or chose; also stored with `source.put(key, value)` so rules read it back with `source.get(key)`).
+  /// Returns the script result as text ('' for null / undefined).
+  static Future<String> exploreAction(BookSource source, String action, {String key = '', String? value}) async {
+    if (value != null && key.isNotEmpty) source.put(key, value);
+    final r = await SourceJsExtensions(source).runJs(action, values: {'key': key, 'value': value, 'result': value});
+    if (r == null) return '';
+    final s = r is String ? r : '$r';
+    return s == 'undefined' || s == 'null' ? '' : s;
+  }
+
   /// One discovery page: [url] is an [ExploreKind.url].
   static Future<List<SearchBook>> explore(BookSource source, String url, {int page = 1, DebugLog? debug}) =>
       WebBook(source, debug: debug).exploreBook(url, page: page);
@@ -153,8 +176,8 @@ abstract class SourceApi {
   ///   * `++url` -> that toc url, then the first chapter
   ///   * `--url` -> that chapter url only
   /// Errors end the run and are logged; the returned [DebugLog] holds all lines.
-  static Future<DebugLog> debug(BookSource source, String key, {void Function(String line)? onLine}) async {
-    final log = DebugLog(onLine: onLine);
+  static Future<DebugLog> debug(BookSource source, String key, {void Function(String line)? onLine, void Function(String step, String body)? onBody}) async {
+    final log = DebugLog(onLine: onLine, onBody: onBody);
     final web = WebBook(source, debug: log);
     try {
       Book? book;

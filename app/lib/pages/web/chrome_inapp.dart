@@ -8,9 +8,7 @@
 // 0xfce524 `保存cookie成功 `).
 import 'package:flutter/material.dart';
 
-import '../../common/nav.dart';
 import '../../data/chromemark.dart';
-import '../../models/book.dart';
 import '../../models/chromemark.dart';
 import '../../storage/storage.dart';
 import '../../util/legado/cookie_jar.dart';
@@ -241,10 +239,10 @@ class _ChromeInappPageState extends State<ChromeInappPage> {
       if (never) await Storage.write('neverShowReadingModeHint', 'true');
     }
     try {
-      // TODO(asm 0xfcec20): the original parses the page into a book with its `@chrome` rules (`getinfo(` 0xfcf350) before opening
-      // the detail page; the replica hands the url to the detail page of the shelf area.
-      final book = Book(bookUrl: _c.url.value, tocUrl: _c.url.value, name: _c.title.value, origin: '@chrome');
-      if (mounted) await Nav.openBook(context, book);
+      // 0xfcec20 opens BookDetailPage for Book(bookUrl: page, origin: …@chrome); an `@chrome` origin resolves (0x1b9adc) to the
+      // 时光源 「浏览器」 whose html is fetched from `http://yuan.qread.xyz/get-html?url=` and parsed with `getinfo(` (0xfcf350) in the
+      // 时光源 engine. That service belongs to qread.xyz and the engine is not in this build, so the mode stops here.
+      throw StateError('需要原版的「浏览器」时光源（qread.xyz 服务），此版本不可用');
     } catch (e) {
       Toast.show('进入阅读模式失败:$e');
     }

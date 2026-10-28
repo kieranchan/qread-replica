@@ -3,9 +3,13 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:newread/api/sourceapi.dart';
+import 'package:newread/common/nav.dart';
 import 'package:newread/data/source.dart';
+import 'package:newread/models/source.dart';
 import 'package:newread/pages/source/source_setting.dart';
 import 'package:newread/util/toast.dart';
+import 'package:newread/util/webbook/model/book_source.dart';
 
 import '../support/env.dart';
 import '../util/fake_site.dart';
@@ -155,6 +159,42 @@ void main() {
     expect(Sourcedata.raw.length, 2);
     expect(Sourcedata.byUrl('https://a.example.com'), isNull);
     expect(Toast.log, contains('删除成功'));
+  });
+
+  test('the debugger keeps the response bodies of its own run (POST search included)', () async {
+    final post = BookSource.fromJson(Map<String, dynamic>.from(jsonDecode(site.sourceJson('source_xpath_post.json')) as Map));
+    final bodies = <String, String>{};
+    final log = await SourceApi.debug(post, '我的', onBody: (s, b) => bodies[s] = b);
+    expect(bodies.keys, containsAll(['search', 'book', 'toc', 'content']));
+    expect(bodies['search'], contains('keyword=')); // the fake site echoes the POST body into the page
+    expect(log.bodies, bodies);
+  });
+
+  testWidgets('item menu: 搜索 / 发现 on one source, 重载 asks first', (t) async {
+    final searched = <List<Source>?>[];
+    final opened = <Object?>[];
+    final search0 = Nav.openSearch, named0 = Nav.openNamed;
+    addTearDown(() {
+      Nav.openSearch = search0;
+      Nav.openNamed = named0;
+    });
+    Nav.openSearch = (context, {key, sources}) async => searched.add(sources);
+    Nav.openNamed = (context, name, {arguments}) async => opened.add('$name|${arguments is Source ? arguments.bookSourceUrl : arguments}');
+    await importFixture(t);
+    Future<void> pick(String label) async {
+      await act(t, () => t.tap(find.byKey(const Key('menu_https://a.example.com'))));
+      await t.pumpAndSettle();
+      await act(t, () => t.tap(find.text(label).last));
+      await t.pumpAndSettle();
+    }
+
+    await pick('搜索');
+    expect(searched.single!.single.bookSourceUrl, 'https://a.example.com');
+    await pick('发现');
+    expect(opened, ['discovery_page_new|https://a.example.com']);
+    await pick('重载');
+    expect(find.text('是否重载甲站书源线程'), findsOneWidget);
+    await confirm(t);
   });
 
   testWidgets('network import (网络导入) downloads, previews and adds; an import link does the same', (t) async {

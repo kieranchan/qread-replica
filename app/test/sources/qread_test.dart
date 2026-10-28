@@ -103,7 +103,13 @@ void main() {
     expect(() => Qread.api('/x'), throwsA(isA<QreadException>().having((e) => e.message, 'm', '请先绑定轻阅读后端')));
 
     await Qread.bind('127.0.0.1:1, ${backend.base}', 'alice', 'pw');
-    expect((Qread.isbind, Qread.accessToken, Qread.caneditsource), (true, 'tok-1', true));
+    expect((Qread.isbind, Qread.accessToken), (true, 'tok-1'));
+    // the edit permission comes from the device channel's `source` job (`md5` == "1"), not from getUserInfo
+    await QreadWebsocket.handle('{"msg":"source","md5":"1"}');
+    expect(Qread.caneditsource, isTrue);
+    await QreadWebsocket.handle('{"msg":"source","md5":"0"}');
+    expect(Qread.caneditsource, isFalse);
+    await QreadWebsocket.handle('{"msg":"source","md5":"1"}');
     expect(Qread.baseurls.first, backend.base); // the answering url goes first
     expect(Qread.api('/getUserInfo'), '${backend.base}/api/5/getUserInfo?accessToken=tok-1');
     expect(Qread.wsUrl('debug'), '${backend.base.replaceFirst('http', 'ws')}/api/5/debug?id=tok-1&sg=1');

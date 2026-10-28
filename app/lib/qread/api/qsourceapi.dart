@@ -50,7 +50,7 @@ abstract class QSourceApi {
       final r = await page(p, md5: QSources.md5);
       if (r.md5.isNotEmpty) md5 = r.md5;
       all.addAll(r.sources);
-      // TODO(asm 0xf1b4bc): the paging contract (`page` = total pages or next page) is inferred
+      // `page` of the answer is the number of pages (0xf1b4bc loops while its index < page)
       if (r.sources.isEmpty || r.page <= p) break;
     }
     final list = [for (final m in all) Source.fromJson({...m, 'isqread': true})];

@@ -19,8 +19,8 @@ abstract class BookFilePicker {
 }
 
 class PluginBookFilePicker implements BookFilePicker {
-  /// The original also lists pdf; the reading core imports txt / epub / mobi / azw(3) / prc.
-  static const List<String> bookExtensions = ['txt', 'epub', 'mobi', 'azw', 'azw3', 'prc'];
+  /// The original's list (0xf78ca8, `".pdf"` 0xf792cc) plus the Kindle variants the reading core also imports.
+  static const List<String> bookExtensions = ['txt', 'epub', 'pdf', 'mobi', 'azw', 'azw3', 'prc'];
 
   @override
   Future<List<File>> pickBooks() async {
