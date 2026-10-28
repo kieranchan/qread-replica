@@ -436,6 +436,19 @@ class ReadSetting extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 顶部 / 底部安全距离 (`safeTop` / `safeBottom`, -1 = the system inset).
+  Future<void> setSafeDistance({int? top, int? bottom}) async {
+    if (top != null) {
+      safeTop = top.clamp(-1, 200);
+      await Storage.setInt('safeTop', safeTop);
+    }
+    if (bottom != null) {
+      safeBottom = bottom.clamp(-1, 200);
+      await Storage.setInt('safeBottom', safeBottom);
+    }
+    notifyListeners();
+  }
+
   Future<void> setHidetitle(bool v) {
     hidetitle = v;
     return _setBool('hidetitle', v);
@@ -554,6 +567,14 @@ class ReadSetting extends ChangeNotifier {
       case 'headerFooterFontSize':
         headerFooterFontSize = v.clamp(8, 30);
         v = headerFooterFontSize;
+      case 'headerLeftMargin':
+        headerLeftMargin = v;
+      case 'headerRightMargin':
+        headerRightMargin = v;
+      case 'footerLeftMargin':
+        footerLeftMargin = v;
+      case 'footerRightMargin':
+        footerRightMargin = v;
     }
     await _setInt(key, v);
   }

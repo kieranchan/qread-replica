@@ -1185,6 +1185,6 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
 
   void _openAiChat() {
     closeMenus();
-    showAiChatSheet(context, book: widget.book, chapterTitle: chapterTitle, chapterText: _content[_ci]?.content.text ?? '');
+    showAiChatSheet(context, book: widget.book, chapterTitle: chapterTitle, chapterText: _content[_ci]?.content.text ?? '', setting: _setting);
   }
 }
