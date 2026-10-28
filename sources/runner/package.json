@@ -1,0 +1,12 @@
+{
+  "name": "qyd-source-runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Runs a 时光源 page on the desktop (headless Chrome + DevTools protocol) with the app's bridge handlers implemented in Node",
+  "engines": { "node": ">=22" },
+  "bin": { "qyd-run": "./run.mjs" },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/*.test.mjs"
+  }
+}

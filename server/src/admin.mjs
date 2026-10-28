@@ -21,7 +21,8 @@ const HELP = `qread admin
   list-diag [--limit N] [--full]       self-check reports sent by the app (failures are always shown)
   add-category <name>
   add-theme --name N [--category C] [--zip F] [--layout F] [--image F] [--author A] [--mode day|night] [--version V] [--desc T] [--id ID]
-  set-static <down|qq> <file.json> | set-static browser <file.html>   (browser: the 阅读模式 parser page, served at /static/browser.html)
+  set-static <down|qq|browser> <file>
+  set-source <name> <file.html> | list-sources      host a 时光源 page at <base>/tsy/<name>.html (sources/<name>/dist/source.html) | set-static browser <file.html>   (browser: the 阅读模式 parser page, served at /static/browser.html)
   set-update <file.json> | set-update --clear | show-update
                                  release for check_update: {"version":"1.0.1","build":2,"notes":"…","url":"https://…","platform":"ios"}
 `;
@@ -158,6 +159,23 @@ export function run(argv, { cfg = loadConfig(), out = console.log } = {}) {
         fs.mkdirSync(path.join(cfg.dataDir, 'static'), { recursive: true });
         fs.copyFileSync(a[1], path.join(cfg.dataDir, 'static', name));
         out('ok');
+        break;
+      }
+      case 'set-source': {
+        // a 时光源 page served at <base>/tsy/<name>.html (sources/<name>/dist/source.html of the repository)
+        if (!/^[A-Za-z0-9._-]{1,64}$/.test(a[0] ?? '') || !a[1]) throw new Error('set-source <name> <file.html>');
+        const text = fs.readFileSync(a[1], 'utf8');
+        if (!/function\s+search\s*\(/.test(text) || !/function\s+chapter\s*\(/.test(text) || !/function\s+content\s*\(/.test(text)) throw new Error('not a 时光源 page (no search/chapter/content)');
+        const dir = path.join(cfg.dataDir, 'static', 'tsy');
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, `${a[0]}.html`), text);
+        out(`${cfg.baseUrl}/tsy/${a[0]}.html`);
+        break;
+      }
+      case 'list-sources': {
+        const dir = path.join(cfg.dataDir, 'static', 'tsy');
+        const names = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.html')) : [];
+        out(names.length ? names.map((f) => `${cfg.baseUrl}/tsy/${f}`).join('\n') : '(none)');
         break;
       }
       case 'set-update': {

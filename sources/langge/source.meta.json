@@ -1,0 +1,12 @@
+{
+  "bookSourceUrl": "https://qread.forfine.me/tsy/langge",
+  "bookSourceName": "大灰狼聚合·qread",
+  "bookSourceGroup": "大灰狼",
+  "author": "qread",
+  "enabled": true,
+  "enabledExplore": true,
+  "login": true,
+  "help": true,
+  "customButton": false,
+  "eventListener": false
+}

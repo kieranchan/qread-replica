@@ -45,7 +45,7 @@ avatar/theme URLs), `QREAD_REGISTER` (`invite` | `closed`), `QREAD_MAIL` (`off`;
   (`{code: 200, data}` replies). Add content with `admin add-theme`.
 * **Web page**: `GET /` (and `/vip`) is the 会员中心 page: opened by the app with `?tockenid=` it shows the status and the activation-code box; opened in a
   browser it first asks for username/password. `POST /diag` receives the app's self-check results (`admin list-diag`).
-* **Other**: `/images/*` (avatars, uploads), `/static/down.json`, `/static/qq.json` (`admin set-static`), `/static/browser.html` (the app's
+* **Other**: `/images/*` (avatars, uploads), `/static/down.json`, `/static/qq.json` (`admin set-static`), `/tsy/<name>.html` (hosted 时光源 pages from `../sources/`: `admin set-source <name> <file.html>`, `list-sources`; 5-minute cache), `/static/browser.html` (the app's
   阅读模式 parser page, `admin set-static browser <file.html>`; 404 until one is set — the app then uses its built-in copy; export the
   built-in one with `node tools/browser_page.mjs`), `/healthz`, `/api/allocate` (stub: the
   compatibility-engine allocator is not provided).

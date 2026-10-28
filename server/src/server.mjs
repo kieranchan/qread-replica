@@ -2,7 +2,7 @@
 //   <endpoint>              account / cloud API (userapi.mjs), GET or POST, JSON / form / multipart bodies
 //   /vip, /vip.js           会员中心 page          /redeem  activation-code redemption (used by the page)
 //   /public/themes[/:id], /public/categories, /public/files/*   theme plaza
-//   /images/*, /static/down.json, /static/qq.json, /static/browser.html, /healthz, /api/allocate (stub)
+//   /images/*, /static/down.json, /static/qq.json, /static/browser.html, /tsy/<name>.html (hosted 时光源 pages), /healthz, /api/allocate (stub)
 //   PUT|GET /autobackup/<key>   upload / download of a device backup (urls handed out by openAuto / newopenAuto2 / getBookSelf ...)
 import fs from 'node:fs';
 import http from 'node:http';
@@ -17,7 +17,7 @@ import { VIP_HTML, VIP_JS } from './pages.mjs';
 import { ApiError, CODE, RateLimiter, readBody, parseMultipart } from './util.mjs';
 
 const SAFE_NAME = /^[A-Za-z0-9._\-]{1,128}$/;
-const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.zip': 'application/zip', '.json': 'application/json; charset=utf-8' };
+const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.zip': 'application/zip', '.json': 'application/json; charset=utf-8', '.html': 'text/html; charset=utf-8' };
 
 export function createApp(overrides = {}) {
   const cfg = loadConfig(overrides);
@@ -94,6 +94,11 @@ export function createApp(overrides = {}) {
         if (pathname === '/static/down.json' || pathname === '/static/qq.json') {
           const f = path.join(cfg.dataDir, 'static', path.basename(pathname));
           return send(res, 200, fs.existsSync(f) ? fs.readFileSync(f) : '{}');
+        }
+        if (pathname.startsWith('/tsy/')) {
+          // hosted 时光源 pages (`qread-admin set-source <name> <file.html>`, sources/ of the repository): a source whose record has
+          // `html: <base>/tsy/<name>.html` downloads the page on every start, so it is updated without re-importing
+          return sendFile(res, path.join(cfg.dataDir, 'static', 'tsy'), `${pathname.slice('/tsy/'.length).replace(/\.html$/, '')}.html`, 'public, max-age=300');
         }
         if (pathname === '/static/browser.html') {
           // the 「浏览器」 时光源 page of the app's 阅读模式 (`qread-admin set-static browser <file.html>`); 404 = the app uses its built-in page
