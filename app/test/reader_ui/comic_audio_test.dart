@@ -2,6 +2,7 @@
 // next chapter on completion), video shell.
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:newread/models/book.dart';
 import 'package:newread/models/bookchapter.dart';
@@ -81,8 +82,34 @@ void main() {
     await tester.tapAt(const Offset(200, 400));
     await settle(tester, max: 3);
     expect(find.text('下一话'), findsOneWidget);
+    expect(find.byKey(const ValueKey('comic_slider_chapter')), findsOneWidget); // 菜单滑动条 按章节 (menuSliderType2 0)
+    expect(find.byType(InteractiveViewer), findsNothing); // 双指缩放 off by default
     await tester.tap(find.text('下一话'));
     await settle(tester, until: () => s.chapterIndex == 1 && book.durChapterIndex == 1);
+    await finish(tester);
+  });
+
+  testWidgets('comic view: 双指缩放 (two) and 按分页 slider (menuSliderType2 1)', (tester) async {
+    phoneSize(tester);
+    await tester.runAsync(setUpReader);
+    await tester.runAsync(() async {
+      await Storage.setBool('two', true);
+      await Storage.setInt('menuSliderType2', 1);
+    });
+    final book = Book(bookUrl: 'comic/2', name: '漫画书', origin: 'loc_book', type_: BookType.comic);
+    final chapters = [BookChapter(name: '第1话', index: 0)];
+    Future<ChapterContent> loader(BookChapter c) async => ChapterContent.fromBlocks([
+          for (var i = 0; i < 12; i++) CalcuPages.image(CLine(type: CLineType.image, href: '/no/such/${c.index}_$i.png')),
+        ]);
+    await tester.pumpWidget(app(ReadPage(book: book, chapters: chapters, loader: loader)));
+    await settle(tester, until: () => find.text('第1话').evaluate().isNotEmpty);
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+    final s = tester.state<ComicViewState>(find.byType(ComicView));
+    await s.page(1);
+    await settle(tester, max: 5);
+    await tester.tapAt(const Offset(200, 400));
+    await settle(tester, max: 10); // the tap waits for the double-tap (restore zoom) timeout
+    expect(find.byKey(const ValueKey('comic_slider_page')), findsWidgets);
     await finish(tester);
   });
 
