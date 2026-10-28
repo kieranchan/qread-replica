@@ -127,10 +127,12 @@ class _SourceWebviewPageState extends State<SourceWebviewPage> implements JsHand
   Future<void> _finish() async {
     if (_done) return;
     _done = true;
-    final url = (await _c?.getUrl())?.toString() ?? r.url;
-    await WebCookies.pull(url);
-    await WebCookies.pullAll();
-    final html = await _html();
+    // closing must always work, even when the page does not answer (hung script, suspended web process)
+    const wait = Duration(seconds: 3);
+    final url = (await _c?.getUrl().timeout(wait, onTimeout: () => null))?.toString() ?? r.url;
+    await WebCookies.pull(url).timeout(wait, onTimeout: () {});
+    await WebCookies.pullAll().timeout(wait, onTimeout: () {});
+    final html = await _html().timeout(wait, onTimeout: () => '');
     if (mounted) Navigator.of(context).pop(html);
   }
 
@@ -192,7 +194,9 @@ class _SourceWebviewPageState extends State<SourceWebviewPage> implements JsHand
 
   final ValueNotifier<String?> _error = ValueNotifier<String?>(null);
 
-  Widget _body() => Stack(children: [
+  // fit: expand — the web view must get the whole body (a 0x0 platform view is treated as hidden: WebKit stops drawing it and
+  // pauses its scripts)
+  Widget _body() => Stack(fit: StackFit.expand, children: [
         Positioned.fill(child: _web()),
         ValueListenableBuilder<String?>(
           valueListenable: _error,
