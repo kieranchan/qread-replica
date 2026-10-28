@@ -89,6 +89,18 @@ void main() {
     expect(WakeMode.labels.values, ['跟随系统', '1分钟', '2分钟', '5分钟', '10分钟', '常亮']);
   });
 
+  test('亮度设置 sets the screen brightness, 自动 resets it, failures are reported', () async {
+    final calls = <String>[];
+    ReaderBrightness.set = (v) async => calls.add('set $v');
+    ReaderBrightness.reset = () async => calls.add('reset');
+    expect(await ReaderBrightness.apply(auto: false, value: 0.4), isTrue);
+    expect(await ReaderBrightness.apply(auto: true, value: 0.4), isTrue);
+    expect(await ReaderBrightness.apply(auto: false, value: -1), isTrue);
+    expect(calls, ['set 0.4', 'reset', 'reset']);
+    ReaderBrightness.set = (v) async => throw UnsupportedError('no');
+    expect(await ReaderBrightness.apply(auto: false, value: 0.4), isFalse);
+  });
+
   testWidgets('status bar: default slots, custom slots, divider', (tester) async {
     final s = ReadSetting();
     Widget bar(bool header) => MaterialApp(

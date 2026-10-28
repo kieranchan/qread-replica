@@ -97,6 +97,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
 
   ReadLayoutStyle? _style;
   late int _simplified = _setting.simplified;
+  (bool, double)? _brightness;
   int _wakelock = 0;
   Size? _size;
   EdgeInsets _safe = EdgeInsets.zero;
@@ -180,6 +181,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     _setting.removeListener(_onSetting);
     _autoTimer?.cancel();
     ReaderWakelock.stop();
+    if (_brightness != null) ReaderBrightness.restore();
     _aloud?.dispose();
     _list.dispose();
     _focus.dispose();
@@ -246,6 +248,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     _inited = true;
     _wakelock = _setting.wakelockTimeout;
     ReaderWakelock.start(_wakelock);
+    _applyBrightness();
     _status = '正文加载中...';
     if (mounted) setState(() {});
     _applySystemUi();
@@ -264,6 +267,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
 
   void _onSetting() {
     if (!mounted) return;
+    _applyBrightness();
     if (_inited && _setting.wakelockTimeout != _wakelock) {
       _wakelock = _setting.wakelockTimeout;
       ReaderWakelock.start(_wakelock);
@@ -1125,10 +1129,13 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     });
   }
 
-  Widget _brightnessLayer() {
-    if (_setting.autoBrightness || _setting.brightness < 0) return const SizedBox.shrink();
-    final alpha = ((1 - _setting.brightness) * 0.75).clamp(0.0, 0.75);
-    return IgnorePointer(child: Container(color: Colors.black.withValues(alpha: alpha)));
+  /// 亮度设置: the screen's brightness itself (screen_brightness), not an overlay.
+  Future<void> _applyBrightness() async {
+    final key = (_setting.autoBrightness, _setting.brightness);
+    if (key == _brightness) return;
+    _brightness = key;
+    final ok = await ReaderBrightness.apply(auto: _setting.autoBrightness, value: _setting.brightness);
+    if (!ok && !_setting.autoBrightness && _setting.brightness >= 0) Toast.show('当前设备不支持亮度调节');
   }
 
   @override
@@ -1151,7 +1158,6 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
             children: [
               Positioned.fill(child: Container(decoration: config.decoration)),
               Positioned.fill(child: _reader(config)),
-              Positioned.fill(child: _brightnessLayer()),
               if (hint != null)
                 Positioned(
                   top: _pull > 0 ? _safe.top + 8 : null,

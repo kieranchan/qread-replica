@@ -6,6 +6,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../data/fonts.dart';
@@ -122,5 +123,32 @@ abstract class ReaderWakelock {
     _timer?.cancel();
     _timer = null;
     if (enabled) await _set(false);
+  }
+}
+
+/// 亮度设置 of the reader (screen_brightness, the app's own brightness like the original): `autoBrightness` (自动) or a negative
+/// `brightness` leaves the system value; leaving the reader resets it. "当前设备不支持亮度调节" when the platform refuses.
+abstract class ReaderBrightness {
+  static Future<void> Function(double v) set = (v) => ScreenBrightness().setApplicationScreenBrightness(v);
+  static Future<void> Function() reset = () => ScreenBrightness().resetApplicationScreenBrightness();
+
+  /// Applies [auto] / [value]; false when the device cannot change the brightness.
+  static Future<bool> apply({required bool auto, required double value}) async {
+    try {
+      if (auto || value < 0) {
+        await reset();
+      } else {
+        await set(value.clamp(0.0, 1.0));
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> restore() async {
+    try {
+      await reset();
+    } catch (_) {}
   }
 }
