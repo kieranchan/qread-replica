@@ -30,6 +30,13 @@ highlight backgrounds, camera QR scanning, app links / open-with, Big5 + GB18030
 (queryTTF/replaceFont), drag-sorted shelf, explore actions, 沉浸光感 (liquid glass), 底栏标签配置 (订阅 hidden by default as in the
 original), backup devices on the owner's server, alternate home-screen icons.
 
+Detail pass (2026-10-28, on the owner's phone): 时光源 search / discovery filters (`filter()` / `findfilter(url)`), 事件监听
+(`callbackjs` for detail taps, shelf add/remove, saved progress), 定制按钮 (detail app bar + reader top bar), `@onclick` intro
+buttons, 段评 bubbles (`dp:N`, tap → `showCmt` sheet) and `showsvg`/`getsvg`/`addsvg`, background web views as the original
+`_Webview` (webviewajax, timers, `getheader` cookies, `setHtml`); change-source tabs 匹配书籍 · 不同作者 · 相近名称; highlight
+rules with font size / line height measured in paging; 谷歌汉字 font; the original's TXT rule choice; 轻阅读 backend device jobs and
+导入后端; TOC cache under `book_chapter:<url>,<type>`; browsers import links to `.json` source files.
+
 Not available (pages keep the original strings and say so): the browser reading mode (it needs qread.xyz services), 时光源 pages
 encrypted with `@aes` (the key is a constant of the original), Baidu/Weiyun drives (vendor credentials), the Edge voice (its client token is not copied). The update check (关于 page and main-page start-up) asks the owner's server, which
 answers from `qread-admin set-update`.
@@ -38,12 +45,13 @@ The remaining approximations are marked `TODO(asm 0x…)` with what was checked.
 ## Tests
 ```powershell
 . ..\env.ps1            # flutter on PATH, PUB_CACHE inside qread
-flutter analyze; flutter test     # 542 tests, about 1.5 minutes
+flutter analyze; flutter test     # about 625 tests, about 2 minutes
 ```
 * Per area: `test/{data,storage,util,read,reader_ui,shelf,sources,extras}/`; the engine runs against a fake site on 127.0.0.1.
 * `test/app_smoke_test.dart` starts the wired app and opens every tab; `test/route_coverage_test.dart` fails when a page opens a
   route name no table handles; `test/contract/server_contract_test.dart` drives `UserApi` against the real `../server`.
-* `test/reader_ui/rule_pages_test.dart` has failed once in a full run and passed on rerun (timing-sensitive).
+* `test/reader_ui/rule_pages_test.dart` and `test/shelf/detail_catalog_test.dart` have each failed once in a full run and passed
+  on rerun (timing-sensitive).
 
 ## UI test on the iOS Simulator (no phone needed)
 `integration_test/app_flow_test.dart` + `test_driver/`, run by `.github/workflows/ios-ui-test.yml` against the real server started
