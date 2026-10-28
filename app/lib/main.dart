@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import 'dev/qa_driver.dart';
 import 'init/appinit.dart';
 import 'init/wiring.dart';
 import 'pages/main_page.dart';
@@ -10,6 +13,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppInit.init();
   await Wiring.init();
+  unawaited(QaDriver.start());
   runApp(const QreadApp());
 }
 

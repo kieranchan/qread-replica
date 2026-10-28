@@ -36,9 +36,10 @@ String chapterProgressText(int pageNum, int totalPage) => totalPage <= 0 ? '分�
 /// Slot item 全文进度 (0x632f5c, item 4): the book percent with two decimals.
 String bookProgressText(double bookProgress) => '${(bookProgress * 100).clamp(0, 100).toStringAsFixed(2)}%';
 
-/// The `showProgress` text (显示进度: 不显示 / 章节进度 / 全文进度 / 章节进度和全文进度). TODO(asm): where the original shows it is not
-/// found yet (the battery item 0x6344a8 draws only the level and the battery; the slot items ignore it), so the reader does not
-/// draw it; the setting is still stored.
+/// The `showProgress` text (显示进度: 不显示 / 章节进度 / 全文进度 / 章节进度和全文进度; settings field_af, default "1" at 0x8f7eb4).
+/// TODO(asm): the battery item 0x6344a8 starts with `Text(widget.field_27.field_2f)` when it is non-zero, but what that string holds
+/// is not confirmed, and showing this text there put a second `2/9` beside the 章节进度 slot, so the reader does not draw it; the
+/// setting is still stored.
 String progressText(int mode, {required int pageNum, required int totalPage, required double bookProgress}) {
   final chapter = chapterProgressText(pageNum, totalPage);
   final book = bookProgressText(bookProgress);
@@ -238,8 +239,7 @@ class ReaderStatusBar extends StatelessWidget {
         final battery = id == SlotItem.batteryInside
             ? BatteryIcon(color: style.color ?? color, height: fs * 0.9, percentInside: true)
             : BatteryIcon(color: style.color ?? color, height: fs * 0.8, percentText: style);
-        // 0x6344a8 draws only the level text (`<level>%`, 充电中) and the battery: no progress text here (the default footer already
-        // has 章节进度 in its centre slot)
+        // 0x6344a8: level text (`<level>%`), the battery, 充电中; its leading showProgress text is left out (see [progressText])
         return battery;
       case SlotItem.chapterProgress:
         return Text(chapterProgressText(pageNum, totalPage), style: style);
