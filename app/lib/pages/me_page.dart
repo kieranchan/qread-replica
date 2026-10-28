@@ -30,6 +30,7 @@ import '../storage/book_reading_time_storage.dart';
 import '../storage/storage.dart';
 import '../theme/theme_provider.dart';
 import '../theme/widgets.dart';
+import '../widget/ui/q_glass.dart';
 import '../util/toast.dart';
 import 'about_page.dart';
 import 'background_manager_page.dart';
@@ -388,9 +389,20 @@ class _MePageState extends State<MePage> {
           appBar: AppBar(
             title: const Text('我的', style: TextStyle(fontWeight: FontWeight.w600)),
             centerTitle: false,
+            // 0x514204: the actions sit in a glass pill (QGlassContainer, height 40, radius 20, horizontal padding 10) + 10 px gap.
             actions: [
-              IconButton(key: const Key('me_dark'), icon: Icon(tp.modeIcon), tooltip: '跟随系统 / 白天 / 夜间', onPressed: tp.cycleMode),
-              const SizedBox(width: 6),
+              QGlassContainer(
+                height: 40,
+                borderRadius: 20,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Tooltip(
+                    message: '跟随系统 / 白天 / 夜间',
+                    child: GestureDetector(key: const Key('me_dark'), onTap: tp.cycleMode, child: Icon(tp.modeIcon, size: 24)),
+                  ),
+                ]),
+              ),
+              const SizedBox(width: 10),
             ],
           ),
           body: RefreshIndicator(
