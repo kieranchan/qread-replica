@@ -11,6 +11,7 @@ import '../../models/book.dart';
 import '../../models/bookchapter.dart';
 import '../../read/api/readapi.dart';
 import '../../read/local_book_importer.dart';
+import '../../read/util/reading_time.dart';
 import 'pages/audio_view.dart';
 import 'pages/comic_view.dart';
 import 'pages/novel_view.dart';
@@ -69,7 +70,33 @@ class ReadPage extends StatefulWidget {
   State<ReadPage> createState() => _ReadPageState();
 }
 
-class _ReadPageState extends State<ReadPage> {
+class _ReadPageState extends State<ReadPage> with WidgetsBindingObserver {
+  /// 阅读统计: counts while this page is open and the app in the foreground.
+  late final ReadingTimer _time = ReadingTimer(widget.book);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _time.start();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _time.start();
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      _time.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _time.stop();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final book = widget.book;

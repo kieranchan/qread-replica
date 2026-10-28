@@ -4,7 +4,8 @@
 // 更多. Sessions are stored per book (`Setting.getAiChatSessions`), the last model in prefs `aiChatLastModel`. The model is reached
 // through [ReaderAi]. "提取角色" asks the model for the characters of the chapter and stores them in the character library
 // (`ai_character_page.dart`).
-// TODO(asm 0xf0caec..): tool calls of the original chat (reading settings applier, `ai/chat/read_setting_applier.dart`) are not ported.
+// With an adapter that implements [ReaderAiTools] and the reader's live [ReadSetting], the model can read and change the reading
+// settings through the tools of read_setting_tools.dart (the reader re-lays out on the change, like the original's 0x57606c).
 import 'dart:async';
 import 'dart:convert';
 
@@ -15,18 +16,21 @@ import '../../../../../models/ai_character.dart';
 import '../../../../../models/ai_chat_session.dart';
 import '../../../../../models/book.dart';
 import '../../../../../read/api/read_file_store.dart';
+import '../../../../../read/setting/read_setting.dart';
 import '../../../../../storage/setting.dart';
 import '../../../../../storage/storage.dart';
 import '../../../../../util/toast.dart';
 import '../../../../../util/vip.dart';
 import '../../../reader_ai.dart';
 import 'ai_character_page.dart';
+import 'read_setting_tools.dart';
 
 /// Per-book key of the chat sessions and the character library.
 String aiBookKey(Book book) => ReadFileStore.md5Hex(book.bookUrl);
 
 /// Opens the sheet after the member check (`当前功能仅对会员开放`).
-Future<void> showAiChatSheet(BuildContext context, {required Book book, String chapterTitle = '', String chapterText = ''}) async {
+Future<void> showAiChatSheet(BuildContext context,
+    {required Book book, String chapterTitle = '', String chapterText = '', ReadSetting? setting, List<String> fonts = const []}) async {
   if (!Vip.require('当前功能仅对会员开放')) return;
   await showModalBottomSheet<void>(
     context: context,
@@ -34,7 +38,7 @@ Future<void> showAiChatSheet(BuildContext context, {required Book book, String c
     useSafeArea: true,
     builder: (_) => FractionallySizedBox(
       heightFactor: 0.9,
-      child: AiChatSheet(book: book, chapterTitle: chapterTitle, chapterText: chapterText),
+      child: AiChatSheet(book: book, chapterTitle: chapterTitle, chapterText: chapterText, setting: setting, fonts: fonts),
     ),
   );
 }
@@ -44,7 +48,11 @@ class AiChatSheet extends StatefulWidget {
   final String chapterTitle;
   final String chapterText;
 
-  const AiChatSheet({super.key, required this.book, this.chapterTitle = '', this.chapterText = ''});
+  /// The reader's live settings (enables the reading-settings tools).
+  final ReadSetting? setting;
+  final List<String> fonts;
+
+  const AiChatSheet({super.key, required this.book, this.chapterTitle = '', this.chapterText = '', this.setting, this.fonts = const []});
 
   @override
   State<AiChatSheet> createState() => _AiChatSheetState();
@@ -119,7 +127,12 @@ class _AiChatSheetState extends State<AiChatSheet> {
     ];
     final buf = StringBuffer();
     final done = Completer<void>();
-    _sub = ai.chat(history, modelId: _modelId.isEmpty ? null : _modelId, deep: s.deepThinking).listen(
+    final setting = widget.setting;
+    final stream = ai is ReaderAiTools && setting != null
+        ? (ai as ReaderAiTools).chatWithTools(history, ReadSettingApplier(setting, fonts: widget.fonts).tools(),
+            modelId: _modelId.isEmpty ? null : _modelId, deep: s.deepThinking)
+        : ai.chat(history, modelId: _modelId.isEmpty ? null : _modelId, deep: s.deepThinking);
+    _sub = stream.listen(
       (chunk) {
         buf.write(chunk);
         s.messages[s.messages.length - 1] = AiChatMessage(role: 'assistant', content: buf.toString(), timestamp: now).toJson();

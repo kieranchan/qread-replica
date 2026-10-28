@@ -1,21 +1,24 @@
 // pages/read/pages/novel/content.dart — one screen of the novel reader: background, header line, the laid-out text of a [MyPage]
 // (one or two columns), footer line (time, battery, progress).
 //
-// Original: `ContentPageState` (93 KB; strings 我的 / 内容加载中... / 充电中 / 分页中). The original paints with its own painters and
-// custom header/footer slots (`customHeaderLeft` ... ids, member feature); this port draws each content block with a `Text.rich` that uses
-// the exact styles and strut of the layout engine, so line breaks match the pagination and the text is selectable. Header = chapter
-// title, footer = time + battery on the left and the progress (`showProgress`) on the right.
-// TODO(asm 0x1010228): custom header/footer slot items (member feature) are not rendered; the default layout is.
+// Original: `ContentPageState` (93 KB; strings 我的 / 内容加载中... / 充电中 / 分页中). This port draws each content block with a `Text.rich`
+// that uses the exact styles and strut of the layout engine, so line breaks match the pagination and the text is selectable.
+// Header and footer ([ReaderStatusBar]) are the original's three slots each (`customHeaderLeft` ... `customFooterRight`, items
+// 时间 · 内置百分比电池 · 外置百分比电池 · 章节进度 · 全文进度 · 标题 · 书名; defaults 标题 | | and 时间 | 章节进度 | 外置百分比电池), text size
+// `headerFooterFontSize` (0 -> 12, 8..25, 0x6342b8), with the `fen` divider lines (分割线). Battery level / charging ("充电中", "level" + "%",
+// 0x6339a0) come from [ReaderBattery].
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 
 import '../../../../read/model/mypage.dart';
 import '../../../../read/model/page.dart';
+import '../../../../read/pdf/pdf_file.dart';
 import '../../../../read/setting/read_layout_style.dart';
 import '../../../../read/setting/read_setting.dart';
 import '../../../../read/util/content_painter.dart';
 import '../../../../read/util/highlight_apply.dart';
+import '../../../../read/util/highlight_bg.dart';
 import 'views/battery_painter.dart';
 
 typedef BlockDecorator = List<TextDeco> Function(Content block, int chapterIndex);
@@ -23,7 +26,8 @@ typedef BlockDecorator = List<TextDeco> Function(Content block, int chapterIndex
 /// Long press on the text: chapter index, chapter-text offset under the finger, global position.
 typedef TextLongPress = void Function(int chapterIndex, int offset, Offset globalPosition);
 
-/// Formats the progress text of the footer.
+/// Formats the 章节进度 item of a status slot: `showProgress` picks chapter pages, book percent or both. TODO(asm 0x6344a8): the
+/// original's use of `showProgress` inside the slot row was not traced; the 全文进度 item always shows the percent.
 String progressText(int mode, {required int pageNum, required int totalPage, required double bookProgress}) {
   final chapter = '$pageNum/$totalPage';
   final book = '${(bookProgress * 100).clamp(0, 100).toStringAsFixed(1)}%';
@@ -62,6 +66,7 @@ class PageBody extends StatelessWidget {
   });
 
   Widget _image(String href, BoxFit fit) {
+    if (href.startsWith(PdfFile.scheme)) return PdfPageView(src: href, fit: fit);
     if (href.startsWith('http')) return Image.network(href, fit: fit, errorBuilder: (_, _, _) => const SizedBox());
     if (href.isEmpty) return const SizedBox();
     return Image.file(File(href), fit: fit, errorBuilder: (_, _, _) => const SizedBox());
@@ -97,12 +102,16 @@ class PageBody extends StatelessWidget {
       return SizedBox(width: width, height: c.height, child: _image(href, c.fit));
     }
     final isTitle = c.lines.isNotEmpty && c.lines.first.paragraphIndex < 0;
-    Widget text = Text.rich(
-      HighlightApply.span(c, style, color: textColor, decos: decorate?.call(c, chapterIndex) ?? const []),
-      textAlign: HighlightApply.alignOf(c, style),
-      strutStyle: HighlightApply.strutOf(c, style),
-      textScaler: TextScaler.noScaling,
-    );
+    final decos = decorate?.call(c, chapterIndex) ?? const <TextDeco>[];
+    final span = HighlightApply.span(c, style, color: textColor, decos: decos);
+    final align = HighlightApply.alignOf(c, style);
+    final strut = HighlightApply.strutOf(c, style);
+    Widget text = Text.rich(span, textAlign: align, strutStyle: strut, textScaler: TextScaler.noScaling);
+    final images = [for (final d in decos) if (d.bgImage != null) (d.start, d.end, d.bgImage!)];
+    if (images.isNotEmpty) {
+      // the rules' background images, nine-patch behind their ranges
+      text = CustomPaint(painter: NinePatchPainter(span: span, align: align, strut: strut, ranges: images), child: text);
+    }
     final lp = onLongPress;
     if (lp != null && !isTitle) {
       text = GestureDetector(
@@ -135,28 +144,95 @@ class PageBody extends StatelessWidget {
   }
 }
 
-/// The header or footer line.
-class StatusLine extends StatelessWidget {
-  final Widget? left;
-  final Widget? right;
-  final double leftMargin;
-  final double rightMargin;
-  final double height;
+/// The header or footer of a reader screen: the three custom slots of the original, a divider line (`fen`).
+class ReaderStatusBar extends StatelessWidget {
+  final ReadSetting setting;
+  final bool header;
+  final Color color;
+  final String title;
+  final String bookName;
+  final int pageNum;
+  final int totalPage;
+  final double bookProgress;
 
-  const StatusLine({super.key, this.left, this.right, required this.leftMargin, required this.rightMargin, required this.height});
+  const ReaderStatusBar({
+    super.key,
+    required this.setting,
+    required this.header,
+    required this.color,
+    required this.title,
+    this.bookName = '',
+    this.pageNum = 0,
+    this.totalPage = 0,
+    this.bookProgress = 0,
+  });
+
+  Widget? _item(int id, TextStyle style) {
+    final fs = style.fontSize ?? 12;
+    switch (id) {
+      case SlotItem.time:
+        return Text(clockText(), style: style);
+      case SlotItem.batteryInside:
+        return BatteryIcon(color: style.color ?? color, height: fs * 0.9, percentInside: true);
+      case SlotItem.batteryOutside:
+        return BatteryIcon(color: style.color ?? color, height: fs * 0.8, percentText: style);
+      case SlotItem.chapterProgress:
+        final t = progressText(setting.showProgress, pageNum: pageNum, totalPage: totalPage, bookProgress: bookProgress);
+        return t.isEmpty ? null : Text(t, style: style);
+      case SlotItem.bookProgress:
+        return Text(progressText(ProgressMode.book, pageNum: pageNum, totalPage: totalPage, bookProgress: bookProgress), style: style);
+      case SlotItem.title:
+        return Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: style);
+      case SlotItem.bookName:
+        return Text(bookName, maxLines: 1, overflow: TextOverflow.ellipsis, style: style);
+    }
+    return null;
+  }
+
+  Widget _slot(String key, TextStyle style, MainAxisAlignment align) {
+    final items = <Widget>[];
+    for (final id in setting.slots[key] ?? const <int>[]) {
+      final w = _item(id, style);
+      if (w != null) items.add(w);
+    }
+    return Row(
+      mainAxisAlignment: align,
+      children: [
+        for (var i = 0; i < items.length; i++) ...[
+          if (i > 0) const SizedBox(width: 6),
+          items[i] is Text ? Flexible(child: items[i]) : items[i],
+        ],
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final style = TextStyle(fontSize: setting.statusFontSize, color: color, height: 1.2);
+    final prefix = header ? 'customHeader' : 'customFooter';
+    final divider = setting.fen == DividerMode.both || setting.fen == (header ? DividerMode.header : DividerMode.footer);
+    final left = (header ? setting.headerLeftMargin : setting.footerLeftMargin).toDouble();
+    final right = (header ? setting.headerRightMargin : setting.footerRightMargin).toDouble();
+    final line = Container(height: 0.5, margin: EdgeInsets.only(left: left, right: right), color: color.withValues(alpha: 0.4));
     return SizedBox(
-      height: height,
-      child: Padding(
-        padding: EdgeInsets.only(left: leftMargin, right: rightMargin),
-        child: Row(
-          children: [
-            Expanded(child: Align(alignment: Alignment.centerLeft, child: left ?? const SizedBox())),
-            ?right,
-          ],
-        ),
+      height: header ? setting.headerHeight : setting.footerHeight,
+      child: Column(
+        children: [
+          if (divider && !header) line,
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(left: left, right: right),
+              child: Row(
+                children: [
+                  Expanded(child: _slot('${prefix}Left', style, MainAxisAlignment.start)),
+                  Expanded(child: _slot('${prefix}Center', style, MainAxisAlignment.center)),
+                  Expanded(child: _slot('${prefix}Right', style, MainAxisAlignment.end)),
+                ],
+              ),
+            ),
+          ),
+          if (divider && header) line,
+        ],
       ),
     );
   }
@@ -171,6 +247,7 @@ class ContentPage extends StatelessWidget {
   final EdgeInsets safe;
   final BlockDecorator? decorate;
   final TextLongPress? onLongPress;
+  final String bookName;
 
   /// Draws the background (false when a parent already paints it, e.g. scroll mode).
   final bool paintBackground;
@@ -185,6 +262,7 @@ class ContentPage extends StatelessWidget {
     this.bookProgress = 0,
     this.decorate,
     this.onLongPress,
+    this.bookName = '',
     this.paintBackground = true,
   });
 
@@ -196,7 +274,6 @@ class ContentPage extends StatelessWidget {
       final w = size.width - pad.horizontal;
       final colW = style.columns == 2 ? (w - style.columnGap) / 2 : w;
       final dim = config.textColor.withValues(alpha: 0.55);
-      final small = TextStyle(fontSize: setting.headerFooterFontSize.toDouble(), color: dim, height: 1.2);
       final top = setting.safeTop >= 0 ? setting.safeTop.toDouble() : safe.top;
       final bottom = setting.safeBottom >= 0 ? setting.safeBottom.toDouble() : safe.bottom;
       final body = Row(
@@ -219,12 +296,15 @@ class ContentPage extends StatelessWidget {
                 left: 0,
                 right: 0,
                 top: top,
-                child: StatusLine(
-                  height: setting.headerHeight,
-                  leftMargin: setting.headerLeftMargin.toDouble(),
-                  rightMargin: setting.headerRightMargin.toDouble(),
-                  left: Text(page.isFirstPageOfChapter && !setting.hidetitle ? '' : page.chapterName,
-                      maxLines: 1, overflow: TextOverflow.ellipsis, style: small),
+                child: ReaderStatusBar(
+                  setting: setting,
+                  header: true,
+                  color: dim,
+                  title: page.isFirstPageOfChapter && !setting.hidetitle ? '' : page.chapterName,
+                  bookName: bookName,
+                  pageNum: page.pageNum,
+                  totalPage: page.totalPage,
+                  bookProgress: bookProgress,
                 ),
               ),
             Positioned(
@@ -239,24 +319,43 @@ class ContentPage extends StatelessWidget {
                 left: 0,
                 right: 0,
                 bottom: bottom,
-                child: StatusLine(
-                  height: setting.footerHeight,
-                  leftMargin: setting.footerLeftMargin.toDouble(),
-                  rightMargin: setting.footerRightMargin.toDouble(),
-                  left: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Text(clockText(), style: small),
-                    const SizedBox(width: 6),
-                    BatteryIcon(color: dim, height: setting.headerFooterFontSize * 0.8),
-                  ]),
-                  right: Text(
-                    progressText(setting.showProgress, pageNum: page.pageNum, totalPage: page.totalPage, bookProgress: bookProgress),
-                    style: small,
-                  ),
+                child: ReaderStatusBar(
+                  setting: setting,
+                  header: false,
+                  color: dim,
+                  title: page.chapterName,
+                  bookName: bookName,
+                  pageNum: page.pageNum,
+                  totalPage: page.totalPage,
+                  bookProgress: bookProgress,
                 ),
               ),
           ],
         ),
       );
     });
+  }
+}
+
+/// A PDF page (`pdf:<file>,<page>`), rendered once and then read from its cached PNG.
+class PdfPageView extends StatelessWidget {
+  final String src;
+  final BoxFit fit;
+  const PdfPageView({super.key, required this.src, this.fit = BoxFit.contain});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = PdfFile.parseSrc(src);
+    if (s == null) return const SizedBox();
+    return FutureBuilder<File>(
+      future: PdfFile.pageFile(s.$1, s.$2),
+      builder: (context, snap) {
+        final f = snap.data;
+        if (f == null) {
+          return snap.hasError ? Center(child: Text('渲染第 ${s.$2 + 1} 页失败')) : const Center(child: CircularProgressIndicator(strokeWidth: 2));
+        }
+        return Image.file(f, fit: fit, errorBuilder: (_, _, _) => const SizedBox());
+      },
+    );
   }
 }

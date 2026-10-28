@@ -11,10 +11,13 @@
 import 'dart:async';
 import 'dart:convert';
 
+import '../../ai/read.dart';
 import '../../models/_json.dart';
 import '../../models/book.dart';
 import '../../models/bookchapter.dart';
 import '../../models/replacerule.dart';
+import '../../storage/setting.dart';
+import '../../storage/storage.dart';
 import '../util/chapter_content.dart';
 import '../util/replace_rules.dart';
 import 'book_ai.dart';
@@ -70,6 +73,27 @@ class _AsyncLock {
   }
 }
 
+/// At most [limit] AI purifications at a time (the purify model's `concurrent`, legacy prefs `purifyConcurrent`).
+class _Gate {
+  int _running = 0;
+  final List<Completer<void>> _waiting = [];
+
+  Future<T> run<T>(int limit, Future<T> Function() fn) async {
+    while (_running >= (limit < 1 ? 1 : limit)) {
+      final c = Completer<void>();
+      _waiting.add(c);
+      await c.future;
+    }
+    _running++;
+    try {
+      return await fn();
+    } finally {
+      _running--;
+      if (_waiting.isNotEmpty) _waiting.removeAt(0).complete();
+    }
+  }
+}
+
 class ReadApi {
   final Book book;
   List<BookChapter> chapters;
@@ -112,6 +136,17 @@ class ReadApi {
 
   /// Called with a message for failures that must not interrupt reading (the original prints them with `debugPrint`).
   static void Function(String message)? log;
+
+  /// Ai净化 of a chapter text (0xf089b0 "开始使用ai": the 正文净化 model, `AiRead.purify`); throws `AiException`.
+  static Future<String> Function(String text) aiPurifier = (t) => AiRead.purify(t);
+
+  /// How many chapters may be purified at once (the purify model's `concurrent`, default 1).
+  static int Function() aiConcurrency = () => Setting.purifyModel?.concurrent ?? Storage.getInt('purifyConcurrent', 1);
+
+  static final _Gate _aiGate = _Gate();
+
+  /// Shown to the user when Ai净化 failed (the reader toasts it).
+  static void Function(String message)? aiError;
 
   static const String historyKey = 'historybook';
   static const int historyLimit = 300;
@@ -163,10 +198,25 @@ class ReadApi {
 
   /// Applies AI result / replace rules to a chapter. Returns the content and whether anything was applied.
   Future<(ChapterContent, bool)> purify(int index, ChapterContent raw) async {
-    if (book.useai) {
+    if (book.useai && raw.isPlainText && raw.text.trim().isNotEmpty) {
       final ai = await bookai.readFromLocal(book.bookUrl, index);
       if (ai != null && ai.text.isNotEmpty && ai.oldtext == raw.text) {
         return (ChapterContent.fromText(ai.text), true);
+      }
+      // 0xf089b0: no stored result -> ask the purify model, keep {oldtext, text} for the next time
+      log?.call('开始使用ai');
+      final src = raw.text;
+      try {
+        final out = await _aiGate.run(aiConcurrency(), () => aiPurifier(src));
+        if (out.trim().isNotEmpty) {
+          await bookai.saveToLocal(book.bookUrl, index, AiContext(oldtext: src, text: out));
+          return (ChapterContent.fromText(out), true);
+        }
+      } catch (e) {
+        // the original reports "正文获取失败:Ai净化出错 <e>" ("请先配置AiTocken" without a model); the chapter is still shown with the
+        // replace rules below
+        log?.call('$e' == '请先配置AiTocken' ? '请先配置AiTocken' : '正文获取失败:Ai净化出错 $e');
+        aiError?.call('$e' == '请先配置AiTocken' ? '请先配置AiTocken' : 'Ai净化出错 $e');
       }
     }
     if (!book.useReplaceRule) return (raw, false);

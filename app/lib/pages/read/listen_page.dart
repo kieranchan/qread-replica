@@ -1,10 +1,14 @@
 // pages/read/listen_page.dart — the full-screen "听书" page (original `_ListenPageState` + `_TtsLyricsViewState`: the chapter as a lyrics
 // view with the spoken paragraph highlighted, controls, 语速, 定时停止 / 取消定时, 发音人, 朗读引擎：, the voice download hint, background
-// music). It drives the same [ReadAloudController] as the reader's listen bar.
-// TODO(asm 0xf677b4): background music (选择背景音乐 / 背景音乐音量) and the multi-role engine belong to the TTS area and are not wired here.
+// music). It drives the same [ReadAloudController] as the reader's listen bar. The engine (HTTP / 多角色 / 系统默认) is the
+// speaker's (tts_bridge.dart); 选择背景音乐 / 背景音乐音量 (0xf677b4) pick a track of BackgroundMusicManager, played while listening.
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
+
+import '../../data/background_music_manager.dart';
+import '../../util/toast.dart';
+import 'tts_bridge.dart';
 
 import 'pages/novel/views/listen_bar.dart';
 import 'read_aloud.dart';
@@ -65,6 +69,63 @@ class _ListenPageState extends State<ListenPage> {
     if (v != null) await c.speaker.setVoice(v);
   }
 
+  /// 选择背景音乐: the imported tracks, 取消背景音乐, and the volume (背景音乐音量: 0.1 .. 0.8).
+  Future<void> _music() async {
+    try {
+      await BackgroundMusicManager.load();
+    } catch (_) {}
+    if (!mounted) return;
+    final list = BackgroundMusicManager.musics;
+    final r = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) => SafeArea(
+          child: ListView(shrinkWrap: true, children: [
+            const ListTile(title: Text('选择背景音乐')),
+            if (list.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('暂无背景音乐，请先导入')),
+            for (final m in list)
+              ListTile(
+                title: Text(m.name),
+                trailing: BackgroundMusicManager.selectedId == m.id ? const Icon(Icons.check) : null,
+                onTap: () => Navigator.pop(ctx, m.id),
+              ),
+            if (BackgroundMusicManager.selectedId.isNotEmpty) ListTile(title: const Text('取消背景音乐'), onTap: () => Navigator.pop(ctx, '')),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(children: [
+                Text('背景音乐音量: ${(BackgroundMusicManager.volume * 100).round()}%'),
+                Expanded(
+                  child: Slider(
+                    value: BackgroundMusicManager.volume,
+                    min: BackgroundMusicManager.minVolume,
+                    max: BackgroundMusicManager.maxVolume,
+                    onChanged: (v) async {
+                      await ListenBackgroundMusic.instance.setVolume(v);
+                      set(() {});
+                    },
+                  ),
+                ),
+              ]),
+            ),
+          ]),
+        ),
+      ),
+    );
+    if (r == null) return;
+    try {
+      await BackgroundMusicManager.select(r);
+      await ListenBackgroundMusic.instance.reselect(c.active && !c.paused);
+      if (r.isEmpty) {
+        Toast.show('已取消背景音乐');
+      } else {
+        Toast.show('已设置背景音乐: ${BackgroundMusicManager.selected?.name ?? ''}');
+      }
+    } catch (e) {
+      Toast.show('设置背景音乐失败: $e');
+    }
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final segs = c.segments;
@@ -74,7 +135,10 @@ class _ListenPageState extends State<ListenPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.bookName),
-        actions: [IconButton(tooltip: '发音人', icon: const Icon(Icons.record_voice_over), onPressed: _voices)],
+        actions: [
+          IconButton(tooltip: '选择背景音乐', icon: const Icon(Icons.music_note_outlined), onPressed: _music),
+          IconButton(tooltip: '发音人', icon: const Icon(Icons.record_voice_over), onPressed: _voices),
+        ],
       ),
       body: Column(
         children: [

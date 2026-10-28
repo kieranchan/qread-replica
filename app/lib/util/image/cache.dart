@@ -1,6 +1,6 @@
-// util/image/cache.dart — class 1337 `ImageCache` (const, 3 slots) of the original: the reader's lookup for image sizes /
-// decoded bytes keyed by source. Here: a small bounded map of intrinsic sizes, shared by the layout engine and the UI.
-// TODO(asm class 1337): the original's 3 slots (probably width, height, bytes/key) are not recoverable.
+// util/image/cache.dart — class 1337 `ImageCache` of the original (size 0x18: two fields, the image and its `MySize`, built by
+// 0xeb348c / 0xeb35b0 and kept in a static `Map<String, ImageCache>`): the reader's lookup for image sizes keyed by source. Here a
+// bounded map of intrinsic sizes, shared by the layout engine and the UI (the pictures themselves are Flutter's image cache).
 import 'dart:collection';
 import 'dart:ui' show Size;
 

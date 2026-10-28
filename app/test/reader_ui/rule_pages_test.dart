@@ -123,13 +123,13 @@ void main() {
     await settle(tester, max: 10);
     expect(find.text('高亮规则编辑'), findsOneWidget);
     await tester.enterText(find.byKey(const ValueKey('hl_name')), '对话');
-    await tester.tap(find.text('“对话”'));
+    await tester.tap(find.text('中文引号对话'));
     await settle(tester, max: 2);
     await tester.tap(find.byTooltip('保存'));
     await settle(tester, until: () => HighlightData.rules.length == 1 && find.text('起效高亮 1 条规则').evaluate().isNotEmpty);
     final r = HighlightData.rules.single;
     expect(r.isRegex, isTrue);
-    expect(r.pattern, '“[^”]*”');
+    expect(r.pattern, '[“](.*?)[”]'); // the original's first preset
     expect(find.text('起效高亮 1 条规则'), findsOneWidget);
     await finish(tester);
   });

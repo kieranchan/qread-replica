@@ -3,9 +3,8 @@
 // Original (class 1509 `BookContent`; `_saveToLocalIsolate(_SaveLocalParams)` 0x2a76b8 -> 0xf13240, `_readFromLocalIsolate(_ReadLocalParams)`
 // 0x1bbe94): both run in an isolate. The save routine builds `<dir>/<md5(bookUrl)>`, creates it, writes `<dir>/<md5(bookUrl)>/book.json`
 // and the chapter into `.../<md5(index)>.txt` through a temp file (`保存失败: <path>, 错误: <e>`).
-// TODO(asm 0xf13240): the registers of the path building are ambiguous; `md5(utf8(bookUrl))` / `md5(utf8("$index"))` as directory /
-// file name is the reading that fits the two `Utf8Encoder -> _MD5` pairs and the `/book.json` literal. If a backup of the original
-// app does not show up, compare against a real `bookcache2` folder.
+// Path building of 0xf13240 (register trace): a = md5(utf8(params.bookUrl)), b = md5(utf8("${params.index}")); dir = "<root>/<dir>",
+// then "<dir>/<a>", "<dir>/<a>/book.json" and "<dir>/<a>/<b>.txt".
 import 'dart:convert';
 import 'dart:io';
 
