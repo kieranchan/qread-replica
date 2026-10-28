@@ -7,8 +7,14 @@
 // 0xe6f9dc via `getItemMd5`, message `一样不必同步`).
 //
 // An entry with an empty `bookurl` is a global engine; a non-empty `bookurl` marks the multi-role setup of that book
-// (`narrationEngineId/VoiceId`, default male / female dialogue voice, `roles`). `html` holds the engine's HTTP definition
-// (Legado HttpTTS keys: url, contentType, concurrentRate, loginUrl, loginUi, header, jsLib, enabledCookieJar, loginCheckJs ...).
+// (`narrationEngineId/VoiceId`, default male / female dialogue voice, `roles`).
+// `tp` (0x1c3158 / 0xe6e2dc): 0 = normal engine, 1 = multi-role engine (its `html` is the JSON of the role setup). In the original
+// `html` is a String: the engine's HTML page with `getttsurl()` (util/audio/tts_page.dart). The generated model keeps `html` as a
+// Map, so the replica stores the page as `html['page']`; older replica engines hold a Legado HttpTTS definition (url, contentType,
+// header, ...) in the map instead, and those still run through util/audio/http_tts.dart.
+// System entries: `_de` of the original (0x1c3800) is `dsld` / `大声朗读(系统默认无法选择)` = the Edge voice through
+// `http://tts.qread.xyz/edge.html`, a page of the original's own service, which the replica does not reproduce; the engine pickers
+// (0x1096d3c) start with `HttpTts(id: '', name: '系统默认')`, the system voice, which is [TTSData.defaultEngine] here.
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart' as crypto;
@@ -28,9 +34,17 @@ abstract class TTSData {
     label: '朗读引擎',
   );
 
-  /// `_de`: the system voice entry that is always available (cannot be deleted). TODO(asm 0x10dbcfc): the original's
-  /// initializer of `_de` is not recovered; id/name are the replica's.
-  static final HttpTts defaultEngine = HttpTts(id: 'system', name: '系统默认', candel: false);
+  /// The system voice entry of the engine pickers (0x1096d3c: id `''`, name `系统默认`); always available, never stored.
+  static final HttpTts defaultEngine = HttpTts(id: '', name: '系统默认', candel: false);
+
+  /// The id earlier replica builds used for [defaultEngine] (still accepted by [byId]).
+  static const String legacySystemId = 'system';
+
+  /// The engine's HTML page (`getttsurl`), '' for Legado-style or multi-role entries.
+  static String pageOf(HttpTts e) {
+    final p = e.html['page'];
+    return p is String ? p : '';
+  }
 
   static List<HttpTts> get all => store.items;
 
@@ -42,7 +56,7 @@ abstract class TTSData {
   static Future<bool> save() => store.save();
 
   static HttpTts? byId(String id) {
-    if (id == defaultEngine.id) return defaultEngine;
+    if (id == defaultEngine.id || id == legacySystemId) return defaultEngine;
     for (final t in store.items) {
       if (t.id == id && t.bookurl.isEmpty) return t;
     }
@@ -103,8 +117,27 @@ abstract class Tts {
 
   static Future<void> deleteForBook(String bookUrl) => TTSData.store.run((list) => list.removeWhere((e) => e.bookurl == bookUrl));
 
-  /// Imports Legado HttpTTS JSON (list or single object): each becomes a global engine whose `html` is the raw definition.
-  /// Entries without a url are skipped; an engine with the same name is replaced. Returns the number stored.
+  /// One engine of the original's own export (`HttpTts.toJson`: `html` a String, `tp` 0/1) in the replica's shape; null when [m]
+  /// is not one.
+  static HttpTts? fromOriginal(Map<String, dynamic> m) {
+    final html = m['html'];
+    if (html is! String || !m.containsKey('tp')) return null;
+    final copy = Map<String, dynamic>.from(m)..remove('html');
+    final e = HttpTts.fromJson(copy);
+    if (e.tp == 1) {
+      try {
+        final cfg = jsonDecode(html);
+        if (cfg is Map) e.html = Map<String, dynamic>.from(cfg);
+      } catch (_) {}
+    } else {
+      e.html = {'page': html};
+    }
+    return e;
+  }
+
+  /// Imports engines: the original's export (pages, see [fromOriginal]) or Legado HttpTTS JSON (list or single object; each
+  /// becomes a global engine whose `html` is the raw definition). Entries without a page / url are skipped; an engine with the
+  /// same name is replaced. Returns the number stored.
   static Future<int> importJson(String text) async {
     final v = jsonDecode(text);
     final raw = v is List ? v : (v is Map ? [v] : const []);
@@ -114,8 +147,14 @@ abstract class Tts {
         if (m is! Map) continue;
         final map = Map<String, dynamic>.from(m);
         final name = '${map['name'] ?? ''}'.trim();
-        if (name.isEmpty || '${map['url'] ?? ''}'.trim().isEmpty) continue;
-        final e = HttpTts(id: newId(), name: name, candel: true, html: map);
+        final orig = fromOriginal(map);
+        if (name.isEmpty || (orig == null && '${map['url'] ?? ''}'.trim().isEmpty)) continue;
+        if (orig != null && orig.tp != 1 && TTSData.pageOf(orig).trim().isEmpty) continue;
+        final e = orig ?? HttpTts(id: newId(), name: name, candel: true, html: map);
+        e
+          ..id = newId()
+          ..bookurl = ''
+          ..candel = true;
         final i = list.indexWhere((x) => x.bookurl.isEmpty && x.name == name);
         if (i >= 0) {
           e.id = list[i].id;
@@ -131,6 +170,13 @@ abstract class Tts {
 
   /// The global engines as JSON (also the content of the cloud item).
   static String exportJson() => jsonEncode([for (final t in TTSData.engines) t.toJson()]);
+
+  /// One engine in the original's format (`html` a String: the page, or the role setup JSON for `tp == 1`).
+  static Map<String, dynamic> toOriginal(HttpTts e) {
+    final j = e.toJson();
+    j['html'] = e.tp == 1 ? jsonEncode(e.html) : (TTSData.pageOf(e).isNotEmpty ? TTSData.pageOf(e) : jsonEncode(e.html));
+    return j;
+  }
 }
 
 abstract class CloudTts {

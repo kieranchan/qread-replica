@@ -182,13 +182,67 @@ void main() {
       await t.tap(find.byKey(const Key('tts_add')));
       await t.pumpAndSettle();
       expect(find.text('请选择新建引擎类型'), findsOneWidget);
-      for (final s in ['大声朗读', '中文角色', '火山引擎', 'MiMo引擎', '本地引擎']) {
+      for (final s in ['普通引擎', '多角色引擎', '火山引擎', 'MiMo引擎', '本地引擎']) {
         expect(find.text(s), findsWidgets, reason: s);
       }
       await t.tap(find.byKey(const Key('tts_new_multiRole')));
       await t.pumpAndSettle();
       expect(Toast.log, contains('多角色引擎需要ai支持，请先配置ai接口'));
     });
+  });
+
+  testWidgets('火山引擎: credentials dialog, a voice tap adds a page engine once; MiMo 音色设计 adds an engine', (t) async {
+    await t.pumpWidget(app(const TTsSetting()));
+    await t.tap(find.byKey(const Key('tts_add')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('tts_new_volcano')));
+    await t.pumpAndSettle();
+    expect(find.text('未配置凭证，点击填写'), findsOneWidget);
+    await t.tap(find.byKey(const Key('volc_creds')));
+    await t.pumpAndSettle();
+    await t.enterText(find.byKey(const Key('volc_appid')), 'app-1');
+    await t.enterText(find.byKey(const Key('volc_token')), 'tok-1');
+    await t.tap(find.byKey(const Key('volc_save')));
+    for (var i = 0; i < 200 && !Toast.log.contains('火山引擎凭证已保存'); i++) {
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await t.pump();
+    }
+    await t.pumpAndSettle();
+    expect(Toast.log, contains('火山引擎凭证已保存'));
+    expect(Storage.getString('volcano_tts_app_id'), 'app-1');
+    expect(find.text('凭证已配置，点击修改'), findsOneWidget);
+    // the stores write files: let real IO and the fake-async zone take turns until the expected toast shows up
+    Future<void> io(String toast) async {
+      for (var i = 0; i < 200 && !Toast.log.contains(toast); i++) {
+        await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await t.pump();
+      }
+      await t.pumpAndSettle();
+    }
+
+    await t.tap(find.byKey(const Key('volc_BV700_streaming')));
+    await io('已添加：火山-灿灿(女声)');
+    await t.tap(find.byKey(const Key('volc_BV700_streaming')));
+    await io('该音色引擎已存在');
+    expect(Toast.log, containsAll(['已添加：火山-灿灿(女声)', '该音色引擎已存在']));
+    expect(TTSData.engines.where((e) => e.name == '火山-灿灿(女声)').length, 1);
+    expect(TTSData.pageOf(TTSData.engines.single), contains('"body": "BV700_streaming"'));
+    Navigator.of(t.element(find.text('火山引擎').first)).pop();
+    await t.pumpAndSettle();
+
+    await t.tap(find.byKey(const Key('tts_add')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('tts_new_mimo')));
+    await t.pumpAndSettle();
+    expect(find.text('未设置（无法合成）'), findsOneWidget);
+    await t.tap(find.byKey(const Key('mimo_design')));
+    await t.pumpAndSettle();
+    await t.enterText(find.byKey(const Key('mimo_design_name')), '御姐-温柔');
+    await t.enterText(find.byKey(const Key('mimo_design_desc')), '温柔御姐，语速慢');
+    await t.tap(find.byKey(const Key('mimo_design_add')));
+    await io('已添加音色设计引擎：御姐-温柔（描述 8 字）');
+    expect(Toast.log, contains('已添加音色设计引擎：御姐-温柔（描述 8 字）'));
+    expect(TTSData.engines.map((e) => e.name), contains('御姐-温柔'));
   });
 
   testWidgets('members pass the local-engine gate and get the not-in-this-build message', (t) async {
