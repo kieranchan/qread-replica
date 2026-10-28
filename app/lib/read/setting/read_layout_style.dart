@@ -7,7 +7,74 @@
 import 'package:flutter/painting.dart';
 
 import '../../models/back_ground.dart';
+import '../../models/highlight_rule.dart';
 import '../model/line.dart';
+
+/// The metric part of a highlight rule (`fontSize` / `lineHeight` / `fontFamily`). The original wraps every match of a rule in
+/// `<span style='rule:N'>` before the chapter is laid out (0xf0caec), so those values are part of the measured text; here the
+/// layout engine splits the runs at the matches and tags them with the token `rule:N` (N = index in [ReadLayoutStyle.metricRules]).
+class RuleMetric {
+  final String pattern;
+  final bool isRegex;
+
+  /// CSS-like values as typed on the rule page (如 16px 或 1.2em / 如 1.5): '' = unchanged.
+  final String fontSize;
+  final String lineHeight;
+  final String fontFamily;
+
+  const RuleMetric({required this.pattern, this.isRegex = false, this.fontSize = '', this.lineHeight = '', this.fontFamily = ''});
+
+  /// Enabled rules with a pattern and at least one metric value, in list order.
+  static List<RuleMetric> fromRules(Iterable<HighlightRule> rules) => [
+        for (final r in rules)
+          if (r.isEnabled && r.pattern.isNotEmpty && (r.fontSize.trim().isNotEmpty || r.lineHeight.trim().isNotEmpty || r.fontFamily.trim().isNotEmpty))
+            RuleMetric(pattern: r.pattern, isRegex: r.isRegex, fontSize: r.fontSize.trim(), lineHeight: r.lineHeight.trim(), fontFamily: r.fontFamily.trim()),
+      ];
+
+  /// Matches of this rule in [text]; an invalid regex matches nothing.
+  Iterable<Match> matches(String text) {
+    if (!isRegex) return pattern.allMatches(text);
+    try {
+      return RegExp(pattern, multiLine: true).allMatches(text);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// `16px` / `16` -> 16, `1.2em` / `120%` -> relative to [base]; null when empty or not a number.
+  static double? size(String v, double base) {
+    final t = v.trim().toLowerCase();
+    if (t.isEmpty) return null;
+    double? n(String s) => double.tryParse(s.trim());
+    if (t.endsWith('px')) return n(t.substring(0, t.length - 2));
+    if (t.endsWith('em')) {
+      final f = n(t.substring(0, t.length - 2));
+      return f == null ? null : f * base;
+    }
+    if (t.endsWith('%')) {
+      final f = n(t.substring(0, t.length - 1));
+      return f == null ? null : f / 100 * base;
+    }
+    return n(t);
+  }
+
+  /// `1.5` -> 1.5 (a multiple of the font size); `24px` -> 24 / [fontSize]; `150%` -> 1.5.
+  static double? height(String v, double fontSize) {
+    final t = v.trim().toLowerCase();
+    if (t.isEmpty) return null;
+    if (t.endsWith('px')) {
+      final px = double.tryParse(t.substring(0, t.length - 2).trim());
+      return px == null || fontSize <= 0 ? null : px / fontSize;
+    }
+    if (t.endsWith('%')) {
+      final f = double.tryParse(t.substring(0, t.length - 1).trim());
+      return f == null ? null : f / 100;
+    }
+    return double.tryParse(t);
+  }
+
+  String get signature => [pattern, isRegex, fontSize, lineHeight, fontFamily].join('\u0001');
+}
 
 class ReadLayoutStyle {
   /// Body font size in logical pixels (`BackGround.fontSize`).
@@ -47,6 +114,9 @@ class ReadLayoutStyle {
   /// Spread the spare height of a nearly full page over its lines (the original's `PageText.lineheight`).
   final bool stretchPages;
 
+  /// Highlight rules that change the font size / line height / family of their matches (measured with the text).
+  final List<RuleMetric> metricRules;
+
   const ReadLayoutStyle({
     this.fontSize = 18,
     this.lineHeight = 1.6,
@@ -65,6 +135,7 @@ class ReadLayoutStyle {
     this.columns = 1,
     this.columnGap = 24,
     this.stretchPages = true,
+    this.metricRules = const [],
   });
 
   /// Maps the stored theme (`models/back_ground.dart`, defaults for unset zero values).
@@ -119,6 +190,7 @@ class ReadLayoutStyle {
     int? columns,
     double? columnGap,
     bool? stretchPages,
+    List<RuleMetric>? metricRules,
   }) =>
       ReadLayoutStyle(
         fontSize: fontSize ?? this.fontSize,
@@ -138,6 +210,7 @@ class ReadLayoutStyle {
         columns: columns ?? this.columns,
         columnGap: columnGap ?? this.columnGap,
         stretchPages: stretchPages ?? this.stretchPages,
+        metricRules: metricRules ?? this.metricRules,
       );
 
   /// Font size multiplier for the style tokens of a paragraph (`h1` .. `h3`, `sup`, `sub`).
@@ -154,25 +227,49 @@ class ReadLayoutStyle {
     var size = (title ? titleFontSize : fontSize) * scale;
     if (tokens.contains(CLineStyle.sup) || tokens.contains(CLineStyle.sub)) size *= 0.7;
     final bold = title ? titleFontWeight : (tokens.contains(CLineStyle.bold) || scale > 1.0 ? _bolder(fontWeight) : fontWeight);
+    var family = fontFamily;
+    var height = lineHeight;
+    final rule = title ? null : ruleOf(tokens);
+    if (rule != null) {
+      size = RuleMetric.size(rule.fontSize, size) ?? size;
+      height = RuleMetric.height(rule.lineHeight, size) ?? height;
+      if (rule.fontFamily.isNotEmpty) family = rule.fontFamily;
+    }
     return TextStyle(
-      fontFamily: fontFamily,
+      fontFamily: family,
       fontSize: size,
       fontWeight: bold,
       fontStyle: tokens.contains(CLineStyle.italic) ? FontStyle.italic : FontStyle.normal,
-      height: lineHeight,
+      height: height,
       leadingDistribution: TextLeadingDistribution.even,
       letterSpacing: letterSpacing,
     );
   }
 
+  /// The metric rule of a run (`rule:N` token), or null.
+  RuleMetric? ruleOf(Set<String> tokens) {
+    if (metricRules.isEmpty) return null;
+    for (final t in tokens) {
+      if (!t.startsWith(CLineStyle.rulePrefix)) continue;
+      final i = int.tryParse(t.substring(CLineStyle.rulePrefix.length));
+      if (i != null && i >= 0 && i < metricRules.length) return metricRules[i];
+    }
+    return null;
+  }
+
+  /// Whether any run of [runs] carries a metric rule (its lines then take their own heights).
+  bool hasRuleRuns(Iterable<CLine> runs) => metricRules.isNotEmpty && runs.any((r) => ruleOf(r.styles) != null);
+
   /// Forces every line of a paragraph to the same height whatever fonts the run falls back to (so that layout and drawing
   /// agree on the line pitch).
-  StrutStyle strut({double scale = 1.0, bool title = false}) => StrutStyle(
+  /// With [grow] (a paragraph holding metric-rule runs) the strut is only the minimum line height, so a larger rule font makes
+  /// its line taller, in the measurement and in the drawing alike.
+  StrutStyle strut({double scale = 1.0, bool title = false, bool grow = false}) => StrutStyle(
         fontFamily: fontFamily,
         fontSize: (title ? titleFontSize : fontSize) * scale,
         height: lineHeight,
         leadingDistribution: TextLeadingDistribution.even,
-        forceStrutHeight: true,
+        forceStrutHeight: !grow,
       );
 
   static FontWeight _bolder(FontWeight w) => w.value >= 600 ? w : FontWeight.w700;
@@ -198,5 +295,6 @@ class ReadLayoutStyle {
         columns,
         columnGap,
         stretchPages ? 1 : 0,
+        for (final r in metricRules) r.signature,
       ].join('|');
 }

@@ -135,7 +135,7 @@ void main() {
       expect(TextFile.isVolumeTitle('第二部'), isTrue);
     });
 
-    test('a rule that matches fewer than two lines is skipped, the next rule is used', () async {
+    test('the rule with the most matches wins (0x259668), whatever its place; a broken rule is skipped', () async {
       final text = _novel(chapters: 5);
       final f = File('${tmp.path}/r.txt')..writeAsStringSync(text);
       final rules = [

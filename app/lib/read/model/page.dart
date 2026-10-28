@@ -13,8 +13,9 @@ import '../../models/_json.dart';
 import 'line.dart';
 
 /// Where a character range sits in a laid-out chapter (selection, search hit, note anchor).
-/// 7 slots in the original (size 0x40); the meaning of the slots is not recoverable, so this is the natural tuple.
-/// TODO(asm class 1479 PitchInfo): field meanings.
+/// The original class 1479 `PitchInfo` holds 7 unboxed doubles of page geometry (built at 0xec1a3c from the screen size, the
+/// header / footer heights when they are shown and the safe areas); this port computes that geometry in ReadLayoutStyle.padding and
+/// reuses the name for the location tuple below.
 class PitchInfo {
   final int page;
   final int content;

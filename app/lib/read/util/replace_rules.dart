@@ -5,7 +5,8 @@
 // its `scope` is empty or contains the book's name or origin, and its `excludeScope` neither contains the name nor the origin
 // (String.contains, as in the original). Rules run in `ruleorder`; a rule that takes longer than its `timeoutMillisecond` is switched
 // off for the rest of the session ("规则超时已停用").
-// TODO(asm 0x254370): which Book slots the scope test reads (name and origin are the Legado convention).
+// 0x254370 reads ReplaceRule isEnabled (0x4f), scopeTitle (0x37), scope (0x2f), excludeScope (0x47) and Book origin (0xc7) / name (0xf):
+// scope empty or containing the origin or the name, excludeScope empty or containing neither.
 import '../../models/book.dart';
 import '../../models/replacerule.dart';
 

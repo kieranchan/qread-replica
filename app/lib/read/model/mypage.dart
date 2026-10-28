@@ -15,8 +15,8 @@ class MyPage {
   bool ispad;
   int currentChapterIndex;
 
-  /// Height of the chapter title block on this page (0 when the page has none). Meaning inferred from the key name.
-  /// TODO(asm 0x228a3c): `bigtitle` is a double in the original; its producer is in the page builder of novel_view.
+  /// `bigtitle` (double). Every page builder of the original stores 0 (0x229ecc, 0x22a1c0, 0x25e4e0, 0x573c5c); only the JSON reader
+  /// (0x228a3c / 0x51a934) fills it from a saved page. Kept for the JSON round trip.
   double bigtitle;
 
   /// 1-based page number inside the chapter and the number of pages of the chapter.

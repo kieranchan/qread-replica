@@ -88,7 +88,7 @@ abstract class ReadTextBuilder {
       textDirection: TextDirection.ltr,
       textAlign: align,
       textScaler: TextScaler.noScaling,
-      strutStyle: style.strut(scale: scale, title: isTitle),
+      strutStyle: style.strut(scale: scale, title: isTitle, grow: !isTitle && style.hasRuleRuns(runsOf(c))),
     )..layout(minWidth: width, maxWidth: width);
   }
 

@@ -1,6 +1,8 @@
 // read/util/read.dart — small helpers of the reader that the original keeps in `read/util/read.dart`: loading the user's imported fonts
-// into the engine before a page uses them, and the font list the menus offer (built-in 阿里黑体 `boldface`, 阿里圆体 `circle`, then the
-// fonts of `FontsData`; "谷歌汉字" needs the google_fonts download in the original and is not offered: TODO(asm 0x673384)).
+// into the engine before a page uses them, and the font list the menus offer (0x673250: 谷歌汉字, 阿里黑体 `boldface`, 阿里圆体 `circle`, then
+// the fonts of `FontsData`). 谷歌汉字 is `GoogleFonts.notoSansSc()` in the original, i.e. the family `NotoSansSC_regular`; the app ships
+// that font as `lib/util/epub/assets/dist/NotoSansSC-Regular.ttf` (the EPUB server serves it as `googlefont`, 0xefa450), so this port
+// registers the bundled file under that family instead of downloading it.
 import 'dart:async';
 import 'dart:io';
 
@@ -21,8 +23,13 @@ class ReaderFont {
 abstract class ReaderFonts {
   static final Set<String> _loaded = {};
 
+  /// Family name google_fonts gives Noto Sans SC regular (what the original stores for 谷歌汉字).
+  static const String googleFamily = 'NotoSansSC_regular';
+  static const String googleAsset = 'lib/util/epub/assets/dist/NotoSansSC-Regular.ttf';
+
   static const List<ReaderFont> builtin = [
     ReaderFont('', '默认字体'),
+    ReaderFont(googleFamily, '谷歌汉字'),
     ReaderFont('boldface', '阿里黑体'),
     ReaderFont('circle', '阿里圆体'),
   ];
@@ -35,9 +42,21 @@ abstract class ReaderFonts {
     return [...builtin, for (final f in FontsData.fonts) ReaderFont(f.family, f.family)];
   }
 
-  /// Registers an imported font family with the engine (once per run). Built-in families are no-ops.
+  /// Registers an imported font family (or the bundled 谷歌汉字) with the engine (once per run). Other built-in families are no-ops.
   static Future<bool> ensure(String family) async {
-    if (family.isEmpty || builtin.any((f) => f.family == family) || _loaded.contains(family)) return true;
+    if (family.isEmpty || _loaded.contains(family)) return true;
+    if (family == googleFamily) {
+      try {
+        final loader = FontLoader(family)..addFont(rootBundle.load(googleAsset));
+        await loader.load();
+        _loaded.add(family);
+        return true;
+      } catch (e) {
+        debugPrint('谷歌汉字加载失败: $e');
+        return false;
+      }
+    }
+    if (builtin.any((f) => f.family == family)) return true;
     try {
       await FontsData.load();
     } catch (_) {}
