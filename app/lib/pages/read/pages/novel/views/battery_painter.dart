@@ -100,6 +100,18 @@ class BatteryPainter extends CustomPainter {
 abstract class ReaderBattery {
   static Future<({int level, bool charging})?> Function() read = _plugin;
 
+  /// The last good reading. Every freshly built page starts from it synchronously: the curl builds the page several times per turn
+  /// and photographs the first frame, which used to show an empty battery (the plugin answers a few frames later, and its very
+  /// first answer on iOS can be -1) on the back of the paper and on the page put back after a cancelled turn (owner, 2026-10-30).
+  static ({int level, bool charging})? last;
+
+  /// Asks the plugin and keeps a plausible answer as [last].
+  static Future<({int level, bool charging})?> current() async {
+    final b = await read();
+    if (b != null && b.level >= 0 && b.level <= 100) last = b;
+    return last;
+  }
+
   static Future<({int level, bool charging})?> _plugin() async {
     final b = Battery();
     final level = await b.batteryLevel;
@@ -128,8 +140,8 @@ class BatteryIcon extends StatefulWidget {
 }
 
 class _BatteryIconState extends State<BatteryIcon> {
-  int? _level;
-  bool _charging = false;
+  int? _level = ReaderBattery.last?.level;
+  bool _charging = ReaderBattery.last?.charging ?? false;
 
   @override
   void initState() {
@@ -139,8 +151,8 @@ class _BatteryIconState extends State<BatteryIcon> {
 
   Future<void> _load() async {
     try {
-      final b = await ReaderBattery.read();
-      if (!mounted || b == null) return;
+      final b = await ReaderBattery.current();
+      if (!mounted || b == null || (b.level == _level && b.charging == _charging)) return;
       setState(() {
         _level = b.level;
         _charging = b.charging;
