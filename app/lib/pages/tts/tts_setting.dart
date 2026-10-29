@@ -194,6 +194,31 @@ class _ReplaceRuleSettingState extends State<TTsSetting> {
     setState(() {});
   }
 
+  /// 置顶所有 / 置底所有 of the selection (0xfdf838 / 0xfdf408: 置顶确认 `确定要置顶这些引擎吗？` → 置顶成功); the selected engines keep
+  /// their relative order.
+  Future<void> _moveMany(List<String> ids, {required bool top}) async {
+    if (ids.isEmpty) return;
+    if (!await Dialogs.confirm(context, top ? '置顶确认' : '置底确认', top ? '确定要置顶这些引擎吗？' : '确定要置底这些引擎吗？')) return;
+    try {
+      await TTSData.store.run((list) {
+        final picked = [for (final e in list) if (ids.contains(e.id) && e.bookurl.isEmpty) e];
+        list.removeWhere(picked.contains);
+        if (top) {
+          list.insertAll(0, picked);
+        } else {
+          list.addAll(picked);
+        }
+      });
+      Toast.show(top ? '置顶成功' : '置底成功');
+    } catch (err) {
+      Toast.show('${top ? '置顶' : '置底'}失败: $err', iserror: true);
+    }
+    setState(() {
+      _selected.clear();
+      _selecting = false;
+    });
+  }
+
   Future<void> _import() async {
     try {
       final f = await DeviceIo.pickFile(extensions: const ['json', 'txt']);
@@ -300,7 +325,9 @@ class _ReplaceRuleSettingState extends State<TTsSetting> {
               }),
               child: const Text('反选'),
             ),
-            IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(_selected.toList())),
+            IconButton(tooltip: '置顶所有', icon: const Icon(Icons.vertical_align_top), onPressed: () => _moveMany(_selected.toList(), top: true)),
+            IconButton(tooltip: '置底所有', icon: const Icon(Icons.vertical_align_bottom), onPressed: () => _moveMany(_selected.toList(), top: false)),
+            IconButton(tooltip: '批量删除', icon: const Icon(Icons.delete_outline), onPressed: () => _delete(_selected.toList())),
             IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() => _selecting = false)),
           ] else ...[
             IconButton(key: const Key('tts_add'), tooltip: '新增', icon: const Icon(Icons.add), onPressed: _newEngine),

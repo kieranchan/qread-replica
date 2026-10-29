@@ -108,6 +108,13 @@ class _NewThemePageState extends State<NewThemePage> {
     Get.back();
   }
 
+  /// 恢复默认颜色 (0x6b7b70): asks `确定要将白天/夜间主题的所有颜色恢复为默认值吗？` before the scheme goes back to the defaults.
+  Future<void> _resetColors() async {
+    final mode = t.isLightMode ? '白天' : '夜间';
+    if (!await Dialogs.confirm(context, '恢复默认颜色', '确定要将$mode主题的所有颜色恢复为默认值吗？')) return;
+    setState(() => _scheme = ColorSchemeConfig());
+  }
+
   String _encodeScheme() {
     final j = _scheme.toJson()..removeWhere((_, v) => v == null);
     return j.isEmpty ? '' : jsonEncode(j);
@@ -292,7 +299,7 @@ class _NewThemePageState extends State<NewThemePage> {
             }),
             ExpansionTile(title: const Text('主要颜色'), children: [
               for (final r in _roles) ListTile(dense: true, title: Text(r.$2), trailing: _swatch(schemeJson[r.$1]), onTap: () => _pickRole(r.$1, r.$2)),
-              TextButton(onPressed: () => setState(() => _scheme = ColorSchemeConfig()), child: const Text('恢复')),
+              TextButton(onPressed: _resetColors, child: const Text('恢复默认颜色')),
             ]),
           ]),
           SectionCard(title: '页面样式', children: [

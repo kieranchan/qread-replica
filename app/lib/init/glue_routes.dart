@@ -14,10 +14,10 @@ import '../data/rss.dart';
 import '../data/source.dart';
 import '../data/tts.dart';
 import '../data/txtrule.dart';
-import '../common/nav.dart';
 import '../pages/source/login_dialog.dart';
 import '../pages/source/sg_login.dart';
 import '../pages/source/source_setting.dart';
+import '../qread/backend_prompt.dart';
 import '../qread/qread.dart';
 import '../qread/qread_jobs.dart';
 import '../util/source/source.dart';
@@ -56,8 +56,8 @@ abstract class GlueRoutes {
         return true;
       case 'qread_import':
         if (!Qread.isbind) {
-          Toast.show('请先绑定轻阅读后端');
-          if (context.mounted) await Nav.openNamed(context, 'qread_login');
+          // 书源解析服务提示 (0x1c780c) instead of a bare toast
+          await BackendPrompt.showAndBind(context);
         } else {
           // 导入后端 (0xf75494 → 0xf77e50): local txt / epub files uploaded to the backend's shelf (qread/qread_jobs.dart)
           await QreadImport.run();
