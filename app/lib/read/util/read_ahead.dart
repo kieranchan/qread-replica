@@ -14,6 +14,7 @@ import 'dart:math' as math;
 import '../../storage/storage.dart';
 import '../api/readapi.dart';
 import 'cache_book.dart';
+import 'comic_cache.dart';
 
 class ReadAhead {
   /// The value the setting takes when it was never set (the original ships 5; the owner reads faster than that).
@@ -105,14 +106,20 @@ class _Job {
           continue;
         }
         final chapter = api.chapters[i];
-        if (chapter.isVolume || chapter.isPay || api.bookContent.existsSync(book.bookUrl, i)) {
+        final comic = ComicCache.isComic(book);
+        final have = comic ? ComicCache.exists(book.bookUrl, i) : api.bookContent.existsSync(book.bookUrl, i);
+        if (chapter.isVolume || chapter.isPay || have) {
           i++;
           continue;
         }
         try {
-          final content = await loader(chapter);
-          if (content.text.trim().isEmpty) throw StateError('正文为空');
-          await api.bookContent.saveToLocal(book.bookUrl, i, content.text, book: book);
+          if (comic) {
+            await ComicCache.cacheChapter(api, i, isCancelled: () => cancelled);
+          } else {
+            final content = await loader(chapter);
+            if (content.text.trim().isEmpty) throw StateError('正文为空');
+            await api.bookContent.saveToLocal(book.bookUrl, i, content.text, book: book);
+          }
           _failures = 0;
           ReadAhead.log?.call('预缓存 第${i + 1}章 ${chapter.name}');
         } catch (e) {

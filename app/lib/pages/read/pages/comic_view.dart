@@ -7,6 +7,7 @@
 // Settings read at start (0x10c4230): `two` = 双指缩放 (pinch zoom, a double tap restores), `menuSliderType2` = the menu slider 按章节 (0,
 // chapters) / 按分页 (1, the scroll position), `smart` (default true) = the volume keys keep their system function; off, they page
 // (`_goToNextPage` / `_goToPreviousPage`: one screen less 100 px, "正在前往下一章" at the end; 0xf2331c / 0x2b17b4 / 0x2b2ac4).
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -15,6 +16,8 @@ import 'package:flutter/services.dart';
 import '../../../models/book.dart';
 import '../../../models/bookchapter.dart';
 import '../../../read/api/readapi.dart';
+import '../../../read/util/comic_cache.dart';
+import '../../../read/util/read_ahead.dart';
 import '../../../storage/storage.dart';
 import '../../../util/source/source_events.dart';
 import '../../../util/toast.dart';
@@ -27,9 +30,6 @@ class ComicView extends StatefulWidget {
   final int? chapterIndex;
   final ChapterLoader loader;
   final ChapterListLoader? chapterListLoader;
-
-  /// Downloads + decodes an image of a source (null = `Image.network`).
-  static Future<Uint8List> Function(Book book, BookChapter chapter, String url)? imageBytes;
 
   const ComicView({super.key, required this.book, required this.loader, this.chapters, this.chapterIndex, this.chapterListLoader});
 
@@ -143,6 +143,7 @@ class ComicViewState extends State<ComicView> {
   @override
   void dispose() {
     _save();
+    ReadAhead.stop(widget.book.bookUrl);
     _zoomCtl.dispose();
     _focus.dispose();
     _scroll.dispose();
@@ -170,12 +171,17 @@ class ComicViewState extends State<ComicView> {
     }
   }
 
+  /// The chapter's pictures: the stored list first (ComicCache, written by 批量下载 / the read-ahead / an earlier visit), the source
+  /// only when nothing is stored.
   Future<_ComicChapter> _load(int i) async {
+    final cacheable = !ReadApi.isLocalBook(widget.book);
+    if (cacheable) {
+      final stored = await ComicCache.readList(widget.book.bookUrl, i);
+      if (stored != null && stored.isNotEmpty) return _ComicChapter(i, _chapters[i].name, stored);
+    }
     final rc = await _api.loadChapter(i);
-    final images = <String>[
-      for (final b in rc.content.blocks)
-        if (b.isImage && b.runs.first.href.isNotEmpty) b.runs.first.href,
-    ];
+    final images = ComicCache.imagesOf(rc.content);
+    if (cacheable && images.isNotEmpty) unawaited(ComicCache.writeList(widget.book.bookUrl, i, images, book: widget.book));
     return _ComicChapter(i, rc.title, images);
   }
 
@@ -187,6 +193,7 @@ class ComicViewState extends State<ComicView> {
     try {
       final c = await _load(i);
       if (!mounted) return;
+      _bytes.clear();
       setState(() {
         _loaded
           ..clear()
@@ -194,6 +201,8 @@ class ComicViewState extends State<ComicView> {
         _ci = i;
         _ready = true;
       });
+      // the following chapters are stored ahead (缓存章数), pictures included
+      ReadAhead.touch(_api, i);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scroll.hasClients && progress > 0) _scroll.jumpTo(_scroll.position.maxScrollExtent * progress.clamp(0, 1));
       });
@@ -228,6 +237,7 @@ class ComicViewState extends State<ComicView> {
     try {
       final c = await _load(next);
       if (mounted) setState(() => _loaded.add(c));
+      ReadAhead.touch(_api, next);
     } catch (e) {
       Toast.show('预加载图片时出错: $e');
     } finally {
@@ -247,19 +257,25 @@ class ComicViewState extends State<ComicView> {
     } catch (_) {}
   }
 
+  /// Pictures of the open chapters, stored copy or download (one future per url, so rebuilds do not refetch).
+  final Map<String, Future<Uint8List?>> _bytes = {};
+
   Widget _image(BookChapter chapter, String src) {
-    final hook = ComicView.imageBytes;
     Widget err(BuildContext _, Object _, StackTrace? _) => const SizedBox(height: 200, child: Center(child: Icon(Icons.broken_image)));
     if (src.startsWith('http')) {
-      if (hook != null) {
-        return FutureBuilder<Uint8List>(
-          future: hook(widget.book, chapter, src),
-          builder: (context, s) => s.hasData
-              ? Image.memory(s.data!, width: double.infinity, fit: BoxFit.fitWidth)
-              : const SizedBox(height: 300, child: Center(child: CircularProgressIndicator())),
-        );
-      }
-      return Image.network(src, width: double.infinity, fit: BoxFit.fitWidth, errorBuilder: err);
+      if (ReadApi.isLocalBook(widget.book)) return Image.network(src, width: double.infinity, fit: BoxFit.fitWidth, errorBuilder: err);
+      return FutureBuilder<Uint8List?>(
+        future: _bytes.putIfAbsent(src, () => ComicCache.bytes(widget.book, chapter, src)),
+        builder: (context, s) {
+          final data = s.data;
+          if (data != null) return Image.memory(data, width: double.infinity, fit: BoxFit.fitWidth, errorBuilder: err);
+          if (s.connectionState == ConnectionState.done) {
+            // neither stored nor downloadable through the store: the plain network image as before
+            return Image.network(src, width: double.infinity, fit: BoxFit.fitWidth, errorBuilder: err);
+          }
+          return const SizedBox(height: 300, child: Center(child: CircularProgressIndicator()));
+        },
+      );
     }
     return Image.file(File(src), width: double.infinity, fit: BoxFit.fitWidth, errorBuilder: err);
   }

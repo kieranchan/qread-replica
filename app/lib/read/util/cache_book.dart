@@ -9,6 +9,7 @@ import 'dart:math' as math;
 
 import '../../models/bookchapter.dart';
 import '../api/readapi.dart';
+import 'comic_cache.dart';
 
 class CacheResult {
   /// Chapters fetched and stored by this run.
@@ -63,10 +64,13 @@ class CacheBook {
       if (ReadApi.isLocalBook(book)) {
         return CacheResult(cached, [for (var i = lo; i <= hi; i++) i], failed, false);
       }
+      // comics keep their pictures in ComicCache (the original's worker caches the images of a chapter too, `缓存图片失败`)
+      final comic = ComicCache.isComic(book);
       final todo = <int>[];
       for (var i = lo; i <= hi; i++) {
         final c = api.chapters[i];
-        if (c.isVolume || (skipPaid && c.isPay) || api.bookContent.existsSync(book.bookUrl, i)) {
+        final have = comic ? ComicCache.exists(book.bookUrl, i) : api.bookContent.existsSync(book.bookUrl, i);
+        if (c.isVolume || (skipPaid && c.isPay) || have) {
           skipped.add(i);
         } else {
           todo.add(i);
@@ -85,12 +89,21 @@ class CacheBook {
           final index = todo[next++];
           final BookChapter chapter = api.chapters[index];
           try {
-            final content = await loader(chapter);
-            if (content.text.trim().isEmpty) {
-              failed[index] = '正文为空';
+            if (comic) {
+              final lost = await ComicCache.cacheChapter(api, index, isCancelled: isCancelled);
+              if (lost > 0) {
+                failed[index] = '缓存图片失败: $lost 张';
+              } else {
+                cached.add(index);
+              }
             } else {
-              await api.bookContent.saveToLocal(book.bookUrl, index, content.text, book: book);
-              cached.add(index);
+              final content = await loader(chapter);
+              if (content.text.trim().isEmpty) {
+                failed[index] = '正文为空';
+              } else {
+                await api.bookContent.saveToLocal(book.bookUrl, index, content.text, book: book);
+                cached.add(index);
+              }
             }
           } catch (e) {
             failed[index] = '$e';
