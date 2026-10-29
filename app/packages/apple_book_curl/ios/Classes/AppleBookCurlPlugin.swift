@@ -60,8 +60,10 @@ final class AppleBookPage: UIViewController {
   }
 }
 
-/// Counts frames and hitches of one animation on a display link.
+/// Counts frames and hitches of one animation on a display link; the summary goes to [log] (Dart prints it: NSLog lines of the
+/// app do not reach the device log that the QA tooling reads).
 final class FrameMeter {
+  var log: ((String) -> Void)?
   private var link: CADisplayLink?
   private var last: CFTimeInterval = 0
   private var start: CFTimeInterval = 0
@@ -99,7 +101,7 @@ final class FrameMeter {
     link = nil
     if let label = label {
       let ms = Int((CACurrentMediaTime() - start) * 1000)
-      NSLog("[apple_book] %@: %d frames, %d hitches, worst %.1f ms, %d ms", label, frames, hitches, worst * 1000, ms)
+      log?(String(format: "%@: %d frames, %d hitches, worst %.1f ms, %d ms", label, frames, hitches, worst * 1000, ms))
     }
   }
 }
@@ -148,6 +150,12 @@ final class AppleBookPageView: NSObject, FlutterPlatformView, UIPageViewControll
     channel.setMethodCallHandler { [weak self] call, result in
       self?.handle(call, result: result)
     }
+    meter.log = { [weak self] line in self?.log(line) }
+  }
+
+  /// A line for the app log, printed by Dart (`[apple_book] …`).
+  private func log(_ line: String) {
+    channel.invokeMethod("log", arguments: line)
   }
 
   func view() -> UIView {
@@ -168,7 +176,7 @@ final class AppleBookPageView: NSObject, FlutterPlatformView, UIPageViewControll
         setImage(AppleBookPageView.image(a[key]), slot: slot)
       }
       reset()
-      NSLog("[apple_book] updateTextures %@ in %.1f ms", changed.joined(separator: ","), (CACurrentMediaTime() - t0) * 1000)
+      log(String(format: "updateTextures %@ in %.1f ms", changed.joined(separator: ","), (CACurrentMediaTime() - t0) * 1000))
       result(nil)
     case "setCanGoPrevious":
       if let can = args?["value"] as? Bool, !can { setImage(nil, slot: 0) }

@@ -245,6 +245,9 @@ class _AppleBookPagerState extends State<AppleBookPager> implements PagerDriver 
           widget.onBlocked?.call(delta);
         }
         return null;
+      case 'log':
+        if (AppleBookPager.verbose) debugPrint('[apple_book] ${call.arguments}');
+        return null;
       case 'tap':
         final x = (args['x'] as num?)?.toDouble() ?? 0, y = (args['y'] as num?)?.toDouble() ?? 0;
         final w = (args['width'] as num?)?.toDouble() ?? 0, h = (args['height'] as num?)?.toDouble() ?? 0;
