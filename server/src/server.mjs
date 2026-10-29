@@ -14,6 +14,7 @@ import { Service } from './service.mjs';
 import { createAutoBackups, createUserApi } from './userapi.mjs';
 import { createThemes } from './themes.mjs';
 import { createLuis } from './luis/api.mjs';
+import { createDav } from './dav.mjs';
 import { VIP_HTML, VIP_JS } from './pages.mjs';
 import { ApiError, CODE, RateLimiter, readBody, parseMultipart } from './util.mjs';
 
@@ -27,6 +28,7 @@ export function createApp(overrides = {}) {
   const limiter = new RateLimiter();
   const api = createUserApi(svc, cfg, limiter);
   const autoBackups = createAutoBackups(svc);
+  const dav = createDav(svc, cfg, { readBody });
   const themes = createThemes(db);
   // 路易斯 aggregation platform under /luis (overrides.luisAdapters: an adapter list, or db => list, for tests)
   const luis = createLuis({ db, cfg, svc, limiter, adapters: typeof overrides.luisAdapters === 'function' ? overrides.luisAdapters(db) : overrides.luisAdapters });
@@ -81,6 +83,11 @@ export function createApp(overrides = {}) {
     try {
       if (pathname === '/luis' || pathname.startsWith('/luis/')) {
         status = await luis.handle(req, res, url, pathname, ip);
+        return;
+      }
+      // WebDAV book repository of the app's 云端仓库 (dav.mjs): Basic auth, per-user folder
+      if (pathname === '/dav' || pathname.startsWith('/dav/')) {
+        status = await dav.handle(req, res, url, pathname);
         return;
       }
       // ---- static / pages ----

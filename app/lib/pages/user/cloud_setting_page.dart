@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import '../../api/userapi.dart';
 import '../../data/bookself.dart';
+import '../../data/cloud/cloud_books.dart';
 import '../../data/cloud_api.dart';
 import '../../data/cloud_sync.dart';
 import '../../data/note_data_n.dart';
@@ -16,6 +17,8 @@ import '../../data/source.dart';
 import '../../data/svg.dart';
 import '../../data/tts.dart';
 import '../../data/user.dart';
+import '../../data/webdav.dart';
+import '../../models/webdavserver.dart';
 import '../../qread/http.dart';
 import '../../storage/storage.dart';
 import '../../theme/widgets.dart';
@@ -97,6 +100,81 @@ class CloudSettingPage extends StatefulWidget {
 
 class _CloudSettingPageState extends State<CloudSettingPage> {
   bool _syncing = false;
+  bool _repoSyncing = false;
+  WebDavServer? _repoServer;
+  CloudBooksSettings _repo = CloudBooks.load();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRepo();
+  }
+
+  Future<void> _loadRepo() async {
+    final srv = await CloudBooks.server();
+    if (mounted) {
+      setState(() {
+        _repo = CloudBooks.load();
+        _repoServer = srv;
+      });
+    }
+  }
+
+  // ------------------------------------------------------------------ 云端仓库 (0x5ce284 WebDAV section)
+
+  /// 选择 WebDAV 服务器: one of the 网盘管理 entries, the account server's own store (configured here), or none.
+  Future<void> _pickRepoServer() async {
+    await WebDav.load();
+    final servers = WebDav.servers.where((e) => e.id != CloudBooks.ownServerId).toList();
+    final options = ['使用轻阅读账号服务器（自动配置）', for (final e in servers) e.name.isEmpty ? e.url : e.name, '不使用云端仓库'];
+    final current = _repo.serverId == CloudBooks.ownServerId ? 0 : (servers.indexWhere((e) => e.id == _repo.serverId) + 1);
+    if (!mounted) return;
+    final i = await Dialogs.choose(context, '选择 WebDAV 服务器', options, selected: current <= 0 ? null : current);
+    if (i == null) return;
+    try {
+      if (i == 0) {
+        if (!Vip.require()) return;
+        await CloudBooks.useOwnServer();
+      } else if (i == options.length - 1) {
+        await CloudBooks.save(_repo..serverId = '');
+      } else {
+        await CloudBooks.save(_repo..serverId = servers[i - 1].id);
+      }
+      await _loadRepo();
+      if (_repoServer != null) Toast.show('已选择 WebDAV 服务器：${_repoServer!.name}');
+    } catch (e) {
+      Toast.show('保存云端书籍WebDAV设置失败: $e', iserror: true);
+    }
+  }
+
+  /// 设置备份目录 (0x5d3ab0).
+  Future<void> _editBackupDir() async {
+    final v = await Dialogs.input(context, '设置备份目录', hint: '请输入 WebDAV 服务器上的备份目录路径：', initial: _repo.backupDir);
+    if (v == null) return;
+    final dir = CloudBooks.normalizeDir(v.isEmpty ? CloudBooks.defaultDir : v);
+    try {
+      await CloudBooks.save(_repo..backupDir = dir);
+      await _loadRepo();
+    } catch (e) {
+      Toast.show('保存云端书籍WebDAV设置失败: $e', iserror: true);
+    }
+  }
+
+  /// 同步云端仓库 (0xfc7ac8): `请先选择 WebDAV 服务器` / `同步完成` / `同步失败: …`.
+  Future<void> _syncRepo() async {
+    if (_repoServer == null) return Toast.show('请先选择 WebDAV 服务器');
+    if (CloudBooks.syncing) return Toast.show('同步正在进行中，请稍候...');
+    setState(() => _repoSyncing = true);
+    try {
+      final r = await CloudBooks.sync();
+      Toast.show(r.errors.isEmpty ? '同步完成，上传了 ${r.uploaded} 个文件，删除了 ${r.deleted} 个文件' : '同步失败: ${r.errors.first}', iserror: r.errors.isNotEmpty);
+    } catch (e) {
+      Toast.show('同步失败: $e', iserror: true);
+    } finally {
+      if (mounted) setState(() => _repoSyncing = false);
+      await _loadRepo();
+    }
+  }
 
   Future<void> _toggle(CloudKindInfo c, bool value) async {
     if (value && !Vip.require()) return;
@@ -148,6 +226,14 @@ class _CloudSettingPageState extends State<CloudSettingPage> {
           failed.add('${c.title}: $e');
         }
       }
+      if (_repoServer != null && !CloudBooks.syncing) {
+        try {
+          await CloudBooks.sync();
+        } catch (e) {
+          failed.add('云端仓库: $e');
+        }
+        await _loadRepo();
+      }
       await Storage.setString(PrefKeys.lastSyncTime, CloudSync.formatTime(DateTime.now()));
       Toast.show(failed.isEmpty ? '同步时间已更新' : '同步失败 ${failed.join('；')}', iserror: failed.isNotEmpty);
     } finally {
@@ -186,6 +272,33 @@ class _CloudSettingPageState extends State<CloudSettingPage> {
               ),
               const Divider(height: 1),
             ],
+            Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 0), child: Text('云端仓库', style: const TextStyle(fontWeight: FontWeight.w600))),
+            ListTile(
+              key: const Key('repo_server'),
+              title: const Text('选择 WebDAV 服务器'),
+              subtitle: Text(_repoServer == null ? '未选择 WebDAV 服务器' : '已选择 WebDAV 服务器：${_repoServer!.name}', style: small),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _pickRepoServer,
+            ),
+            ListTile(
+              key: const Key('repo_dir'),
+              title: Text('备份目录: ${_repo.backupDir}'),
+              subtitle: Text('该目录将用于存储备份的书籍文件', style: small),
+              trailing: const Icon(Icons.edit_outlined),
+              onTap: _editBackupDir,
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              child: Text('打开云端仓库后会将本地书本备份到 webdav，同时打开云端仓库和云端书架功能可以在多设备保持书架一致。', style: small),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Row(children: [
+                Expanded(child: Text('上次同步: ${_repo.lastSyncTime.isEmpty ? '从未' : _repo.lastSyncTime}', style: small)),
+                FilledButton.tonal(key: const Key('repo_sync_now'), onPressed: _repoSyncing ? null : _syncRepo, child: Text(_repoSyncing ? '同步中...' : '同步云端仓库')),
+              ]),
+            ),
+            const Divider(height: 1),
             SwitchListTile(
               key: const Key('sw_${PrefKeys.autoSyncProgressEnabled}'),
               title: const Text('进度同步'),

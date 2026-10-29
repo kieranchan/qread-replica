@@ -102,7 +102,18 @@ MSYS_NO_PATHCONV=1 tools/idevice-venv/Scripts/python phone/phone.py tapt 发现
 MSYS_NO_PATHCONV=1 tools/idevice-venv/Scripts/python phone/phone.py shot shot.png
 MSYS_NO_PATHCONV=1 tools/idevice-venv/Scripts/python phone/phone.py qa-off
 ```
-Ask the owner before driving the phone, and only take screenshots while the replica is in front. Files of the app container can
+Ask the owner before driving the phone, and only take screenshots while the replica is in front.
+
+**Installing a build from here (no Sideloadly window, 2026-10-29):** Sideloadly keeps the free developer certificate and its key in
+`%APPDATA%\sideloadly` (`cert-<apple id>.pem`, `key.pem`) and the phone holds the matching 7-day team profile. Re-sign the CI IPA
+with `tools/zsign/zsign.exe` (GitHub zhlynn/zsign v1.1.3, sha256-checked) and install it as an upgrade, data kept:
+```bash
+tools/idevice-venv/Scripts/pymobiledevice3 provision dump /tmp/prov      # newest profile for 3L3D6T66V5.com.kieranchan.qreadreplica.newread.3L3D6T66V5
+tools/zsign/zsign.exe -k "$APPDATA/sideloadly/key.pem" -c "$APPDATA"/sideloadly/cert-*.pem -m /tmp/prov/<newest>.mobileprovision     -b com.kieranchan.qreadreplica.newread.3L3D6T66V5 -z 6 -o signed.ipa newread-unsigned.ipa
+MSYS_NO_PATHCONV=1 tools/idevice-venv/Scripts/pymobiledevice3 apps install F:/.../signed.ipa   # "Installation succeed."
+```
+When the profile has expired (7 days), one Sideloadly run by the owner refreshes it; the key does not change.
+ Files of the app container can
 be read with `pymobiledevice3 apps pull <bundle> /Documents/item/<md5 of the store key>.txt <local file>` (settings, sources).
 
 ## iOS

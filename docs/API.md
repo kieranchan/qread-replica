@@ -164,3 +164,10 @@ main-page start-up when the prefs key `updateReminder` is unset or `"true"` (更
 set with `qread-admin set-update <file.json>` (`{"version":"1.0.1","build":2,"notes":"…","url":"https://…","platform":"ios"}`;
 `platform` optional): `code 0` plus `updateUrl` = url, `description` = notes (also `version`, `build`) when `build` is greater than the
 `version` parameter, else `{code: -1, errorMsg: "已是最新版本"}`. `set-update --clear` withdraws it, `show-update` prints it.
+
+## 4. WebDAV book repository (replica addition, `server/src/dav.mjs`)
+`<base>/dav/…` is a per-user WebDAV store for the app's 云端仓库 (the original expected the user's own WebDAV server). Basic auth with
+the username (or e-mail) and either the account password or a live session token — the app's 「使用轻阅读账号服务器」 creates a
+网盘管理 entry with the `tockenid` as password, so nothing is typed. Methods: OPTIONS, PROPFIND (Depth 0/1), HEAD, GET, PUT, DELETE,
+MKCOL, MOVE. Files live in `<dataDir>/dav/<user id>/…`; limits `QREAD_DAV_MAX_FILE_BYTES` (64 MB) per file and `QREAD_DAV_QUOTA_BYTES`
+(2 GB) per user. The app mirrors `books/` into `<backupDir>` (default `/books`) and fetches a missing local file back from there.

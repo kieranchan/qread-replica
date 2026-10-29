@@ -67,11 +67,10 @@ abstract class ShelfRoutes {
       await BookSelfN.updateProgress(book.bookUrl,
           index: book.durChapterIndex, pos: book.durChapterPos, title: book.durChapterTitle, readchapter: book.readchapter);
     };
-    // 恢复云端书架 (main_page 0x10bca48): a signed-in user with the cloud shelf on gets the cloud copy merged at start-up
-    unawaited(restoreCloudShelf());
   }
 
-  /// The start-up merge of groups and shelf with the cloud (what 刷新书架 does), only with the cloud shelf on and a session.
+  /// The start-up merge of groups and shelf with the cloud (what 刷新书架 does), only with the cloud shelf on and a session;
+  /// init/wiring.dart runs it after [init] (恢复云端书架, main_page 0x10bca48) and the 云端仓库 sync after it.
   static Future<void> Function() cloudSync = () async {
     await Groupdata.syncCloud();
     await BookSelfN.syncCloud();

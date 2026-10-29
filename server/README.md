@@ -11,6 +11,7 @@ src/userapi.mjs  account / membership / cloud calls   src/service.mjs  domain lo
 src/themes.mjs   theme plaza                          src/pages.mjs    会员中心 page    src/backup.mjs  nightly backup
 test/*.test.mjs   end-to-end tests (in-memory DB)   tools/smoke.mjs  smoke test against a deployed server
 deploy/          systemd units, Caddy site block, bootstrap + deploy scripts
+src/dav.mjs      WebDAV store per user under /dav (Basic auth: password or session token) — the app's 云端仓库 book repository
 ```
 
 ## Run / test

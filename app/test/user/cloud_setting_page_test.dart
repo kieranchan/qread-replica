@@ -48,11 +48,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('启用云端书架'), findsOneWidget);
     expect(find.text('将书架放在云端以达到同账号下所有设备书架一致，如无需多端书架一致请勿开启'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('上次同步: 从未'), 200);
-    expect(find.text('上次同步: 从未'), findsOneWidget);
 
-    // 删除云端数据 while off: confirm → the kind's items are emptied
-    await tester.scrollUntilVisible(find.byKey(const Key('del_${PrefKeys.cloudbookself}')), -200);
+    // 删除云端数据 while off: confirm → the kind's items are emptied (the first kind's rows are at the top)
     await tester.tap(find.byKey(const Key('del_${PrefKeys.cloudbookself}')));
     await tester.pumpAndSettle();
     expect(find.text('确定要删除云端书架所有数据吗？'), findsOneWidget);
@@ -64,7 +61,6 @@ void main() {
     expect(Toast.log, contains('删除成功'));
 
     // switching on merges right away
-    await tester.scrollUntilVisible(find.byKey(const Key('sw_${PrefKeys.cloudbookself}')), -200);
     await tester.tap(find.byKey(const Key('sw_${PrefKeys.cloudbookself}')));
     await tester.pumpAndSettle();
     expect(UserSession.cloudbookself, isTrue);
@@ -72,7 +68,6 @@ void main() {
     expect(Toast.log, contains('正在合并云端书架'));
 
     // while on, the cloud data cannot be deleted
-    await tester.scrollUntilVisible(find.byKey(const Key('del_${PrefKeys.cloudbookself}')), 200);
     await tester.tap(find.byKey(const Key('del_${PrefKeys.cloudbookself}')));
     await tester.pumpAndSettle();
     expect(Toast.log.last, '请先关闭云端书架');
@@ -82,11 +77,14 @@ void main() {
     await UserSession.setSwitch(PrefKeys.cloudtts, true);
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.byKey(const Key('cloud_sync_now')), 200);
+    expect(find.text('上次同步: 从未'), findsAtLeastNWidgets(1)); // the 云端仓库 row and the page's own
+    expect(find.text('选择 WebDAV 服务器'), findsOneWidget);
+    expect(find.text('未选择 WebDAV 服务器'), findsOneWidget);
     await tester.tap(find.byKey(const Key('cloud_sync_now')));
     await tester.pumpAndSettle();
     expect(synced.toSet(), {PrefKeys.cloudbookself, PrefKeys.cloudtts});
     expect(Toast.log.last, '同步时间已更新');
     expect(CloudSettingPage.lastSync, isNotEmpty);
-    expect(find.text('上次同步: 从未'), findsNothing);
+    expect(find.text('上次同步: ${CloudSettingPage.lastSync}'), findsOneWidget);
   });
 }

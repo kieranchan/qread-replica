@@ -21,6 +21,9 @@ export function loadConfig(overrides = {}) {
     freeBackupDevices: overrides.freeBackupDevices ?? int(env.QREAD_FREE_BACKUP_DEVICES, 2),
     maxLoginDevices: overrides.maxLoginDevices ?? int(env.QREAD_MAX_LOGIN_DEVICES, 20),
     maxBodyBytes: overrides.maxBodyBytes ?? int(env.QREAD_MAX_BODY_BYTES, 32 * 1024 * 1024),
+    // the WebDAV book repository (dav.mjs): per file and per user
+    davMaxFileBytes: overrides.davMaxFileBytes ?? int(env.QREAD_DAV_MAX_FILE_BYTES, 64 * 1024 * 1024),
+    davQuotaBytes: overrides.davQuotaBytes ?? int(env.QREAD_DAV_QUOTA_BYTES, 2 * 1024 * 1024 * 1024),
     trustProxy: overrides.trustProxy ?? (env.QREAD_TRUST_PROXY ?? '1') !== '0',
     // cloud features require membership (the original gates them client side; here the server enforces it too)
     cloudNeedsVip: overrides.cloudNeedsVip ?? (env.QREAD_CLOUD_NEEDS_VIP ?? '1') !== '0',

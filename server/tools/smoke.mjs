@@ -58,6 +58,17 @@ try {
   check('autopos', (await post('/autopos', { ...t, st: '0', book: 'smoke-book', index: 3, pos: 0.25, title: '第四章', bid: '', t: Date.now() })).code === 0);
   const pos = await post('/getpos', { ...t, book: 'smoke-book' });
   check('getpos record', pos.code === 0 && pos.data?.index === 3 && pos.data?.pos === 0.25 && pos.data?.appid === 'smoke-1', JSON.stringify(pos));
+  // the WebDAV book repository: OPTIONS is open, a session token opens the user's store
+  check('dav options', (await fetch(`${base}/dav/`, { method: 'OPTIONS' })).status === 200);
+  check('dav needs auth', (await fetch(`${base}/dav/`, { method: 'PROPFIND', headers: { Depth: '1' } })).status === 401);
+  const davAuth = { Authorization: 'Basic ' + Buffer.from(`${name}:${t.tockenid}`).toString('base64') };
+  check('dav propfind with token', (await fetch(`${base}/dav/`, { method: 'PROPFIND', headers: { ...davAuth, Depth: '1' } })).status === 207);
+  check('dav mkcol + put + get', await (async () => {
+    await fetch(`${base}/dav/books`, { method: 'MKCOL', headers: davAuth });
+    const put = await fetch(`${base}/dav/books/smoke.txt`, { method: 'PUT', headers: davAuth, body: 'smoke' });
+    const get = await fetch(`${base}/dav/books/smoke.txt`, { headers: davAuth });
+    return [201, 204].includes(put.status) && (await get.text()) === 'smoke';
+  })());
   // device backup (书架备份): openAuto hands out the upload url, the app PUTs its shelf, 备份导入 finds it through getBookSelf
   const open = await post('/openAuto', { ...t, st: '0' });
   check('openAuto upload url', open.code === 0 && /\/autobackup\/[0-9a-f]{32}$/.test(open.data ?? ''), JSON.stringify(open));

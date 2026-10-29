@@ -14,6 +14,7 @@ import '../read/api/readapi.dart';
 import '../common/nav.dart';
 import '../data/bookself.dart';
 import '../data/cloud/auto_backup.dart';
+import '../data/cloud/cloud_books.dart';
 import '../data/rss.dart';
 import '../data/source.dart';
 import '../pages/book/shelf_routes.dart';
@@ -41,6 +42,7 @@ import '../storage/storage.dart';
 import '../theme/extras_init.dart';
 import '../util/cron/clean_jobs.dart';
 import '../util/legado/js_engines.dart';
+import '../util/toast.dart';
 import 'glue_routes.dart';
 import 'reader_ai_adapter.dart';
 
@@ -83,8 +85,10 @@ abstract class Wiring {
     // read-aloud through the TTS engines (HTTP, Volcano, MiMo, multi-role), background music, lock-screen controls
     TtsBridge.install();
 
-    // shelf: loads the shelf and routes reader progress into it (ReadApi.onProgress)
+    // shelf: loads the shelf and routes reader progress into it (ReadApi.onProgress); then 恢复云端书架 (main_page 0x10bca48) and,
+    // after it, the 云端仓库 mirror run (0xf7a764) — both only for a signed-in user with the switches set
     await ShelfRoutes.init();
+    unawaited(ShelfRoutes.restoreCloudShelf().then((_) => CloudBooks.syncAtStartup()));
     await ExtrasInit.init();
     // start-up housekeeping of the original (util/cron/book.dart) a minute after launch, and the plaza theme update notice
     CleanJobs.log ??= debugPrint;
@@ -153,6 +157,14 @@ abstract class Wiring {
 
     Nav.openReader = (context, book, {chapterIndex, chapters}) async {
       await MainPage.stampReading();
+      if (!context.mounted) return;
+      // 云端仓库 (0xfb024c): a local book whose file is gone on this device is fetched back from the repository first
+      try {
+        await CloudBooks.restoreIfMissing(book, status: Toast.show);
+      } catch (e) {
+        Toast.show('$e', iserror: true);
+        return;
+      }
       if (!context.mounted) return;
       await ReadPage.open(context, book, chapterIndex: chapterIndex, chapters: chapters);
       await MainPage.stampReading();
