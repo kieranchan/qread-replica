@@ -35,6 +35,12 @@ class _DialogueLineEditPageState extends State<DialogueLineEditPage> {
     _load();
   }
 
+  /// 0x81ffdc: 重新分析本章 throws the chapter's cache (hand edits included) away after a confirmation.
+  Future<void> _reanalyze() async {
+    if (!await Dialogs.confirm(context, '重新分析本章', '将丢弃本章的手动修改并重新调用AI分析，是否继续？')) return;
+    await _load(fresh: true);
+  }
+
   Future<void> _load({bool fresh = false}) async {
     setState(() {
       _lines = null;
@@ -70,7 +76,7 @@ class _DialogueLineEditPageState extends State<DialogueLineEditPage> {
     final names = lines?.map((l) => l.name).where((n) => n.isNotEmpty).toSet() ?? {};
     return Scaffold(
       appBar: AppBar(title: Text('编辑对话 · 第 ${_chapter + 1} 章'), actions: [
-        IconButton(tooltip: '刷新', icon: const Icon(Icons.refresh), onPressed: () => _load(fresh: true)),
+        IconButton(tooltip: '重新分析本章', icon: const Icon(Icons.refresh), onPressed: _reanalyze),
       ]),
       body: Column(children: [
         if (lines == null && _error.isEmpty) const LinearProgressIndicator(),

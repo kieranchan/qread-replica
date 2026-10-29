@@ -12,6 +12,7 @@ import '../../models/logindevice.dart';
 import '../../qread/http.dart';
 import '../../theme/widgets.dart';
 import '../../util/toast.dart';
+import 'account_validators.dart';
 
 class SecurityPrivacyPage extends StatefulWidget {
   const SecurityPrivacyPage({super.key});
@@ -24,14 +25,16 @@ class _SecurityPrivacyPageState extends State<SecurityPrivacyPage> {
   Future<void> _password() async {
     final oldC = TextEditingController();
     final newC = TextEditingController();
+    final againC = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('修改密码'),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           const Text('为了账户安全，请定期更换密码，不要与其他网站使用相同的密码', style: TextStyle(fontSize: 12)),
-          TextField(controller: oldC, obscureText: true, decoration: const InputDecoration(labelText: '原密码')),
-          TextField(controller: newC, obscureText: true, decoration: const InputDecoration(labelText: '新密码')),
+          TextField(controller: oldC, obscureText: true, decoration: const InputDecoration(labelText: '当前密码', hintText: '请输入当前密码')),
+          TextField(controller: newC, obscureText: true, decoration: const InputDecoration(labelText: '新密码', hintText: '请输入新密码')),
+          TextField(controller: againC, obscureText: true, decoration: const InputDecoration(labelText: '确认新密码', hintText: '请再次输入新密码')),
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
@@ -40,10 +43,14 @@ class _SecurityPrivacyPageState extends State<SecurityPrivacyPage> {
       ),
     );
     if (ok != true) return;
-    if (newC.text.length < 6) return Toast.show('密码长度至少6位', iserror: true);
+    // 0x880a58 / 0x88091c: the original's checks
+    final err = AccountValidators.password(oldC.text, empty: '请输入当前密码') ??
+        AccountValidators.newPassword(oldC.text, newC.text) ??
+        AccountValidators.confirm(newC.text, againC.text, empty: '请再次输入新密码');
+    if (err != null) return Toast.show(err, iserror: true);
     try {
       await UserApi.changePassword(oldC.text, newC.text);
-      Toast.show('密码已修改，请重新登录');
+      Toast.show('密码修改成功，请重新登录');
       await UserSession.clear();
       Get.until((r) => r.isFirst);
     } on ApiException catch (e) {

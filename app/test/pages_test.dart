@@ -45,6 +45,7 @@ void main() {
   testWidgets('cloud switches are member-only: a non-member only gets the toast, nothing is turned on', (t) async {
     await signIn(vip: false);
     await t.pumpWidget(app(const CloudSettingPage()));
+    await t.scrollUntilVisible(find.byKey(Key('sw_${PrefKeys.cloudmark}')), 200);
     await t.tap(find.byKey(Key('sw_${PrefKeys.cloudmark}')));
     await t.pump();
     expect(Toast.log, contains('此功能为会员功能'));

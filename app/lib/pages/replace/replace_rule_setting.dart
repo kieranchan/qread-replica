@@ -2,12 +2,15 @@
 // Strings: 新建规则 · 本地导入 · 网络导入 · 扫码导入 · 净化帮助 · 全部分组 · 未分组 · 搜索 · 还没有添加替换规则 · 点击右上角添加规则开始使用 ·
 // 全选 ( · 反选 · 启用 · 停用 · 删除 · 删除确认 · 确定要删除《…》吗？ · 确定要删除这些规则吗？ · 操作确认 · 确定要 … 这些规则吗？ · 置顶 ·
 // 置顶确认 · 确定要把《…》置顶吗？ · 测试 · 规则:  · 字符数变化:  · 净化过程中出错:  · 导入失败: · 已有 · 删除失败:  · 操作失败: .
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../data/replace.dart';
 import '../../models/replacerule.dart';
 import '../../read/util/replace_rules.dart';
 import '../../util/toast.dart';
+import '../source/source_setting.dart';
 import 'replace_rule_edit.dart';
 import 'replace_rule_help.dart';
 import 'rule_import.dart';
@@ -90,6 +93,17 @@ class _ReplaceRuleSettingState extends State<ReplaceRuleSetting> {
       Toast.show('置顶失败: $e');
     }
     await _reload();
+  }
+
+  /// 导出规则 (the original's selection action): the selected rules as a JSON file in the import format.
+  Future<void> _export() async {
+    final list = [for (final r in _rules) if (_selected.contains(r.id)) r.toJson()];
+    if (list.isEmpty) return Toast.show('请先选择规则!');
+    try {
+      await SourceImport.shareFile('shareReplaceRule.json', const JsonEncoder.withIndent('  ').convert(list));
+    } catch (e) {
+      Toast.show('操作失败: $e', iserror: true);
+    }
   }
 
   Future<void> _batch(String action) async {
@@ -251,6 +265,7 @@ class _ReplaceRuleSettingState extends State<ReplaceRuleSetting> {
                 TextButton(onPressed: () => _batch('启用'), child: const Text('启用')),
                 TextButton(onPressed: () => _batch('停用'), child: const Text('停用')),
                 TextButton(onPressed: () => _batch('删除'), child: const Text('删除')),
+                TextButton(onPressed: _export, child: const Text('导出')),
               ],
             )
           : null,

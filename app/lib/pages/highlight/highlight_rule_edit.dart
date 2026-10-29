@@ -140,6 +140,38 @@ class _HighlightRuleEditState extends State<HighlightRuleEdit> {
         ),
       );
 
+  /// 0x656658: the quick colours under 文字颜色 / 背景颜色 (the original's eleven names; Material 500 values).
+  static const List<(String, String)> colorPresets = [
+    ('红色', '#F44336'),
+    ('蓝色', '#2196F3'),
+    ('绿色', '#4CAF50'),
+    ('黄色', '#FFEB3B'),
+    ('橙色', '#FF9800'),
+    ('紫色', '#9C27B0'),
+    ('粉色', '#E91E63'),
+    ('青色', '#00BCD4'),
+    ('灰色', '#9E9E9E'),
+    ('黑色', '#000000'),
+    ('白色', '#FFFFFF'),
+  ];
+
+  Widget _presets(TextEditingController c) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+        child: Wrap(
+          spacing: 6,
+          runSpacing: 0,
+          children: [
+            for (final e in colorPresets)
+              ActionChip(
+                visualDensity: VisualDensity.compact,
+                avatar: CircleAvatar(radius: 7, backgroundColor: StyleGenUtils.parseColor(e.$2)),
+                label: Text(e.$1, style: const TextStyle(fontSize: 12)),
+                onPressed: () => setState(() => c.text = e.$2),
+              ),
+          ],
+        ),
+      );
+
   // ------------------------------------------------------------------ 背景图 (0x6513e0)
 
   String get _img => _night ? _r.nightBgImage : _r.dayBgImage;
@@ -325,7 +357,9 @@ class _HighlightRuleEditState extends State<HighlightRuleEdit> {
             ),
           ),
           _field(_c['${p}Color']!, '文字颜色', hint: '如 #FF0000 或 red', color: true),
+          _presets(_c['${p}Color']!),
           _field(_c['${p}BgColor']!, '背景颜色', hint: '如 #FF0000 或 red', color: true),
+          _presets(_c['${p}BgColor']!),
           ListTile(
             title: const Text('字体样式'),
             trailing: DropdownButton<String>(

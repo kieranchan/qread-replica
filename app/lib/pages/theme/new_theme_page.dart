@@ -20,6 +20,57 @@ import 'edit_page_style_page.dart';
 import 'tab_icon_page.dart';
 import 'theme_package.dart';
 
+/// The colour roles grouped and named as the original editor (0x6b324c); `seedColor` (主题默认颜色) stands above the groups.
+const List<(String, List<(String, String)>)> themeColorGroups = [
+  ('主要颜色', [
+    ('primary', '主色调 (Primary)'),
+    ('onPrimary', '主色调文本 (OnPrimary)'),
+    ('secondary', '次要强调色 (Secondary)'),
+    ('onSecondary', '次要强调色文本 (OnSecondary)'),
+    ('secondaryContainer', '次要容器 (SecondaryContainer)'),
+    ('onSecondaryContainer', '次要容器文本 (OnSecondaryContainer)'),
+  ]),
+  ('表面和容器颜色', [
+    ('surface', '表面颜色 (Surface)'),
+    ('onSurface', '表面文本 (OnSurface)'),
+    ('onSurfaceVariant', '变体表面文本 (OnSurfaceVariant)'),
+    ('surfaceContainerLow', '低层级容器 (SurfaceContainerLow)'),
+    ('surfaceContainerHighest', '最高层级容器 (SurfaceContainerHighest)'),
+    ('primaryContainer', '主容器 (PrimaryContainer)'),
+    ('onPrimaryContainer', '主容器文本 (OnPrimaryContainer)'),
+  ]),
+  ('边框和轮廓', [
+    ('outline', '边框 (Outline)'),
+    ('outlineVariant', '变体边框 (OutlineVariant)'),
+  ]),
+  ('功能颜色', [
+    ('error', '错误颜色 (Error)'),
+    ('errorContainer', '错误容器 (ErrorContainer)'),
+    ('onError', '错误文本 (OnError)'),
+    ('onErrorContainer', '错误容器文本 (OnErrorContainer)'),
+    ('shadow', '阴影颜色 (Shadow)'),
+  ]),
+  ('弹窗和菜单背景', [
+    ('dialogBackground', '对话框背景 (Dialog)'),
+    ('popupMenuBackground', '弹出菜单背景 (PopupMenu)'),
+  ]),
+  ('详情页标签和按钮颜色', [
+    ('tagBackground', '标签背景 (TagBackground)'),
+    ('tagText', '标签文字 (TagText)'),
+  ]),
+  ('补充颜色（可选）', [
+    ('tertiary', '第三色调 (Tertiary)'),
+    ('onTertiary', '第三色调文本 (OnTertiary)'),
+    ('tertiaryContainer', '第三色调容器 (TertiaryContainer)'),
+    ('onTertiaryContainer', '第三色调容器文本 (OnTertiaryContainer)'),
+  ]),
+];
+
+const (String, String) themeSeedRole = ('seedColor', '主题默认颜色');
+
+/// Every role, flat (seed first).
+List<(String, String)> get themeColorRoles => [themeSeedRole, for (final g in themeColorGroups) ...g.$2];
+
 class NewThemePage extends StatefulWidget {
   final ThemeModel? theme;
   final bool isLight;
@@ -42,37 +93,6 @@ class _NewThemePageState extends State<NewThemePage> {
 
   bool get ro => widget.readOnly;
 
-  static const List<(String, String)> _roles = [
-    ('seedColor', '主题默认颜色'),
-    ('primary', '主色调 (Primary)'),
-    ('onPrimary', '主色调文本 (OnPrimary)'),
-    ('secondary', '次要强调色 (Secondary)'),
-    ('onSecondary', 'OnSecondary'),
-    ('primaryContainer', 'PrimaryContainer'),
-    ('onPrimaryContainer', 'OnPrimaryContainer'),
-    ('secondaryContainer', 'SecondaryContainer'),
-    ('onSecondaryContainer', 'OnSecondaryContainer'),
-    ('tertiary', 'Tertiary'),
-    ('onTertiary', 'OnTertiary'),
-    ('tertiaryContainer', 'TertiaryContainer'),
-    ('onTertiaryContainer', 'OnTertiaryContainer'),
-    ('surface', 'Surface'),
-    ('onSurface', 'OnSurface'),
-    ('onSurfaceVariant', 'OnSurfaceVariant'),
-    ('surfaceContainerLow', 'SurfaceContainerLow'),
-    ('surfaceContainerHighest', 'SurfaceContainerHighest'),
-    ('outline', 'Outline'),
-    ('outlineVariant', 'OutlineVariant'),
-    ('error', 'Error'),
-    ('onError', 'OnError'),
-    ('errorContainer', 'ErrorContainer'),
-    ('onErrorContainer', 'OnErrorContainer'),
-    ('shadow', 'Shadow'),
-    ('dialogBackground', 'DialogBackground'),
-    ('popupMenuBackground', 'PopupMenuBackground'),
-    ('tagBackground', 'TagBackground'),
-    ('tagText', 'TagText'),
-  ];
 
   /// page id -> display name of every page a style can be bound to (`System.pagenames`, 0x1036e20).
   Map<String, String> get _pages => System.pageTitles;
@@ -169,30 +189,69 @@ class _NewThemePageState extends State<NewThemePage> {
     });
   }
 
-  Future<void> _bindPages(PageStyle2 s) async {
+  /// 0x6b9dc0: `已绑定: …` / `未绑定页面 · 透明度 x · 阴影开`.
+  String _styleSummary(PageStyle2 s) {
+    final pages = s.types.isEmpty ? '未绑定页面' : '已绑定: ${s.types.map((e) => _pages['$e'] ?? '$e').join('、')}';
+    return '$pages · 透明度 ${s.tableOpacity}${s.showboxShadow ? ' · 阴影开' : ''}';
+  }
+
+  /// 0x6be614: the page picker (`选择要绑定的页面（可多选）`) with its search box (`搜索页面…`, `无匹配页面`); null when cancelled.
+  Future<Set<String>?> _choosePages(String title, Set<String> initial) async {
     final pages = _pages;
-    final chosen = {for (final e in s.types) '$e'};
-    await showDialog<void>(
+    final chosen = {...initial};
+    var query = '';
+    return showDialog<Set<String>>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setS) => AlertDialog(
-          title: Text(s.name),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView(shrinkWrap: true, children: [
-              for (final e in pages.entries)
-                CheckboxListTile(
-                  title: Text(e.value),
-                  value: chosen.contains(e.key),
-                  onChanged: (v) => setS(() => v == true ? chosen.add(e.key) : chosen.remove(e.key)),
+        builder: (ctx, setS) {
+          final hits = pages.entries.where((e) => query.isEmpty || e.value.contains(query) || e.key.contains(query)).toList();
+          return AlertDialog(
+            title: Text(title),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Align(alignment: Alignment.centerLeft, child: Text('选择要绑定的页面（可多选）', style: TextStyle(fontSize: 12))),
+                TextField(
+                  key: const Key('style_page_search'),
+                  decoration: const InputDecoration(hintText: '搜索页面…', prefixIcon: Icon(Icons.search), isDense: true),
+                  onChanged: (v) => setS(() => query = v.trim()),
                 ),
-            ]),
-          ),
-          actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('确定'))],
-        ),
+                Flexible(
+                  child: hits.isEmpty
+                      ? const Padding(padding: EdgeInsets.all(16), child: Text('无匹配页面'))
+                      : ListView(shrinkWrap: true, children: [
+                          for (final e in hits)
+                            CheckboxListTile(
+                              dense: true,
+                              title: Text(e.value),
+                              value: chosen.contains(e.key),
+                              onChanged: (v) => setS(() => v == true ? chosen.add(e.key) : chosen.remove(e.key)),
+                            ),
+                        ]),
+                ),
+              ]),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('取消')),
+              TextButton(key: const Key('style_pages_ok'), onPressed: () => Navigator.of(ctx).pop(chosen), child: const Text('确定')),
+            ],
+          );
+        },
       ),
     );
-    setState(() => s.types = chosen.toList());
+  }
+
+  Future<void> _bindPages(PageStyle2 s) async {
+    final r = await _choosePages(s.name.isEmpty ? '绑定页面' : s.name, {for (final e in s.types) '$e'});
+    if (r == null) return;
+    setState(() => s.types = r.toList());
+  }
+
+  /// 添加页面样式 (0x6be614): a new style bound to the chosen pages.
+  Future<void> _addStyle() async {
+    final r = await _choosePages('添加页面样式', {});
+    if (r == null) return;
+    setState(() => _styles = [..._styles, PageStyle2(name: '样式 #${_styles.length + 1}', types: r.toList())]);
   }
 
   Future<void> _tabIcons() async {
@@ -297,41 +356,47 @@ class _NewThemePageState extends State<NewThemePage> {
               final c = await pickColor(context, initial: ThemeColors.of(t.textColor), title: '基础文本颜色');
               if (c != null) setState(() => t.textColor = c.cleared || c.color == null ? 0 : ThemeColors.toInt(c.color!));
             }),
-            ExpansionTile(title: const Text('主要颜色'), children: [
-              for (final r in _roles) ListTile(dense: true, title: Text(r.$2), trailing: _swatch(schemeJson[r.$1]), onTap: () => _pickRole(r.$1, r.$2)),
-              TextButton(onPressed: _resetColors, child: const Text('恢复默认颜色')),
-            ]),
+            ListTile(title: Text(themeSeedRole.$2), trailing: _swatch(schemeJson[themeSeedRole.$1]), onTap: () => _pickRole(themeSeedRole.$1, themeSeedRole.$2)),
+            for (final g in themeColorGroups)
+              ExpansionTile(title: Text(g.$1), children: [
+                for (final r in g.$2) ListTile(dense: true, title: Text(r.$2), trailing: _swatch(schemeJson[r.$1]), onTap: () => _pickRole(r.$1, r.$2)),
+              ]),
+            TextButton(onPressed: _resetColors, child: const Text('恢复默认颜色')),
           ]),
-          SectionCard(title: '页面样式', children: [
-            ListTile(title: const Text('常规样式'), trailing: const Icon(Icons.chevron_right), onTap: _editRegular),
+          SectionCard(title: '页面样式设置', children: [
+            ListTile(title: const Text('常规样式'), subtitle: const Text('已设置'), trailing: const Icon(Icons.chevron_right), onTap: _editRegular),
+            ListTile(
+              title: const Text('自定义页面样式'),
+              trailing: ro ? null : TextButton.icon(onPressed: _addStyle, icon: const Icon(Icons.add), label: const Text('添加')),
+            ),
+            if (_styles.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Text('暂无自定义样式，点击右上角添加', style: TextStyle(fontSize: 12, color: cs.outline)),
+              ),
             for (var i = 0; i < _styles.length; i++)
               ListTile(
-                title: Text(_styles[i].name.isEmpty ? '样式 ${i + 1}' : _styles[i].name),
-                subtitle: Text(_styles[i].types.isEmpty
-                    ? '未绑定页面'
-                    : _styles[i].types.map((e) => _pages['$e'] ?? '$e').join('、')),
+                title: Text(_styles[i].name.isEmpty ? '样式 #${i + 1}' : _styles[i].name),
+                subtitle: Text(_styleSummary(_styles[i])),
                 onTap: () => _editStyle(i),
                 trailing: PopupMenuButton<String>(
                   onSelected: (v) async {
+                    if (v == 'edit') return _editStyle(i);
                     if (v == 'bind') return _bindPages(_styles[i]);
                     if (v == 'rename') {
-                      final name = await Dialogs.input(context, '重命名', initial: _styles[i].name);
+                      final name = await Dialogs.input(context, '重命名样式', hint: '请输入样式名称', initial: _styles[i].name);
                       if (name != null && name.trim().isNotEmpty) setState(() => _styles[i].name = name.trim());
                     }
                     if (v == 'delete') setState(() => _styles = [..._styles]..removeAt(i));
                   },
                   itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'edit', child: Text('编辑样式内容')),
                     PopupMenuItem(value: 'bind', child: Text('绑定页面')),
-                    PopupMenuItem(value: 'rename', child: Text('重命名')),
-                    PopupMenuItem(value: 'delete', child: Text('删除')),
+                    PopupMenuItem(value: 'rename', child: Text('重命名样式')),
+                    PopupMenuItem(value: 'delete', child: Text('删除样式')),
                   ],
                 ),
               ),
-            TextButton.icon(
-              onPressed: () => setState(() => _styles = [..._styles, PageStyle2(name: '样式 ${_styles.length + 1}')]),
-              icon: const Icon(Icons.add),
-              label: const Text('新增'),
-            ),
           ]),
           SectionCard(title: '图标', children: [
             ListTile(title: const Text('标签栏图标'), trailing: const Icon(Icons.chevron_right), onTap: _tabIcons),

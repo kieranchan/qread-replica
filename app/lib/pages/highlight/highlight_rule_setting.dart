@@ -2,12 +2,15 @@
 // Strings: 新建规则 · 本地导入 · 网络导入 · 扫码导入 · 搜索规则 · 全部分组 · 未分组 · 起效高亮 · 点击右上角添加规则开始使用 · json解析中 · 未解析到规则 ·
 // 选择的规则为空 · 条规则 · 导入规则失败: · 解析规则错误 · 全选 ( · 反选 · 启用 · 停用 · 删除 · 删除确认 · 确定要删除《…》吗？ ·
 // 确定要删除这些规则吗？ · 操作确认 · 置顶 · 置顶确认 · 确定要把《…》置顶吗？ · 请先选择规则!.
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../data/highlight.dart';
 import '../../models/highlight_rule.dart';
 import '../../util/toast.dart';
 import '../replace/rule_import.dart';
+import '../source/source_setting.dart';
 import 'highlight_rule_edit.dart';
 
 class HighlightRuleSetting extends StatefulWidget {
@@ -61,6 +64,17 @@ class _HighlightRuleSettingState extends State<HighlightRuleSetting> {
       Toast.show('导入规则失败:$e');
     }
     await _reload();
+  }
+
+  /// 导出规则 (the original's selection action): the selected rules as a JSON file in the import format.
+  Future<void> _export() async {
+    final list = [for (final r in _rules) if (_selected.contains(r.id)) r.toJson()];
+    if (list.isEmpty) return Toast.show('请先选择规则!');
+    try {
+      await SourceImport.shareFile('shareHighlightRule.json', const JsonEncoder.withIndent('  ').convert(list));
+    } catch (e) {
+      Toast.show('操作失败: $e', iserror: true);
+    }
   }
 
   Future<void> _batch(String action) async {
@@ -194,6 +208,7 @@ class _HighlightRuleSettingState extends State<HighlightRuleSetting> {
                 TextButton(onPressed: () => _batch('启用'), child: const Text('启用')),
                 TextButton(onPressed: () => _batch('停用'), child: const Text('停用')),
                 TextButton(onPressed: () => _batch('删除'), child: const Text('删除')),
+                TextButton(onPressed: _export, child: const Text('导出')),
               ],
             )
           : null,

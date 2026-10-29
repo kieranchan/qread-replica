@@ -1,12 +1,15 @@
 // pages/txtrule/txt_rule_setting.dart — "目录规则管理" (original `_TxtRuleSettingState` 0x61c5b0: 恢复默认 · 本地导入 · 网络导入; list 0x61cc30:
 // 导入 · 删除 · 更多 · 全选 ( · 反选; delete 0xfe1b90: 删除确认 / 确定要删除《…》吗？ / 无法删除保留内容 / 删除失败: ; batch 0xfedb00: 操作确认 /
 // 确定要 启用|停用 这些规则吗？; import 0xfef0bc / 0xfef4e0: 导入成功! / 恢复失败: / 导入失败: / 选择文件失败:).
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../data/txtrule.dart';
 import '../../models/txt_toc_rule.dart';
 import '../../util/toast.dart';
 import '../replace/rule_import.dart';
+import '../source/source_setting.dart';
 import 'txt_rule_edit.dart';
 
 class TxtRuleSetting extends StatefulWidget {
@@ -58,6 +61,17 @@ class _TxtRuleSettingState extends State<TxtRuleSetting> {
       Toast.show('删除失败: $e');
     }
     await _reload();
+  }
+
+  /// 导出规则 (the original's selection action): the selected rules as a JSON file in the import format.
+  Future<void> _export() async {
+    final list = [for (final r in _rules) if (_selected.contains(r.name)) r.toJson()];
+    if (list.isEmpty) return Toast.show('请先选择规则!');
+    try {
+      await SourceImport.shareFile('shareTxtTocRule.json', const JsonEncoder.withIndent('  ').convert(list));
+    } catch (e) {
+      Toast.show('操作失败: $e', iserror: true);
+    }
   }
 
   Future<void> _batch(String action) async {
@@ -170,6 +184,7 @@ class _TxtRuleSettingState extends State<TxtRuleSetting> {
                 TextButton(onPressed: () => _batch('启用'), child: const Text('启用')),
                 TextButton(onPressed: () => _batch('停用'), child: const Text('停用')),
                 TextButton(onPressed: () => _batch('删除'), child: const Text('删除')),
+                TextButton(onPressed: _export, child: const Text('导出')),
               ],
             )
           : null,

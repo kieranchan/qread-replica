@@ -337,6 +337,16 @@ class _AiChatSheetState extends State<AiChatSheet> {
                   },
                 ),
         ),
+        // 0x7e9428: while the answer is on its way
+        if (_sending)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
+            child: Row(children: [
+              const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
+              const SizedBox(width: 8),
+              Text('思考中…', style: TextStyle(fontSize: 12, color: scheme.outline)),
+            ]),
+          ),
         SafeArea(
           top: false,
           child: Padding(
@@ -348,7 +358,7 @@ class _AiChatSheetState extends State<AiChatSheet> {
                   enabled: ai != null,
                   minLines: 1,
                   maxLines: 4,
-                  decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
+                  decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true, hintText: '问点什么…'),
                   onSubmitted: (_) => _send(),
                 ),
               ),
