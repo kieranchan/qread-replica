@@ -75,6 +75,12 @@ void main() {
     expect(ProgressSync.differs(b, const RemotePosition(index: 5, pos: 0)), isTrue, reason: 'a record without appid (older server) counts');
   });
 
+  test('label: the chapter number is not doubled when the title carries it', () {
+    expect(ProgressSync.label(2, '第三章', 0.5), '第3章 第三章  50.0%');
+    expect(ProgressSync.label(11, '第12章 黑夜女神', 0.129), '第12章 黑夜女神  12.9%');
+    expect(ProgressSync.label(30, '', 0.5), '第31章  50.0%');
+  });
+
   test('fetchDifferent: logs the server record, answers only a different one; errors and local books are silent', () async {
     final api = _api(_book());
     expect(await ProgressSync.fetchDifferent(api), isNull);

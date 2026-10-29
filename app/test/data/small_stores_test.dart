@@ -184,6 +184,10 @@ void main() {
       // nothing in the cloud
       cloud.items.clear();
       await expectLater(CloudTts.pull(api: cloud), throwsA(isA<StateError>().having((e) => e.message, 'm', '云端数据读取失败')));
+      // sync (云端设置): nothing in the cloud → the local engines are uploaded instead of failing; a cloud copy is pulled
+      expect(await CloudTts.sync(api: cloud), isTrue);
+      expect((jsonDecode(cloud.items['tts_engines']!) as List).single['name'], 'A2');
+      expect(await CloudTts.sync(api: cloud), isFalse); // now equal: 一样不必同步
       expect(defaultCloudApi, isA<UserApiCloud>());
     });
   });

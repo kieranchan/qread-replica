@@ -85,8 +85,8 @@ abstract class ProgressSync {
       // ignore: use_build_context_synchronously — the reader handed out its context after the wait, while still mounted
       context: ctx,
       builder: (_) => ProgressSyncDialog(
-        local: _label(book.durChapterIndex, book.durChapterTitle, book.durChapterPos),
-        remote: _label(remote.index, remote.title.isNotEmpty ? remote.title : _chapterName(host, remote.index), remote.pos),
+        local: label(book.durChapterIndex, book.durChapterTitle, book.durChapterPos),
+        remote: label(remote.index, remote.title.isNotEmpty ? remote.title : _chapterName(host, remote.index), remote.pos),
       ),
     );
     await apply(api, choice, remote, jump: (i, p) => host.jumpToChapter(i, progress: p));
@@ -95,9 +95,13 @@ abstract class ProgressSync {
   static String _chapterName(ReaderHost host, int index) =>
       index >= 0 && index < host.chapters.length ? host.chapters[index].name : '';
 
-  static String _label(int index, String title, double pos) {
+  static final RegExp _numbered = RegExp(r'^第\s*\d+\s*章');
+
+  /// `第n章 <title>  pct%`; a title that already starts with its number (`第12章 黑夜女神`) is not prefixed again.
+  static String label(int index, String title, double pos) {
     final t = title.trim();
-    return '第${index + 1}章${t.isEmpty ? '' : ' $t'}  ${(pos * 100).toStringAsFixed(1)}%';
+    final head = _numbered.hasMatch(t) ? t : '第${index + 1}章${t.isEmpty ? '' : ' $t'}';
+    return '$head  ${(pos * 100).toStringAsFixed(1)}%';
   }
 }
 

@@ -212,6 +212,18 @@ abstract class CloudTts {
     return true;
   }
 
+  /// The 云端朗读引擎 sync of 云端设置 (switch-on merge and 开始同步): the cloud copy is merged in when there is one, else the local
+  /// engines are uploaded (the original: `打开时本地引擎与云端按名称合并…开启后以云端为准同步`). True when something changed.
+  static Future<bool> sync({CloudApi? api}) async {
+    final a = api ?? defaultCloudApi;
+    final text = await a.getItemJson(TTSData.cloudItem);
+    if (text.isEmpty) {
+      await push(api: a);
+      return true;
+    }
+    return pull(api: a);
+  }
+
   /// Uploads the global engines as item `tts_engines`.
   static Future<void> push({CloudApi? api}) async {
     final a = api ?? defaultCloudApi;

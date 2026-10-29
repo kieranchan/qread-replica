@@ -86,7 +86,7 @@ class CloudSettingPage extends StatefulWidget {
     },
     PrefKeys.cloudmark: () async => NoteDataN.syncCloud(),
     PrefKeys.cloudtheme: () async => Svg.pullCloud(),
-    PrefKeys.cloudtts: () async => CloudTts.pull(),
+    PrefKeys.cloudtts: () async => CloudTts.sync(),
   };
 
   static String get lastSync => Storage.getString(PrefKeys.lastSyncTime);
