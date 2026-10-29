@@ -55,6 +55,13 @@ avatar/theme URLs), `QREAD_REGISTER` (`invite` | `closed`), `QREAD_MAIL` (`off`;
 * **Not implemented / unknown**: `autopos` payload semantics beyond what `docs/API.md` records, the `yuan` HTML proxy, the Edge TTS page, the bound 轻阅读 `/api/5` backend. Unknown
   endpoints answer 404 and are logged (`{"unsupported": name}`) so missing calls show up in the journal.
 
+## 路易斯 (Luis) — aggregation platform under `/luis`
+The owner's own 聚合书源 backend, wire-compatible with the 大灰狼 service (`../docs/LUIS.md`): `/luis/search`, `/detail`,
+`/catalog`, `/content`, `/discovestyle`, `/get_discover`, `/sources/config`, `/get_avatar`; `/luis/login` sets the `qttoken` /
+`deviceId` cookies the 时光源 page (`../sources/luis`, hosted at `/tsy/luis.html`) relies on, `/luis/user` is the user centre.
+Platform adapters live in `src/luis/adapters/` (维基文库 free; 路易斯书库 members only = the TXT books added with
+`admin luis-add-book`); tiers follow the account's membership. Cache in `luis_cache` (`admin luis-cache-clear`).
+
 ## Admin CLI
 `node src/admin.mjs help` (on the VM: `qread-admin help`). Typical: `create-user <name> <email> --random --days 3650`,
 `make-codes vip 30 --count 5`, `make-codes invite --count 3 --valid-days 7`, `grant <user> <days>`, `list-users`, `delete-user <user>`,

@@ -1,0 +1,12 @@
+{
+  "bookSourceUrl": "https://qread.forfine.me/tsy/luis",
+  "bookSourceName": "路易斯聚合",
+  "bookSourceGroup": "路易斯",
+  "author": "qread",
+  "enabled": true,
+  "enabledExplore": true,
+  "login": true,
+  "help": true,
+  "customButton": false,
+  "eventListener": false
+}

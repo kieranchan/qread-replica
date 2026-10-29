@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>路易斯聚合</title>
+</head>
+<body></body>
+<!-- @sdk -->
+<script>
+/*
+ * 路易斯聚合 — the 时光源 page of the owner's own aggregation platform (server/src/luis/). The wire protocol is the
+ * one of sources/langge (search / detail / catalog / content / discovestyle / get_discover / sources/config /
+ * get_avatar); the platform list and the tabs come from the backend, so new adapters appear here without a change.
+ * Login: 发现页 → 「登录 / 账户」 opens {server}/login (the app keeps the cookies qttoken + deviceId).
+ * Settings (source cache, discovery drop-downs): server, tab, source_type, explore_source, sources.
+ */
+'use strict';
+
+const flutterBridge = new FlutterJSBridge();
+const http = new Http();
+const cache = new Cache();
+const cookie = new Cookie();
+
+const SERVERS = [{ url: 'https://qread.forfine.me/luis', name: '路易斯 主站' }];
+const DEFAULT_SERVER = SERVERS[0].url;
+const LOGIN_PATH = '/login?source_client=qyd';
+const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 qread-luis';
+const DEFAULT_TABS = ['小说', '听书', '短剧', '漫画'];
+const TYPE_OF_TAB = { '小说': 0, '听书': 1, '漫画': 2, '短剧': 4 };
+
+const enc = encodeURIComponent;
+const purify = QYD.purifyTitle;
+const esc = QYD.escapeHtml;
+
+function b64e(s) {
+  const bytes = new TextEncoder().encode(String(s));
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+function b64d(s) {
+  try {
+    const bin = atob(String(s).trim().replace(/-/g, '+').replace(/_/g, '/').replace(/[^A-Za-z0-9+/=]/g, ''));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  } catch (e) {
+    return '';
+  }
+}
+
+function normServer(v) {
+  return String(v || '').trim().replace(/\/+$/, '');
+}
+
+function isServer(v) {
+  return /^https?:\/\/[^/?#]+/i.test(normServer(v));
+}
+
+function sourceName(v) {
+  return String(v || '').replace(/^svip_/, '');
+}
+
+async function getServer() {
+  const s = normServer(await cache.get('server'));
+  return isServer(s) ? s : DEFAULT_SERVER;
+}
+
+async function allServers() {
+  const list = SERVERS.map((s) => ({ ...s }));
+  const add = (v) => {
+    const url = normServer(v && typeof v === 'object' ? v.url : v);
+    if (!isServer(url) || list.some((s) => s.url === url)) return;
+    list.push({ url, name: (v && v.name) || '自定义' });
+  };
+  const custom = QYD.json(await cache.get('customServers'), []);
+  if (Array.isArray(custom)) custom.forEach(add);
+  add(await cache.get('server'));
+  return list;
+}
+
+/** Login state: the cookies the platform's login page set, else what was cached. */
+async function getToken() {
+  const servers = [await getServer()].concat((await allServers()).map((s) => s.url));
+  for (const s of servers) {
+    const t = (await cookie.getCookie(s, 'qttoken')) || '';
+    if (t) {
+      const d = (await cookie.getCookie(s, 'deviceId')) || '';
+      await cache.set('qttoken', t);
+      if (d) await cache.set('deviceId', d);
+      return { qttoken: t, deviceId: d };
+    }
+  }
+  return { qttoken: (await cache.get('qttoken')) || '', deviceId: (await cache.get('deviceId')) || '' };
+}
+
+async function authHeaders() {
+  const t = await getToken();
+  const h = { 'User-Agent': UA };
+  if (t.qttoken) h['Cookie'] = 'qttoken=' + t.qttoken + '; deviceId=' + t.deviceId + ';';
+  return h;
+}
+
+function parseJson(resp) {
+  if (!resp) return null;
+  const d = resp.data;
+  if (d && typeof d === 'object') return d;
+  return QYD.json(d, null);
+}
+
+function unwrap(j) {
+  if (j && typeof j === 'object' && !Array.isArray(j) && j.data !== undefined) return j.data;
+  return j;
+}
+
+/** GET of one platform url, other servers tried on a transport failure; the raw text goes to the debugger. */
+async function backendGet(url, debugType, opts) {
+  opts = opts || {};
+  const headers = await authHeaders();
+  const cur = await getServer();
+  const servers = [cur].concat((await allServers()).map((s) => s.url).filter((u) => u !== cur));
+  const tries = opts.retry === false ? [cur] : servers;
+  for (let i = 0; i < tries.length; i++) {
+    const u = i === 0 ? url : url.replace(cur, tries[i]);
+    let resp = null;
+    try {
+      resp = await http.Get(u, headers, true);
+    } catch (e) {}
+    const ok = resp && resp.statusCode >= 200 && resp.statusCode < 300 && resp.data != null && String(resp.data).length > 1;
+    if (ok) {
+      if (debugType != null) flutterBridge.text(debugType, String(resp.data).slice(0, 20000));
+      if (i > 0) {
+        await cache.set('server', tries[i]);
+        flutterBridge.showToast('线路已切换到：' + tries[i]);
+      }
+      return parseJson(resp);
+    }
+    if (resp && resp.statusCode >= 400 && resp.statusCode < 500) {
+      if (debugType != null) flutterBridge.text(debugType, String(resp.data || resp.statusMessage || ''));
+      return parseJson(resp) || { code: -1, msg: 'HTTP ' + resp.statusCode };
+    }
+    flutterBridge.log('请求失败 ' + (resp ? resp.statusCode + ' ' + resp.statusMessage : 'null') + ': ' + u);
+  }
+  return null;
+}
+
+function toBook(server, b) {
+  const src = sourceName(b.source);
+  const tab = b.tab || '小说';
+  const url = server + '/detail?book_id=' + b.book_id + '&source=' + enc(src) + '&tab=' + enc(tab);
+  return QYD.book({
+    bookUrl: url,
+    tocUrl: url,
+    name: purify(b.book_name),
+    author: b.author,
+    kind: [b.status, b.score && b.score !== '0' ? String(b.score).replace(/分$/, '') + '分' : '', b.tags || b.category, b.last_chapter_update_time],
+    coverUrl: b.thumb_url,
+    intro: b.abstract,
+    wordCount: b.word_number,
+    type: TYPE_OF_TAB[tab] || 0,
+    latestChapterTitle: src + ':' + (b.latest_chapter_title || b.last_chapter_title || ''),
+  });
+}
+
+function toBooks(server, j) {
+  let list = unwrap(j);
+  if (!Array.isArray(list)) list = [];
+  return list.filter((b) => b && b.book_id).map((b) => toBook(server, b));
+}
+
+/** `/sources/config`, cached for an hour: platforms by tier and the tabs each one serves. */
+async function sourcesConfig(server) {
+  const cached = QYD.json(await cache.get('sources_config'), null);
+  if (cached && cached.at && Date.now() - cached.at < 3600000 && cached.data) return cached.data;
+  const j = await backendGet(server + '/sources/config', null, { retry: false });
+  const d = unwrap(j);
+  if (d && d.modes) {
+    await cache.set('sources_config', JSON.stringify({ at: Date.now(), data: d }));
+    return d;
+  }
+  return cached && cached.data ? cached.data : { free: [], vip: [], svip: [], modes: {} };
+}
+
+function platformsOf(config, tab) {
+  const out = [];
+  for (const name of Object.keys(config.modes || {})) if ((config.modes[name] || []).indexOf(tab) >= 0) out.push(name);
+  return out;
+}
+
+function tabsOf(config) {
+  const seen = {};
+  for (const name of Object.keys(config.modes || {})) for (const t of config.modes[name] || []) seen[t] = true;
+  const tabs = DEFAULT_TABS.filter((t) => seen[t]);
+  return tabs.length ? tabs : ['小说'];
+}
+
+// ------------------------------------------------------------------ entry points
+
+async function search(key, page, env) {
+  const server = await getServer();
+  const sources = (await cache.get('sources')) || '全部';
+  const tab = (await cache.get('tab')) || '小说';
+  const url = server + '/search?title=' + enc(key) + '&page=' + (Number(page) || 1) + '&source=' + enc(sources) + '&tab=' + enc(tab) + '&disabled_sources=0';
+  const j = await backendGet(url, 0);
+  if (!j) {
+    flutterBridge.log('搜索失败：' + url);
+    return '[]';
+  }
+  if (j.code !== undefined && j.code !== 0 && j.msg) {
+    flutterBridge.showToast(String(j.msg));
+    return '[]';
+  }
+  if (Array.isArray(j.disabled_sources) && j.disabled_sources.length && (Number(page) || 1) === 1 && !j.cache) {
+    flutterBridge.log('未开通的平台：' + j.disabled_sources.join('、'));
+  }
+  return JSON.stringify(toBooks(server, j));
+}
+
+async function info(bookurl) {
+  const server = await getServer();
+  const j = await backendGet(bookurl, 1);
+  const d = unwrap(j);
+  if (!d || typeof d !== 'object' || !d.book_id) throw new Error('详情获取失败' + (j && j.msg ? '：' + j.msg : ''));
+  d.source = sourceName(d.source);
+  const tab = d.tab || '小说';
+  const t = await getToken();
+  let account = '未登录（发现页 → 登录 / 账户）';
+  if (t.qttoken) {
+    const u = parseJson(await http.Get(server + '/get_avatar', await authHeaders(), true));
+    account = u && (u.nickname || u.email) ? esc(u.nickname || u.email) + '（已登录）' : '登录已失效，请重新登录';
+  }
+  const rows = [
+    ['数据来源', d.source + ' · ' + tab],
+    ['状态', d.status], ['评分', d.score && d.score !== '0' ? d.score : ''], ['字数', d.word_number],
+    ['标签', d.tags || d.category], ['主角', d.role], ['最新章节', d.last_chapter_title || d.latest_chapter_title], ['更新时间', d.last_chapter_update_time],
+    ['线路', server], ['账户', account],
+  ].filter((r) => r[1]);
+  let intro = '@html:<div style="font-size:14px;line-height:1.8;opacity:.92"><table style="border-collapse:collapse;width:100%">' +
+    rows.map((r) => '<tr><td style="padding:2px 8px 2px 0;white-space:nowrap;opacity:.65">' + esc(r[0]) + '</td><td style="padding:2px 0">' + (r[0] === '账户' ? r[1] : esc(r[1])) + '</td></tr>').join('') +
+    '</table>';
+  if (d.abstract) intro += '<p style="margin:10px 0 0;text-indent:2em">' + esc(String(d.abstract)).replace(/\n+/g, '<br>') + '</p>';
+  if (d.copyright_info) intro += '<p style="margin:8px 0 0;font-size:12px;opacity:.55">' + esc(String(d.copyright_info)) + '</p>';
+  intro += '</div>';
+  return JSON.stringify(QYD.book({
+    bookUrl: bookurl,
+    name: purify(d.book_name),
+    author: d.author,
+    kind: [d.status, d.score && d.score !== '0' ? d.score + '分' : '', d.tags || d.category, d.last_chapter_update_time],
+    coverUrl: d.thumb_url,
+    intro: intro,
+    tocUrl: b64e(JSON.stringify({ book_id: d.book_id, source: d.source, tab: tab })),
+    wordCount: d.word_number,
+    type: TYPE_OF_TAB[tab] || 0,
+    latestChapterTitle: d.last_chapter_title || d.latest_chapter_title || '',
+  }));
+}
+
+async function chapter(tocUrl, bookurl) {
+  const server = await getServer();
+  const t = QYD.json(b64d(tocUrl), null);
+  if (!t || !t.book_id) throw new Error('目录地址无效，请先打开详情页');
+  const url = server + '/catalog?book_id=' + t.book_id + '&source=' + enc(sourceName(t.source)) + '&tab=' + enc(t.tab || '小说');
+  const j = await backendGet(url, 2);
+  const list = unwrap(j);
+  if (!Array.isArray(list)) throw new Error('目录获取失败' + (j && j.msg ? '：' + j.msg : ''));
+  return JSON.stringify(list.map((c, i) => QYD.chapter({
+    name: c.title,
+    chapterId: b64e(JSON.stringify({ item_id: c.item_id, source: sourceName(c.source || t.source), tab: c.tab || t.tab, book_id: t.book_id, chapter_title: c.title || '' })),
+    isPay: !!c.is_pay,
+    isVolume: !!c.is_volume,
+  }, i)));
+}
+
+function normTitle(v) {
+  return String(v || '').replace(/<[^>]*>/g, '').replace(/[\s　]+/g, '').toLowerCase();
+}
+
+function stripTitle(content, title) {
+  const text = String(content || '');
+  const want = normTitle(title);
+  if (!want) return text;
+  const m = text.match(/^\s*([^\n<]{1,120})\s*\n?/);
+  if (m && normTitle(m[1]) === want) return text.slice(m[0].length);
+  return text;
+}
+
+async function content(url, bookurl, index) {
+  const server = await getServer();
+  const c = QYD.json(b64d(url), null);
+  if (!c || typeof c !== 'object' || !c.item_id) throw new Error('章节地址无效');
+  c.source = sourceName(c.source);
+  c.tab = c.tab || '小说';
+  const u = server + '/content?item_id=' + enc(c.item_id) + '&source=' + enc(c.source) + '&tab=' + enc(c.tab) + '&version=5';
+  const j = await backendGet(u, 3);
+  if (!j || typeof j !== 'object') throw new Error('正文获取失败');
+  if (Number(j.code) !== 0) throw new Error('正文获取失败' + (j.msg ? '：' + j.msg : ''));
+  let result = j.content == null ? '' : String(j.content);
+  if (c.tab === '听书' || c.tab === '短剧') return result.trim();
+  if (c.tab === '小说') result = stripTitle(result, c.chapter_title || j.title || '');
+  return result;
+}
+
+// ------------------------------------------------------------------ discovery
+
+const FILTER_KEYS = { '线路': 'server', '类型': 'tab', '频道': 'source_type', '平台': 'explore_source', '搜索范围': 'sources' };
+
+async function applyFilter(title) {
+  const key = FILTER_KEYS[title];
+  let v = await cache.get(title);
+  if (!key || v == null || v === '') return;
+  if (title === '线路') {
+    v = normServer(v);
+    if (!isServer(v)) return;
+    await cache.remove('sources_config');
+  }
+  await cache.set(key, v);
+  if (title === '类型') {
+    const config = await sourcesConfig(await getServer());
+    const valid = platformsOf(config, v);
+    const cur = await cache.get('explore_source');
+    if (cur && valid.indexOf(cur) < 0) await cache.set('explore_source', valid[0] || '');
+  }
+  await flutterBridge.refreshExplore();
+}
+
+async function getfinds() {
+  const server = await getServer();
+  if ((await cache.get('server')) !== server) await cache.set('server', server);
+  const config = await sourcesConfig(server);
+  const tabs = tabsOf(config);
+  let tab = (await cache.get('tab')) || tabs[0];
+  if (tabs.indexOf(tab) < 0) tab = tabs[0];
+  const gender = (await cache.get('source_type')) || '男频';
+  const platforms = platformsOf(config, tab);
+  let platform = (await cache.get('explore_source')) || platforms[0] || '';
+  if (platforms.indexOf(platform) < 0) platform = platforms[0] || '';
+  const sources = (await cache.get('sources')) || '全部';
+  const servers = (await allServers()).map((s) => s.url);
+  const t = await getToken();
+  const all = [].concat(config.free || [], config.vip || [], config.svip || []);
+
+  const entries = [
+    QYD.explore.select('线路', servers, server, "applyFilter('线路')"),
+    QYD.explore.select('类型', tabs, tab, "applyFilter('类型')"),
+    QYD.explore.select('频道', ['男频', '女频'], gender, "applyFilter('频道')"),
+    QYD.explore.select('平台', platforms.length ? platforms : ['（无）'], platform || '（无）', "applyFilter('平台')"),
+    QYD.explore.select('搜索范围', ['全部'].concat(all), sources, "applyFilter('搜索范围')"),
+    QYD.explore.web(t.qttoken ? '账户中心' : '登录 / 账户', server + (t.qttoken ? '/user' : LOGIN_PATH), 1),
+  ];
+  if (!platform) {
+    entries.push(QYD.explore.title('后端没有提供' + tab + '的平台'));
+    return JSON.stringify(entries);
+  }
+  const j = await backendGet(server + '/discovestyle?source=' + enc(platform) + '&source_type=' + enc(gender) + '&tab=' + enc(tab), null);
+  const list = unwrap(j);
+  if (Array.isArray(list)) {
+    if (j.msg) flutterBridge.showToast(String(j.msg));
+    for (const it of list) {
+      if (!it || !it.title) continue;
+      const half = it.style && it.style.layout_flexBasisPercent === 0.45;
+      const url = String(it.url || '');
+      if (url) entries.push(QYD.explore.list(purify(it.title), url, half ? 1 : Number(it.width) || 0));
+      else entries.push(QYD.explore.title(purify(it.title)));
+    }
+  } else {
+    entries.push(QYD.explore.title('发现页获取失败' + (j && j.msg ? '：' + j.msg : '')));
+  }
+  return JSON.stringify(entries);
+}
+
+async function find(url, page) {
+  const server = await getServer();
+  url = String(url || '').replace('{{page}}', String(Number(page) || 1));
+  const j = await backendGet(url, 0);
+  if (!j) {
+    flutterBridge.log('发现失败：' + url);
+    return '[]';
+  }
+  if (j.code !== undefined && j.code !== 0 && j.msg) {
+    flutterBridge.showToast(String(j.msg));
+    return '[]';
+  }
+  return JSON.stringify(toBooks(server, j));
+}
+
+// ------------------------------------------------------------------ login / help
+
+async function getloginurl() {
+  return (await getServer()) + LOGIN_PATH;
+}
+
+async function login() {
+  await cache.remove('qttoken');
+  await cache.remove('deviceId');
+  await cache.remove('sources_config');
+  return '';
+}
+
+async function gethelp() {
+  const server = await getServer();
+  const t = await getToken();
+  let who = '未登录';
+  if (t.qttoken) {
+    const u = parseJson(await http.Get(server + '/get_avatar', await authHeaders(), true));
+    who = u && (u.nickname || u.email) ? esc(u.nickname || u.email) : '登录已失效';
+  }
+  const config = await sourcesConfig(server);
+  const tier = (names, label) => (names && names.length ? '<br>' + label + '：' + names.map(esc).join('、') : '');
+  return '@html:<div style="font-size:14px;line-height:1.8">' +
+    '<p><b>路易斯聚合</b></p>' +
+    '<p>线路：' + esc(server) + '<br>账户：' + who + tier(config.free, '免费平台') + tier(config.vip, '登录平台') + tier(config.svip, '会员平台') + '</p>' +
+    '<p>1. 发现页顶部的下拉框设置线路、类型、频道、平台和搜索范围，改完自动刷新。<br>' +
+    '2. 「登录 / 账户」打开平台登录页，登录后返回即可；会员平台需要在用户中心开通会员。<br>' +
+    '3. 搜索默认查询全部可用平台；在「搜索范围」里可以只查一个平台。</p>' +
+    '</div>';
+}
+
+/** Browsing in the app's web view: a 维基文库 work page becomes a book of this source. */
+async function shouldOverrideUrlLoading(url) {
+  url = String(url || '');
+  const m = url.match(/^https?:\/\/zh\.wikisource\.org\/wiki\/([^?#]+)/);
+  if (!m) return true;
+  let title = '';
+  try {
+    title = decodeURIComponent(m[1]).replace(/_/g, ' ').split('/')[0];
+  } catch (e) {
+    return true;
+  }
+  if (!title || title.indexOf(':') >= 0) return true;
+  const server = await getServer();
+  const target = server + '/detail?book_id=' + b64e(title).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_') + '&source=' + enc('维基文库') + '&tab=' + enc('小说');
+  flutterBridge.showToast('添加书籍到书架：' + title);
+  flutterBridge.addbook(target);
+  return false;
+}
+</script>
+</html>

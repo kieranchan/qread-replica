@@ -9,6 +9,7 @@ sdk/qyd-sdk.js            页面端 SDK：FlutterJSBridge / Http / Cache / Cooki
 build.mjs                 node build.mjs <name>  → <name>/dist/source.html + source.json（可直接导入）
 runner/                   桌面运行器：node runner/run.mjs --page <file|url> <命令>（无头 Chrome + CDP，Node 实现 App 的 handler）
 langge/                   大灰狼聚合书源 · qread 版（source.src.html + source.meta.json → dist/）
+luis/                     路易斯聚合（自己的平台 server/src/luis，同一协议）
 ```
 
 ## 导入书源
@@ -21,6 +22,11 @@ langge/                   大灰狼聚合书源 · qread 版（source.src.html +
    失败时用上次的副本）。
 2. 发现页顶部：线路 / 类型（小说·听书·短剧·漫画）/ 频道 / 平台 / 搜索范围 / 段评；「登录 / 账户」打开后端登录页，登录后返回。
 3. 书源 → 帮助 显示当前线路与账户；书源调试会显示每一步后端返回的原文（`text(type, …)`）。
+
+**路易斯聚合**（你自己的平台，后端在 `server/src/luis/`，见 [`../docs/LUIS.md`](../docs/LUIS.md)）：导入
+[`luis/dist/source.json`](luis/dist/source.json)（或托管版 [`luis/dist/source.hosted.json`](luis/dist/source.hosted.json)，页面在
+`https://qread.forfine.me/tsy/luis.html`）。「登录 / 账户」打开 `https://qread.forfine.me/luis/login`，账号与会员中心通用；平台列表
+（免费 / 登录 / 会员）由后端 `/luis/sources/config` 提供，新增适配器后 App 端无需改动。
 
 原版记录同样可以直接导入（复刻版已实现它用到的全部 handler）：
 `{"bookSourceUrl":"http://svip.langge.uk","bookSourceName":"大灰狼聚合书源","bookSourceGroup":"大灰狼-聚合","html":"http://svip.langge.uk/qydsy.html","login":true,"enabledExplore":true}`

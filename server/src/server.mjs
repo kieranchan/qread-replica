@@ -13,6 +13,7 @@ import { openDb } from './db.mjs';
 import { Service } from './service.mjs';
 import { createAutoBackups, createUserApi } from './userapi.mjs';
 import { createThemes } from './themes.mjs';
+import { createLuis } from './luis/api.mjs';
 import { VIP_HTML, VIP_JS } from './pages.mjs';
 import { ApiError, CODE, RateLimiter, readBody, parseMultipart } from './util.mjs';
 
@@ -27,6 +28,8 @@ export function createApp(overrides = {}) {
   const api = createUserApi(svc, cfg, limiter);
   const autoBackups = createAutoBackups(svc);
   const themes = createThemes(db);
+  // 路易斯 aggregation platform under /luis (overrides.luisAdapters: an adapter list, or db => list, for tests)
+  const luis = createLuis({ db, cfg, svc, limiter, adapters: typeof overrides.luisAdapters === 'function' ? overrides.luisAdapters(db) : overrides.luisAdapters });
   const startedAt = Date.now();
 
   function clientIp(req) {
@@ -76,6 +79,10 @@ export function createApp(overrides = {}) {
     const ip = clientIp(req);
     let status = 200;
     try {
+      if (pathname === '/luis' || pathname.startsWith('/luis/')) {
+        status = await luis.handle(req, res, url, pathname, ip);
+        return;
+      }
       // ---- static / pages ----
       if (req.method === 'GET' || req.method === 'HEAD') {
         if (pathname === '/healthz') return send(res, 200, { ok: true, users: db.prepare('SELECT COUNT(*) AS n FROM users').get().n, uptime: Math.round((Date.now() - startedAt) / 1000) });
@@ -180,7 +187,7 @@ export function createApp(overrides = {}) {
   server.requestTimeout = 60_000;
   server.headersTimeout = 20_000;
   server.keepAliveTimeout = 5_000;
-  return { server, svc, db, cfg, close: () => new Promise((r) => server.close(() => { db.close(); r(); })) };
+  return { server, svc, db, cfg, luis, close: () => new Promise((r) => server.close(() => { db.close(); r(); })) };
 }
 
 const isMain = process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));

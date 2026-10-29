@@ -9,6 +9,8 @@ import { openDb } from './db.mjs';
 import { Service } from './service.mjs';
 import { fmtDate } from './util.mjs';
 import { parseUpdate, updateFile } from './userapi.mjs';
+import { libraryAdapter, decodeText } from './luis/adapters/library.mjs';
+import { ensureLuisSchema } from './luis/engine.mjs';
 
 const HELP = `qread admin
   create-user <username> <email> [--password P | --random] [--days N]
@@ -22,7 +24,9 @@ const HELP = `qread admin
   add-category <name>
   add-theme --name N [--category C] [--zip F] [--layout F] [--image F] [--author A] [--mode day|night] [--version V] [--desc T] [--id ID]
   set-static <down|qq|browser> <file>
-  set-source <name> <file.html> | list-sources      host a 时光源 page at <base>/tsy/<name>.html (sources/<name>/dist/source.html) | set-static browser <file.html>   (browser: the 阅读模式 parser page, served at /static/browser.html)
+  set-source <name> <file.html> | list-sources      host a 时光源 page at <base>/tsy/<name>.html (sources/<name>/dist/source.html)
+  luis-add-book <file.txt> --name N [--author A] [--intro T] [--tags T] [--category C] [--cover URL] [--status S]
+                                 路易斯书库 (members): a TXT split into chapters;  luis-list-books | luis-remove-book <id> | luis-cache-clear | set-static browser <file.html>   (browser: the 阅读模式 parser page, served at /static/browser.html)
   set-update <file.json> | set-update --clear | show-update
                                  release for check_update: {"version":"1.0.1","build":2,"notes":"…","url":"https://…","platform":"ios"}
 `;
@@ -170,6 +174,42 @@ export function run(argv, { cfg = loadConfig(), out = console.log } = {}) {
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(path.join(dir, `${a[0]}.html`), text);
         out(`${cfg.baseUrl}/tsy/${a[0]}.html`);
+        break;
+      }
+      case 'luis-add-book': {
+        if (!a[0] || !opt.name) throw new Error('luis-add-book <file.txt> --name N [--author A] [--intro T] [--tags T] [--category C] [--cover URL] [--status S]');
+        ensureLuisSchema(db);
+        const lib = libraryAdapter(db);
+        const r = lib.add({
+          name: String(opt.name),
+          author: String(opt.author ?? ''),
+          intro: String(opt.intro ?? ''),
+          tags: String(opt.tags ?? ''),
+          category: String(opt.category ?? ''),
+          cover: String(opt.cover ?? ''),
+          status: String(opt.status ?? '已完结'),
+          text: decodeText(fs.readFileSync(a[0])),
+        });
+        db.prepare("DELETE FROM luis_cache WHERE key LIKE 'search:%' OR key LIKE 'discoverList:%'").run();
+        out(`book ${r.id}: ${opt.name}, ${r.chapters} chapters, ${r.words} chars`);
+        break;
+      }
+      case 'luis-list-books': {
+        const rows = libraryAdapter(db).list();
+        out(rows.length ? rows.map((b) => `${b.id}\t${b.name}\t${b.author}\t${b.chapters} chapters\t${b.word_count} chars`).join('\n') : '(none)');
+        break;
+      }
+      case 'luis-remove-book': {
+        if (!a[0]) throw new Error('luis-remove-book <id>');
+        ensureLuisSchema(db);
+        const n = libraryAdapter(db).remove(a[0]);
+        db.prepare('DELETE FROM luis_cache').run();
+        out(n ? 'removed' : 'no such book');
+        break;
+      }
+      case 'luis-cache-clear': {
+        ensureLuisSchema(db);
+        out(`cleared ${db.prepare('DELETE FROM luis_cache').run().changes} entries`);
         break;
       }
       case 'list-sources': {
