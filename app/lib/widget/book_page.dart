@@ -222,7 +222,12 @@ abstract class BookApiPage<T extends StatefulWidget> extends BasePage<T> {
       ),
     );
     if (ok != true) return null;
-    final stored = await BookSelfN.add(Book.fromJson(book.toJson())..bookgroup = group);
+    // a book new to the shelf takes the 阅读设置 default 替换净化 (0x5abd64 in the detail page reads the global `useReplaceRule`
+    // preference, 0x53d688); books already on the shelf keep their own switch
+    final copy = Book.fromJson(book.toJson())
+      ..bookgroup = group
+      ..useReplaceRule = book.useReplaceRule || Storage.getBool('useReplaceRule', false);
+    final stored = await BookSelfN.add(copy);
     if (group.isNotEmpty) await BookSelfN.setGroup(stored.bookUrl, group);
     Toast.show('操作成功');
     return stored;
