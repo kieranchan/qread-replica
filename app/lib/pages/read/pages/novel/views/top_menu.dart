@@ -150,8 +150,10 @@ abstract class TopMenuActions {
     Toast.show('操作成功');
   }
 
+  /// 替换净化 of this book (0x10e866c): the switch is kept on the shelf like `useai`, else it was lost at the next launch.
   static Future<void> replacePurify(BuildContext context, ReaderHost host) async {
     host.book.useReplaceRule = !host.book.useReplaceRule;
+    await BookSelfN.setUseReplaceRule(host.book.bookUrl, host.book.useReplaceRule);
     Toast.show(host.book.useReplaceRule ? '已开启替换净化' : '已关闭替换净化');
     await host.reloadChapter();
   }

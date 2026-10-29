@@ -104,6 +104,11 @@ AI 对话「问点什么…」；主题编辑器的配色分组、恢复默认�
 - 多角色朗读：朗读引擎「新增 → 多角色引擎」在没有配置 AI 模型时提示「多角色引擎需要ai支持，请先配置ai接口」并不进入编辑页，
   与原版文案一致；真正的分角色朗读需要 AI 接口，未配置，不再往下测。
 - 两条测试规则测完已删除。
+- ⑦ 装机复测（d284b47）：打开阅读设置「替换净化」默认开关后从搜索加入《诡秘之主》，拉出书架文件（`Documents/item/<md5("bookself")>.txt`，
+  `pymobiledevice3 apps pull`）：新书 `useReplaceRule = true`，原有三本仍为 false；阅读器「更多 → 替换净化」第一下提示「已关闭替换净化」。
+- ⑧ 顺带发现：阅读器「更多 → 替换净化」只改了内存里的 Book，没有像「Ai净化」那样写回书架（`BookSelfN.setUseReplaceRule` 有定义无调用），
+  重启后开关复原（《斩神》早先打开过，书架文件里仍是 false）→ `TopMenuActions.replacePurify` 现在写回书架
+  （`test/reader_ui/replace_purify_toggle_test.dart`）。
 
 ## 核对后确认已有（字符串核对的误报，措辞不同）
 
