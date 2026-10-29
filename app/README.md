@@ -49,6 +49,12 @@ newer copy at `static/browser.html` (`node tools/browser_page.mjs` in `../server
 app fetches it at start-up and prefers it, so the parser can change without a new build. Checked against a real 笔趣阁 catalog
 page in a browser harness (171 chapters, clean text); `node --test test/js/browser_source_test.mjs` covers the pure helpers.
 
+仿真翻页(IOS原生) (2026-10-29): as the original, a UIKit page view with the page-curl transition (`packages/apple_book_curl`, a local
+plugin: `UIPageViewController` behind platform view `com.newread/apple_book_view`, channel `com.newread/apple_book_<id>`) shows
+pictures of the previous / current / next screen that `pages/read/pages/novel/apple_book.dart` paints under the view and sends as
+PNG; the view reports finished curls and taps. Header / footer stay the Flutter overlay; vertical pulls and text selection are not
+available in that mode (as in the original). Host test: `test/reader_ui/apple_book_pager_test.dart` (fake view + mocked channel).
+
 Not available (pages keep the original strings and say so): Baidu/Weiyun drives (vendor credentials), the Edge voice (its client
 token is not copied). The update check (关于 page and main-page start-up) asks the owner's server, which
 answers from `qread-admin set-update`.

@@ -77,6 +77,9 @@ dependencies:
   package_info_plus: ^10.2.2
   sherpa_onnx: 1.13.8
   flutter_inappwebview: ^6.1.5
+  # iOS page-curl page view of the reader's 仿真翻页(IOS原生) (local plugin, packages/apple_book_curl)
+  apple_book_curl:
+    path: packages/apple_book_curl
 
 # flutter_html 3.0.0 calls a function that html 0.15.7 removed (`matches`); pin the last version that has it.
 dependency_overrides:

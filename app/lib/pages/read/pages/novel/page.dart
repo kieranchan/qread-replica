@@ -3,7 +3,7 @@
 // Original: `_ReadPageState` (page.dart, "动画完成处理错误: ") for 左右平移 / 上下平移 / 无动画, `_ReadCoverState` (cover.dart) for 左右覆盖,
 // `_FlipPageState` (filp.dart) for 仿真翻页 — a picture of the page rolled like a cylinder by `PageFlipEffect` — and `_BookPageState`
 // (book.dart) for 模拟翻书 — the page corner follows the finger (`PaperPoint`, `BookCurl`). The iOS native curl of `_AppleBookPageState`
-// (apple_book.dart, a UIKit page view) has no Flutter counterpart and uses the 模拟翻书 corner curl.
+// (apple_book.dart, a UIKit page view) is `AppleBookPager` in apple_book.dart; off iOS that mode uses the 模拟翻书 corner curl here.
 //
 // One widget drives all modes: a drag (or [NovelPagerController.turn]) moves an animation from 0 to 1 and the mode decides how the
 // current and the neighbouring screen are drawn at that point; in the corner-curl modes the touch point itself is animated.
@@ -18,13 +18,26 @@ import '../../../../widget/bookfx/book_painter.dart';
 import '../../../../widget/bookfx/model/paper_point.dart';
 import '../../../../widget/pageflip/effects/flip_effect.dart';
 
+/// What a pager offers the [NovelPagerController]: this Flutter pager, or the native iOS page view (apple_book.dart).
+abstract class PagerDriver {
+  Future<bool> turn(int delta);
+  bool get isAnimating;
+}
+
 class NovelPagerController {
   _NovelPagerState? _state;
 
-  /// Turns one screen forward (1) or back (-1) with the current animation. False when there is nothing in that direction.
-  Future<bool> turn(int delta) async => await _state?._turn(delta) ?? false;
+  /// Set by a pager other than [NovelPager] (the 仿真翻页(IOS原生) view) while it is on screen.
+  PagerDriver? driver;
 
-  bool get isAnimating => _state?._dir != 0;
+  /// Turns one screen forward (1) or back (-1) with the current animation. False when there is nothing in that direction.
+  Future<bool> turn(int delta) async {
+    final d = driver;
+    if (d != null) return d.turn(delta);
+    return await _state?._turn(delta) ?? false;
+  }
+
+  bool get isAnimating => driver?.isAnimating ?? (_state?._dir != 0);
 }
 
 class NovelPager extends StatefulWidget {

@@ -1,0 +1,18 @@
+name: apple_book_curl
+description: "iOS page-curl page view (UIPageViewController) behind the reader's 仿真翻页(IOS原生): a platform view and a method channel, no Dart API of its own."
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.9.0
+  flutter: ">=3.22.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      ios:
+        pluginClass: AppleBookCurlPlugin

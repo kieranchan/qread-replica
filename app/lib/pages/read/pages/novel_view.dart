@@ -47,6 +47,7 @@ import '../../../widget/note_sheet.dart';
 import '../../replace/replace_rule_edit.dart';
 import '../read_aloud.dart';
 import '../reader_speaker.dart';
+import 'novel/apple_book.dart';
 import 'novel/content.dart';
 import 'novel/list.dart';
 import 'novel/page.dart';
@@ -1169,6 +1170,25 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
         onTap: _onTap,
         onTopChanged: _onListTop,
         onEdge: _onListEdge,
+      );
+    }
+    if (_setting.turn == TurnMode.appleBook && AppleBookPager.supported) {
+      // 仿真翻页(IOS原生): the UIKit page view; the header / footer stay a Flutter overlay as in the other paged modes
+      return Stack(
+        children: [
+          Positioned.fill(
+            child: AppleBookPager(
+              controller: _pager,
+              paperColor: config.backgroundColor,
+              pageBuilder: (d) => _screen(d, config),
+              canTurn: _canTurn,
+              onTurned: _turned,
+              onBlocked: _blocked,
+              onTap: _onTap,
+            ),
+          ),
+          Positioned.fill(child: _statusBars(config)),
+        ],
       );
     }
     return Stack(
