@@ -86,6 +86,16 @@ function field(text, label, max) {
 function cleanAuthor(a) {
   return squeeze(a).replace(/^作\s*[者家]\s*[:：]?\s*/, '').replace(/^著\s*[:：]?\s*/, '').split(/[/／|｜丨,，、]/)[0].replace(/\s*著$/, '').trim();
 }
+// the book's word count: a labelled 字数, else the first 「n万字」 of the page (the book's own line comes before the recommendations)
+function pickWords(text) {
+  var w = field(text, '字\\s*数', 12);
+  if (w && !/\d/.test(w)) w = '';
+  if (!w) {
+    var m = (text || '').match(/(\d+(?:\.\d+)?)\s*万\s*字/);
+    if (m) w = m[1] + '万字';
+  }
+  return w;
+}
 function cleanIntro(s) {
   var t = (s || '').replace(/(?:&nbsp;| )+/g, ' ').replace(/[ \t　]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
   t = t.replace(/\s*([。！？!?…]+[”」』\]\}\)）】〗〕〉]?)\s*/g, '$1\n').replace(/\n{2,}/g, '\n').trim();
@@ -291,8 +301,7 @@ async function getinfo(html, bookurl) {
     var kind = meta(doc, ['meta[property$="category"]', 'meta[name$="category"]']) || field(text, '(?:分\\s*类|类\\s*[型别])', 12);
     var status = meta(doc, ['meta[property$="status"]', 'meta[name$="status"]']) || field(text, '状\\s*态', 8);
     // the detail page shows wordCount as 「n万字」: the page's 字数 when it has one, else the status as the original's page did
-    var words = field(text, '字\\s*数', 12);
-    if (words && !/\d/.test(words)) words = '';
+    var words = pickWords(text);
     var latest = pickLatest(doc, rawText);
 
     var intro = meta(doc, ['meta[property="og:description"]', 'meta[property$="description"]', 'meta[name="description"]']);
