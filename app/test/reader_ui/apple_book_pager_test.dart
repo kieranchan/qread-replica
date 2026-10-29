@@ -63,7 +63,14 @@ class _BookState extends State<_Book> {
       );
 }
 
-bool _isPng(Object? v) => v is Uint8List && v.length > 8 && v[0] == 0x89 && v[1] == 0x50 && v[2] == 0x4e && v[3] == 0x47;
+/// A picture message: raw RGBA of width x height device pixels.
+bool _isPic(Object? v) {
+  if (v is! Map) return false;
+  final w = v['width'], h = v['height'], b = v['bytes'];
+  return w is int && h is int && w > 0 && h > 0 && b is Uint8List && b.length == w * h * 4;
+}
+
+Map<Object?, Object?> _args(MethodCall c) => Map<Object?, Object?>.from(c.arguments as Map);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -85,7 +92,7 @@ void main() {
     if (until != null) fail('condition not reached; calls: ${calls.map((c) => c.method).toList()}');
   }
 
-  bool sentOthers() => calls.any((c) => c.method == 'updateOtherTextures');
+  bool sentPics() => calls.any((c) => c.method == 'updateTextures');
 
   setUp(() {
     calls = [];
@@ -103,30 +110,24 @@ void main() {
     final controller = NovelPagerController();
     final turned = <int>[], blocked = <int>[], taps = <(Offset, Size)>[];
     await t.pumpWidget(MaterialApp(home: _Book(controller: controller, turned: turned, blocked: blocked, taps: taps)));
-    await settle(t, sentOthers);
+    await settle(t, sentPics);
     expect(AppleBookPager.qaTapHook, isNotNull);
-    final cur = calls.where((c) => c.method == 'updateCurrentTexture').toList();
-    final others = calls.where((c) => c.method == 'updateOtherTextures').toList();
-    expect(cur, isNotEmpty);
-    expect(_isPng((cur.last.arguments as Map)['image']), isTrue);
-    expect(others, isNotEmpty);
-    final o = Map<Object?, Object?>.from(others.last.arguments as Map);
-    expect(_isPng(o['prev']), isTrue);
-    expect(_isPng(o['next']), isTrue);
+    // the first run sends all three pictures
+    final first = _args(calls.firstWhere((c) => c.method == 'updateTextures'));
+    expect(first.keys.toSet(), {'prev', 'cur', 'next'});
+    expect(first.values.every(_isPic), isTrue);
     expect(controller.driver, isNotNull);
 
-    // the view finished a forward curl
+    // the view finished a forward curl: it shifted its own pictures, only the new next page is sent
     calls.clear();
     await fromNative('pageTurned', {'delta': 1});
-    await settle(t, sentOthers);
+    await settle(t, sentPics);
     expect(turned, [1]);
     expect(find.text('page 3'), findsOneWidget);
-    // the view shifted its own pictures: only the new next page is sent (the previous one is the old current page it already holds)
-    final after = calls.where((c) => c.method == 'updateOtherTextures').map((c) => Map<Object?, Object?>.from(c.arguments as Map)).toList();
-    expect(after, isNotEmpty);
-    expect(after.every((m) => !m.containsKey('prev')), isTrue);
-    expect(_isPng(after.last['next']), isTrue);
-    expect(calls.where((c) => c.method == 'updateCurrentTexture'), isEmpty);
+    final after = calls.where((c) => c.method == 'updateTextures').map(_args).toList();
+    expect(after.length, 1);
+    expect(after.single.keys.toSet(), {'next'});
+    expect(_isPic(after.single['next']), isTrue);
 
     // at the last page there is no next page: the view dropped it itself when it shifted its pictures, so nothing is sent
     calls.clear();
@@ -134,21 +135,27 @@ void main() {
     await settle(t);
     expect(find.text('page 4'), findsOneWidget);
     expect(turned, [1, 1]);
-    for (final c in calls.where((c) => c.method == 'updateOtherTextures')) {
-      expect(Map<Object?, Object?>.from(c.arguments as Map)['next'], isNull);
-    }
-    expect(calls.where((c) => c.method == 'updateCurrentTexture'), isEmpty);
+    expect(calls.where((c) => c.method == 'updateTextures'), isEmpty);
     // a turn past the end is refused before the view is asked
     expect(await controller.turn(1), isFalse);
     expect(blocked, [1]);
     expect(calls.where((c) => c.method == 'animateToNext'), isEmpty);
+
+    // back: the view shifted the other way, the new previous page is sent
+    calls.clear();
+    await fromNative('pageTurned', {'delta': -1});
+    await settle(t, sentPics);
+    expect(find.text('page 3'), findsOneWidget);
+    final back = calls.where((c) => c.method == 'updateTextures').map(_args).toList();
+    expect(back.single.keys.toSet(), {'prev'});
+    expect(_isPic(back.single['prev']), isTrue);
   });
 
   testWidgets('taps go to the reader; the controller turns through the view; blocked turns and missing pages', (t) async {
     final controller = NovelPagerController();
     final turned = <int>[], blocked = <int>[], taps = <(Offset, Size)>[];
     await t.pumpWidget(MaterialApp(home: _Book(controller: controller, turned: turned, blocked: blocked, taps: taps)));
-    await settle(t, sentOthers);
+    await settle(t, sentPics);
     await fromNative('tap', {'x': 200.0, 'y': 300.0, 'width': 400.0, 'height': 800.0});
     expect(taps.single, (const Offset(200, 300), const Size(400, 800)));
     // the QA driver's way in (global position -> the pager's own coordinates)

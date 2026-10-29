@@ -3,12 +3,16 @@
 // screen; this widget paints the three screens under the native view, takes their pictures and sends them, and the view reports
 // finished turns and taps. Original protocol: UiKitView `com.newread/apple_book_view` (0x7bc778), channel
 // `com.newread/apple_book_<id>` (0xc6cfdc) with updateCurrentTexture / updateOtherTextures / setCanGoPrevious / animateToNext /
-// animateToPrevious and the view's turn callback; the pictures were pixel buffers (`PageTextureEntry`), here PNG bytes.
+// animateToPrevious and the view's turn callback; the pictures were pixel buffers (`PageTextureEntry`) — here too: raw RGBA at the
+// device pixel ratio (no PNG round trip: encoding and decoding a 1320x2868 page cost hundreds of milliseconds on the main thread
+// and was felt as a stutter at the start of every curl).
 //
-// The finger-following curl and its release are the page view controller's own; a finished curl comes back as `pageTurned {delta}`
-// and the position moves then (as `NovelPager.onTurned`). Taps come back as `tap` and go through the reader's tap zones
-// (`onTap`), which turn pages with [NovelPagerController.turn] -> `animateToNext` / `animateToPrevious`. Vertical pulls (bookmark,
-// leave) and text selection are not available in this mode, as in the original.
+// What is sent and when: only the pictures the view does not hold. After a turn the view shifts its own pictures (the old next
+// page is the current one now), so only the new far neighbour is painted and sent; a rebuild from the reader (settings, chapter
+// loaded) marks all three. The finger-following curl and its release are the page view controller's own; a finished curl comes
+// back as `pageTurned {delta}` and the position moves then (as `NovelPager.onTurned`). Taps come back as `tap` and go through the
+// reader's tap zones (`onTap`), which turn pages with [NovelPagerController.turn] -> `animateToNext` / `animateToPrevious`.
+// Vertical pulls (bookmark, leave) and text selection are not available in this mode, as in the original.
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -46,6 +50,9 @@ class AppleBookPager extends StatefulWidget {
   /// Whether the native page view exists on this platform (iOS); tests switch it on with a fake [platformView].
   static bool supported = !kIsWeb && Platform.isIOS;
 
+  /// Timing of every picture in the log (`[apple_book] …`), read on the phone with `syslog live -pn Runner`.
+  static bool verbose = true;
+
   /// The native view; tests replace it with a widget that calls [onCreated] itself.
   static Widget Function(Map<String, Object?> params, void Function(int id) onCreated) platformView = (params, onCreated) => UiKitView(
         viewType: curl.viewType,
@@ -64,19 +71,47 @@ class AppleBookPager extends StatefulWidget {
   State<AppleBookPager> createState() => _AppleBookPagerState();
 }
 
+/// A picture of one screen: raw RGBA, [width] x [height] device pixels.
+class _Pic {
+  final Uint8List bytes;
+  final int width;
+  final int height;
+  final int hash;
+  _Pic(this.bytes, this.width, this.height) : hash = _hashOf(bytes);
+
+  Map<String, Object?> toMessage() => {'width': width, 'height': height, 'bytes': bytes};
+
+  /// A cheap fingerprint (length and sampled bytes); never 0 (0 = no picture).
+  static int _hashOf(Uint8List b) {
+    var h = b.length;
+    final step = b.length < 4096 ? 1 : b.length ~/ 4096;
+    for (var i = 0; i < b.length; i += step) {
+      h = (h * 31 + b[i]) & 0x3fffffff;
+    }
+    return h == 0 ? 1 : h;
+  }
+}
+
 class _AppleBookPagerState extends State<AppleBookPager> implements PagerDriver {
-  final GlobalKey _prevKey = GlobalKey(debugLabel: 'apple-prev');
-  final GlobalKey _curKey = GlobalKey(debugLabel: 'apple-cur');
-  final GlobalKey _nextKey = GlobalKey(debugLabel: 'apple-next');
+  static const List<String> _slotNames = ['prev', 'cur', 'next'];
+
+  final List<GlobalKey> _keys = [GlobalKey(debugLabel: 'apple-prev'), GlobalKey(debugLabel: 'apple-cur'), GlobalKey(debugLabel: 'apple-next')];
   MethodChannel? _channel;
   bool _animating = false;
   Timer? _animTimer;
   bool _syncScheduled = false;
   bool _syncing = false;
   bool _syncAgain = false;
+  Completer<void>? _syncDone;
 
-  /// Hashes of the pictures the view holds (previous, current, next); 0 = no page, -1 = nothing sent yet.
+  /// Fingerprints of the pictures the view holds (previous, current, next); 0 = no page there, -1 = nothing sent yet.
   final List<int> _sent = [-1, -1, -1];
+
+  /// Slots whose picture must be taken again.
+  final List<bool> _dirty = [true, true, true];
+
+  /// The next rebuild comes from our own `onTurned` (the dirty slots are already set, the others are unchanged).
+  bool _turnRebuild = false;
 
   @override
   void initState() {
@@ -99,7 +134,12 @@ class _AppleBookPagerState extends State<AppleBookPager> implements PagerDriver 
       widget.controller?.driver = this;
     }
     if (old.paperColor != widget.paperColor) unawaited(_channel?.invokeMethod('setPaperColor', {'color': widget.paperColor.toARGB32()}));
-    // a rebuild from the reader: the pages may have changed (turned, chapter loaded, settings)
+    if (_turnRebuild) {
+      _turnRebuild = false;
+    } else {
+      // a rebuild from the reader: the pages may have changed (chapter loaded, settings, jump)
+      _dirty.fillRange(0, 3, true);
+    }
     _scheduleSync();
   }
 
@@ -130,12 +170,17 @@ class _AppleBookPagerState extends State<AppleBookPager> implements PagerDriver 
       widget.onTurned(delta);
       return true;
     }
-    if (_sent[delta > 0 ? 2 : 0] <= 0) await _scheduleSync(); // the view has no picture of that page yet
+    final slot = delta > 0 ? 2 : 0;
+    if (_sent[slot] <= 0) {
+      // the view has no picture of that page yet
+      _dirty[slot] = true;
+      await _scheduleSync();
+    }
     _startAnimating();
     try {
       await c.invokeMethod(delta > 0 ? 'animateToNext' : 'animateToPrevious');
     } catch (e) {
-      debugPrint('apple_book animate: $e');
+      debugPrint('[apple_book] animate: $e');
       _stopAnimating();
       widget.onTurned(delta);
     }
@@ -160,6 +205,7 @@ class _AppleBookPagerState extends State<AppleBookPager> implements PagerDriver 
     _channel?.setMethodCallHandler(null);
     _channel = MethodChannel(curl.channelName(id))..setMethodCallHandler(_onCall);
     _sent.fillRange(0, 3, -1);
+    _dirty.fillRange(0, 3, true);
     _scheduleSync();
   }
 
@@ -170,16 +216,19 @@ class _AppleBookPagerState extends State<AppleBookPager> implements PagerDriver 
         final delta = (args['delta'] as num?)?.toInt() ?? 0;
         _stopAnimating();
         if (delta == 0 || !mounted || !widget.canTurn(delta)) return null;
-        // the view shifted its pictures the same way
+        // the view shifted its pictures the same way: only the new far neighbour has to be painted
         if (delta > 0) {
           _sent[0] = _sent[1];
           _sent[1] = _sent[2];
           _sent[2] = 0;
+          _dirty[2] = true;
         } else {
           _sent[2] = _sent[1];
           _sent[1] = _sent[0];
           _sent[0] = 0;
+          _dirty[0] = true;
         }
+        _turnRebuild = true;
         widget.onTurned(delta);
         _scheduleSync();
         return null;
@@ -190,6 +239,7 @@ class _AppleBookPagerState extends State<AppleBookPager> implements PagerDriver 
           // the view had no picture of that page (not sent yet): turn without the animation and send the pictures again
           widget.onTurned(delta);
           _sent.fillRange(0, 3, -1);
+          _dirty.fillRange(0, 3, true);
           _scheduleSync();
         } else if (delta != 0) {
           widget.onBlocked?.call(delta);
@@ -206,8 +256,6 @@ class _AppleBookPagerState extends State<AppleBookPager> implements PagerDriver 
 
   // ------------------------------------------------------------------ pictures
 
-  Completer<void>? _syncDone;
-
   /// Takes the pictures after the next frame (so that the screens are painted) and sends what changed; the future completes when
   /// that run (and any run it queued) is over.
   Future<void> _scheduleSync() {
@@ -223,13 +271,17 @@ class _AppleBookPagerState extends State<AppleBookPager> implements PagerDriver 
     return done.future;
   }
 
-  /// Sends the view the pictures it does not have yet (previous / current / next; null = no page in that direction).
+  void _finishSync() {
+    final done = _syncDone;
+    _syncDone = null;
+    done?.complete();
+  }
+
+  /// Sends the view the pictures of the dirty slots that differ from what it holds (null = no page in that direction).
   Future<void> _sync() async {
     final c = _channel;
     if (c == null || !mounted) {
-      final done = _syncDone;
-      _syncDone = null;
-      done?.complete();
+      _finishSync();
       return;
     }
     if (_syncing) {
@@ -239,68 +291,54 @@ class _AppleBookPagerState extends State<AppleBookPager> implements PagerDriver 
     _syncing = true;
     try {
       final ratio = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
-      final pics = <int, Uint8List?>{};
-      for (final d in const [-1, 0, 1]) {
-        if (d != 0 && !widget.canTurn(d)) {
-          pics[d] = null;
-          continue;
-        }
-        pics[d] = await _capture(d == -1 ? _prevKey : (d == 0 ? _curKey : _nextKey), ratio);
+      final message = <String, Object?>{};
+      for (var i = 0; i < 3; i++) {
+        if (!_dirty[i]) continue;
+        final d = i - 1;
+        _Pic? pic;
+        if (d == 0 || widget.canTurn(d)) pic = await _capture(_keys[i], ratio, _slotNames[i]);
+        if (!mounted || _channel == null) return;
+        _dirty[i] = false;
+        final hash = pic?.hash ?? 0;
+        if (hash == _sent[i]) continue;
+        message[_slotNames[i]] = pic?.toMessage();
+        _sent[i] = hash;
       }
-      if (!mounted || _channel == null) return;
-      final cur = _hash(pics[0]);
-      if (cur != _sent[1] && pics[0] != null) {
-        await c.invokeMethod('updateCurrentTexture', {'image': pics[0]});
-        _sent[1] = cur;
+      if (message.isNotEmpty) {
+        final sw = Stopwatch()..start();
+        await c.invokeMethod('updateTextures', message);
+        if (AppleBookPager.verbose) debugPrint('[apple_book] sent ${message.keys.join(',')} in ${sw.elapsedMilliseconds} ms');
       }
-      final others = <String, Object?>{};
-      final prev = _hash(pics[-1]), next = _hash(pics[1]);
-      if (prev != _sent[0]) {
-        others['prev'] = pics[-1];
-        _sent[0] = prev;
-      }
-      if (next != _sent[2]) {
-        others['next'] = pics[1];
-        _sent[2] = next;
-      }
-      if (others.isNotEmpty) await c.invokeMethod('updateOtherTextures', others);
     } catch (e) {
-      debugPrint('apple_book sync: $e');
+      debugPrint('[apple_book] sync: $e');
     } finally {
       _syncing = false;
       if (_syncAgain) {
         _syncAgain = false;
         unawaited(_sync());
       } else {
-        final done = _syncDone;
-        _syncDone = null;
-        done?.complete();
+        _finishSync();
       }
     }
   }
 
-  /// PNG of the screen painted under [key] (null when it has no size yet).
-  Future<Uint8List?> _capture(GlobalKey key, double ratio) async {
+  /// The screen painted under [key] as raw RGBA at [ratio] device pixels per logical pixel (null when it has no size yet).
+  Future<_Pic?> _capture(GlobalKey key, double ratio, String name) async {
     final ro = key.currentContext?.findRenderObject();
     if (ro is! RenderRepaintBoundary || !ro.hasSize || ro.size.isEmpty) return null;
+    final sw = Stopwatch()..start();
     final img = await ro.toImage(pixelRatio: ratio);
+    final raster = sw.elapsedMilliseconds;
     try {
-      final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
-      return bytes?.buffer.asUint8List();
+      final bytes = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (bytes == null) return null;
+      if (AppleBookPager.verbose) {
+        debugPrint('[apple_book] $name ${img.width}x${img.height} raster $raster ms, read ${sw.elapsedMilliseconds - raster} ms');
+      }
+      return _Pic(bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes), img.width, img.height);
     } finally {
       img.dispose();
     }
-  }
-
-  /// A cheap fingerprint of a picture (length and sampled bytes); 0 for no picture.
-  static int _hash(Uint8List? b) {
-    if (b == null || b.isEmpty) return 0;
-    var h = b.length;
-    final step = b.length < 512 ? 1 : b.length ~/ 512;
-    for (var i = 0; i < b.length; i += step) {
-      h = (h * 31 + b[i]) & 0x3fffffff;
-    }
-    return h == 0 ? 1 : h;
   }
 
   @override
@@ -308,9 +346,9 @@ class _AppleBookPagerState extends State<AppleBookPager> implements PagerDriver 
     final params = <String, Object?>{'paperColor': widget.paperColor.toARGB32()};
     return Stack(fit: StackFit.expand, children: [
       // the three screens are painted under the native view so that their pictures can be taken
-      RepaintBoundary(key: _prevKey, child: widget.canTurn(-1) ? widget.pageBuilder(-1) : const SizedBox.shrink()),
-      RepaintBoundary(key: _nextKey, child: widget.canTurn(1) ? widget.pageBuilder(1) : const SizedBox.shrink()),
-      RepaintBoundary(key: _curKey, child: widget.pageBuilder(0)),
+      RepaintBoundary(key: _keys[0], child: widget.canTurn(-1) ? widget.pageBuilder(-1) : const SizedBox.shrink()),
+      RepaintBoundary(key: _keys[2], child: widget.canTurn(1) ? widget.pageBuilder(1) : const SizedBox.shrink()),
+      RepaintBoundary(key: _keys[1], child: widget.pageBuilder(0)),
       AppleBookPager.platformView(params, _created),
     ]);
   }

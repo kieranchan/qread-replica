@@ -6,9 +6,11 @@ import UIKit
 /// page-curl transition shows pictures of the previous / current / next screen that the Dart side paints and sends; the view
 /// reports finished turns (`pageTurned {delta}`), turns it could not make (`blocked {delta}`) and taps (`tap {x, y, width, height}`).
 ///
-/// Channel calls from Dart: `updateCurrentTexture {image}`, `updateOtherTextures {prev?, next?}` (PNG bytes, a missing or null
-/// picture = no page in that direction), `setCanGoPrevious {value}`, `setPaperColor {color}` (ARGB), `animateToNext`,
-/// `animateToPrevious`. The original moved pixel buffers (`PageTextureEntry`); PNG bytes are simpler and the pictures are small.
+/// Channel calls from Dart: `updateTextures {prev?, cur?, next?}` (each `{width, height, bytes}` of raw RGBA at the device pixel
+/// ratio, or null = no page in that direction; keys left out are unchanged), `setCanGoPrevious {value}`, `setPaperColor {color}`
+/// (ARGB), `animateToNext`, `animateToPrevious`. The pictures are wrapped as CGImages without decoding and prepared for display off
+/// the main thread, so a curl never waits for an image; the page view controller is reset (to forget prefetched neighbours) only
+/// between gestures. Every animation logs its frame count and hitches (`[apple_book] …`, `syslog live -pn Runner`).
 public class AppleBookCurlPlugin: NSObject, FlutterPlugin {
   public static func register(with registrar: FlutterPluginRegistrar) {
     registrar.register(AppleBookViewFactory(messenger: registrar.messenger()), withId: "com.newread/apple_book_view")
@@ -43,9 +45,11 @@ final class AppleBookPage: UIViewController {
     self.slot = slot
     super.init(nibName: nil, bundle: nil)
     view.backgroundColor = paper
+    view.isOpaque = true
     imageView.image = image
     imageView.contentMode = .scaleToFill
     imageView.backgroundColor = paper
+    imageView.isOpaque = true
     imageView.frame = view.bounds
     imageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
     view.addSubview(imageView)
@@ -56,15 +60,64 @@ final class AppleBookPage: UIViewController {
   }
 }
 
+/// Counts frames and hitches of one animation on a display link.
+final class FrameMeter {
+  private var link: CADisplayLink?
+  private var last: CFTimeInterval = 0
+  private var start: CFTimeInterval = 0
+  private var frames = 0
+  private var hitches = 0
+  private var worst: CFTimeInterval = 0
+
+  func begin() {
+    end(nil)
+    frames = 0
+    hitches = 0
+    worst = 0
+    last = 0
+    start = CACurrentMediaTime()
+    let l = CADisplayLink(target: self, selector: #selector(tick(_:)))
+    l.add(to: .main, forMode: .common)
+    link = l
+  }
+
+  @objc private func tick(_ l: CADisplayLink) {
+    if last > 0 {
+      let dt = l.timestamp - last
+      let expected = l.targetTimestamp - l.timestamp
+      frames += 1
+      if dt > expected * 1.5 + 0.002 { hitches += 1 }
+      if dt > worst { worst = dt }
+    }
+    last = l.timestamp
+  }
+
+  /// Stops and logs (when [label] is given).
+  func end(_ label: String?) {
+    guard let l = link else { return }
+    l.invalidate()
+    link = nil
+    if let label = label {
+      let ms = Int((CACurrentMediaTime() - start) * 1000)
+      NSLog("[apple_book] %@: %d frames, %d hitches, worst %.1f ms, %d ms", label, frames, hitches, worst * 1000, ms)
+    }
+  }
+}
+
 final class AppleBookPageView: NSObject, FlutterPlatformView, UIPageViewControllerDataSource, UIPageViewControllerDelegate {
   private let container: UIView
   private let pager: UIPageViewController
   private let channel: FlutterMethodChannel
+  private let meter = FrameMeter()
 
   /// Pictures of the previous, current and next screen (nil = no page there).
   private var images: [UIImage?] = [nil, nil, nil]
+
+  /// Bumped for every new picture of a slot, so that a late preparation of an old one is dropped.
+  private var generation: [Int] = [0, 0, 0]
   private var paper: UIColor
   private var animating = false
+  private var resetPending = false
 
   init(frame: CGRect, viewId: Int64, arguments: Any?, messenger: FlutterBinaryMessenger) {
     let args = arguments as? [String: Any]
@@ -74,11 +127,13 @@ final class AppleBookPageView: NSObject, FlutterPlatformView, UIPageViewControll
     channel = FlutterMethodChannel(name: "com.newread/apple_book_\(viewId)", binaryMessenger: messenger)
     super.init()
     container.backgroundColor = paper
+    container.isOpaque = true
     container.clipsToBounds = true
     pager.dataSource = self
     pager.delegate = self
     pager.isDoubleSided = false
     pager.view.backgroundColor = paper
+    pager.view.isOpaque = true
     pager.view.frame = container.bounds
     pager.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
     container.addSubview(pager.view)
@@ -104,19 +159,19 @@ final class AppleBookPageView: NSObject, FlutterPlatformView, UIPageViewControll
   private func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     let args = call.arguments as? [String: Any]
     switch call.method {
-    case "updateCurrentTexture":
-      images[1] = AppleBookPageView.image(args?["image"])
-      reset()
-      result(nil)
-    case "updateOtherTextures":
-      if let a = args {
-        if a.keys.contains("prev") { images[0] = AppleBookPageView.image(a["prev"]) }
-        if a.keys.contains("next") { images[2] = AppleBookPageView.image(a["next"]) }
+    case "updateTextures":
+      let t0 = CACurrentMediaTime()
+      var changed: [String] = []
+      for (key, slot) in [("prev", 0), ("cur", 1), ("next", 2)] {
+        guard let a = args, a.keys.contains(key) else { continue }
+        changed.append(key)
+        setImage(AppleBookPageView.image(a[key]), slot: slot)
       }
       reset()
+      NSLog("[apple_book] updateTextures %@ in %.1f ms", changed.joined(separator: ","), (CACurrentMediaTime() - t0) * 1000)
       result(nil)
     case "setCanGoPrevious":
-      if let can = args?["value"] as? Bool, !can { images[0] = nil }
+      if let can = args?["value"] as? Bool, !can { setImage(nil, slot: 0) }
       reset()
       result(nil)
     case "setPaperColor":
@@ -138,10 +193,38 @@ final class AppleBookPageView: NSObject, FlutterPlatformView, UIPageViewControll
     }
   }
 
+  /// Stores a picture and prepares it for display off the main thread (a bitmap the GPU can take as it is); the current page shows
+  /// the raw picture at once and swaps to the prepared one.
+  private func setImage(_ image: UIImage?, slot: Int) {
+    generation[slot] += 1
+    let gen = generation[slot]
+    images[slot] = image
+    guard let image = image else { return }
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      let prepared = image.preparingForDisplay() ?? image
+      DispatchQueue.main.async {
+        guard let self = self, self.generation[slot] == gen else { return }
+        self.images[slot] = prepared
+        if slot == 1, let current = self.pager.viewControllers?.first as? AppleBookPage, current.slot == 1 {
+          current.imageView.image = prepared
+        }
+      }
+    }
+  }
+
+  /// Whether the finger is on a page right now (the page view controller's pan).
+  private var panning: Bool {
+    return pager.gestureRecognizers.contains { ($0 is UIPanGestureRecognizer) && ($0.state == .began || $0.state == .changed) }
+  }
+
   /// Shows the current picture again without animation: the page view controller drops the neighbours it prefetched, so the next
-  /// gesture asks the data source again and gets the new pictures.
+  /// gesture asks the data source again and gets the new pictures. Never during a curl or while the finger is down (deferred).
   private func reset() {
-    if animating { return }
+    if animating || panning {
+      resetPending = true
+      return
+    }
+    resetPending = false
     let current = (pager.viewControllers?.first as? AppleBookPage) ?? AppleBookPage(image: nil, slot: 1, paper: paper)
     current.slot = 1
     current.imageView.image = images[1]
@@ -158,26 +241,31 @@ final class AppleBookPageView: NSObject, FlutterPlatformView, UIPageViewControll
       return
     }
     animating = true
+    meter.begin()
     let page = AppleBookPage(image: image, slot: slot, paper: paper)
     pager.setViewControllers([page], direction: delta > 0 ? .forward : .reverse, animated: true) { [weak self] finished in
       guard let self = self else { return }
       self.animating = false
+      self.meter.end(finished ? "tap turn" : "tap turn (cancelled)")
       if finished {
         self.turned(to: page)
       } else {
         self.channel.invokeMethod("blocked", arguments: ["delta": delta])
       }
+      if self.resetPending { self.reset() }
     }
   }
 
-  /// The page in [page] is the current one now: the pictures shift and Dart moves its position (and sends the new neighbours).
+  /// The page in [page] is the current one now: the pictures shift and Dart moves its position (and sends the new neighbour).
   private func turned(to page: AppleBookPage) {
     let delta = page.slot - 1
     if delta == 0 { return }
     if delta > 0 {
       images = [images[1], images[2], nil]
+      generation = [generation[1], generation[2], generation[2] + 1]
     } else {
       images = [nil, images[0], images[1]]
+      generation = [generation[0] + 1, generation[0], generation[1]]
     }
     page.slot = 1
     channel.invokeMethod("pageTurned", arguments: ["delta": delta])
@@ -206,19 +294,35 @@ final class AppleBookPageView: NSObject, FlutterPlatformView, UIPageViewControll
 
   func pageViewController(_ pageViewController: UIPageViewController, willTransitionTo pendingViewControllers: [UIViewController]) {
     animating = true
+    meter.begin()
   }
 
   func pageViewController(_ pageViewController: UIPageViewController, didFinishAnimating finished: Bool, previousViewControllers: [UIViewController], transitionCompleted completed: Bool) {
     animating = false
-    guard completed, let current = pageViewController.viewControllers?.first as? AppleBookPage else { return }
-    turned(to: current)
+    meter.end(completed ? "curl" : "curl (put back)")
+    if completed, let current = pageViewController.viewControllers?.first as? AppleBookPage {
+      turned(to: current)
+    }
+    if resetPending { reset() }
   }
 
   // MARK: - helpers
 
+  /// A picture message `{width, height, bytes}` (raw RGBA, 8 bits per channel, rows of width * 4 bytes) as an image that references
+  /// the bytes without decoding.
   private static func image(_ value: Any?) -> UIImage? {
-    guard let data = value as? FlutterStandardTypedData else { return nil }
-    return UIImage(data: data.data, scale: UIScreen.main.scale)
+    guard let m = value as? [String: Any],
+          let data = m["bytes"] as? FlutterStandardTypedData,
+          let width = (m["width"] as? NSNumber)?.intValue,
+          let height = (m["height"] as? NSNumber)?.intValue,
+          width > 0, height > 0, data.data.count >= width * height * 4,
+          let provider = CGDataProvider(data: data.data as CFData),
+          let cg = CGImage(
+            width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+    else { return nil }
+    return UIImage(cgImage: cg, scale: UIScreen.main.scale, orientation: .up)
   }
 
   private static func color(_ value: Any?) -> UIColor? {
