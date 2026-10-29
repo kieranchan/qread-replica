@@ -56,6 +56,10 @@ class AppleBookPager extends StatefulWidget {
         gestureRecognizers: {Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer())},
       );
 
+  /// QA driver (lib/dev/qa_driver.dart): synthetic pointer events never reach the native view, so a tap that lands on it is handed
+  /// to the pager here (global position) and goes through [onTap] like a tap the view reports.
+  static void Function(Offset global)? qaTapHook;
+
   @override
   State<AppleBookPager> createState() => _AppleBookPagerState();
 }
@@ -78,6 +82,13 @@ class _AppleBookPagerState extends State<AppleBookPager> implements PagerDriver 
   void initState() {
     super.initState();
     widget.controller?.driver = this;
+    AppleBookPager.qaTapHook = _qaTap;
+  }
+
+  void _qaTap(Offset global) {
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize || _animating) return;
+    widget.onTap?.call(box.globalToLocal(global), box.size);
   }
 
   @override
@@ -94,6 +105,7 @@ class _AppleBookPagerState extends State<AppleBookPager> implements PagerDriver 
 
   @override
   void dispose() {
+    if (AppleBookPager.qaTapHook == _qaTap) AppleBookPager.qaTapHook = null;
     if (widget.controller?.driver == this) widget.controller?.driver = null;
     _animTimer?.cancel();
     _channel?.setMethodCallHandler(null);

@@ -104,6 +104,7 @@ void main() {
     final turned = <int>[], blocked = <int>[], taps = <(Offset, Size)>[];
     await t.pumpWidget(MaterialApp(home: _Book(controller: controller, turned: turned, blocked: blocked, taps: taps)));
     await settle(t, sentOthers);
+    expect(AppleBookPager.qaTapHook, isNotNull);
     final cur = calls.where((c) => c.method == 'updateCurrentTexture').toList();
     final others = calls.where((c) => c.method == 'updateOtherTextures').toList();
     expect(cur, isNotEmpty);
@@ -150,6 +151,11 @@ void main() {
     await settle(t, sentOthers);
     await fromNative('tap', {'x': 200.0, 'y': 300.0, 'width': 400.0, 'height': 800.0});
     expect(taps.single, (const Offset(200, 300), const Size(400, 800)));
+    // the QA driver's way in (global position -> the pager's own coordinates)
+    final box = t.renderObject<RenderBox>(find.byType(AppleBookPager));
+    AppleBookPager.qaTapHook!(box.localToGlobal(const Offset(30, 40)));
+    expect(taps.last.$1, const Offset(30, 40));
+    expect(taps.last.$2, box.size);
 
     calls.clear();
     expect(await controller.turn(1), isTrue);

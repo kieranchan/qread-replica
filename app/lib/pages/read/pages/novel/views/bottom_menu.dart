@@ -389,7 +389,9 @@ class _ButtomMenuState extends State<ButtomMenu> {
                   label: Text(e.value),
                   selected: s.turn == e.key,
                   onSelected: (_) {
-                    if (e.key == TurnMode.appleBook && s.needcss2) {
+                    // the original (0x674120) refuses on `needcss2` alone, but shows the 完整CSS switch only for EPUB books (0x7c5de4),
+                    // so the mode could never be picked for a TXT / web book: here the css mode counts only where it applies (EPUB)
+                    if (e.key == TurnMode.appleBook && s.needcss2 && host.book.bookUrl.toLowerCase().endsWith('.epub')) {
                       Toast.show('完整 css 无法使用 IOS 原生仿真，请先关闭完整 CSS！');
                       return;
                     }

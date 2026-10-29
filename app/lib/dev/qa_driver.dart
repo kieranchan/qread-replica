@@ -23,6 +23,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../common/app_dirs.dart';
+import '../pages/read/pages/novel/apple_book.dart';
 
 abstract class QaDriver {
   static const int port = 8765;
@@ -84,7 +85,16 @@ abstract class QaDriver {
         await SchedulerBinding.instance.endOfFrame;
         return _sem();
       case '/tap':
-        await _tap(Offset(_d(q, 'x'), _d(q, 'y')), const Duration(milliseconds: 60));
+        final at = Offset(_d(q, 'x'), _d(q, 'y'));
+        // a tap on the native page view of 仿真翻页(IOS原生): pointer events cannot reach it, the pager takes the tap itself
+        final hit = HitTestResult();
+        GestureBinding.instance.hitTestInView(hit, at, _view);
+        final hook = AppleBookPager.qaTapHook;
+        if (hook != null && hit.path.any((e) => e.target is RenderUiKitView)) {
+          hook(at);
+          return 'native';
+        }
+        await _tap(at, const Duration(milliseconds: 60));
         return 'ok';
       case '/long':
         await _tap(Offset(_d(q, 'x'), _d(q, 'y')), Duration(milliseconds: _d(q, 'ms', 700).round()));

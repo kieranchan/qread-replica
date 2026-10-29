@@ -1172,8 +1172,9 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
         onEdge: _onListEdge,
       );
     }
-    if (_setting.turn == TurnMode.appleBook && AppleBookPager.supported) {
-      // 仿真翻页(IOS原生): the UIKit page view; the header / footer stay a Flutter overlay as in the other paged modes
+    if (_setting.turn == TurnMode.appleBook && AppleBookPager.supported && !(_setting.needcss2 && _isEpub)) {
+      // 仿真翻页(IOS原生): the UIKit page view; the header / footer stay a Flutter overlay as in the other paged modes. An EPUB in
+      // 完整 css mode falls through to the Flutter curl (the original switches it back with a toast, 0x10c532c)
       return Stack(
         children: [
           Positioned.fill(
@@ -1212,6 +1213,8 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
       ],
     );
   }
+
+  bool get _isEpub => widget.book.bookUrl.toLowerCase().endsWith('.epub');
 
   void _checkSize(Size size, EdgeInsets safe) {
     if (_size == size && _safe == safe) return;

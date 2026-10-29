@@ -54,6 +54,8 @@ plugin: `UIPageViewController` behind platform view `com.newread/apple_book_view
 pictures of the previous / current / next screen that `pages/read/pages/novel/apple_book.dart` paints under the view and sends as
 PNG; the view reports finished curls and taps. Header / footer stay the Flutter overlay; vertical pulls and text selection are not
 available in that mode (as in the original). Host test: `test/reader_ui/apple_book_pager_test.dart` (fake view + mocked channel).
+Deliberate deviation: the original refuses the mode whenever 完整CSS (`needcss2`, default on) is set but shows that switch only for
+EPUB books, so a TXT / web book could never use it; the replica refuses (and falls back) only for EPUB books in css mode.
 
 Not available (pages keep the original strings and say so): Baidu/Weiyun drives (vendor credentials), the Edge voice (its client
 token is not copied). The update check (关于 page and main-page start-up) asks the owner's server, which
