@@ -40,6 +40,14 @@ class NovelPagerController {
   }
 
   bool get isAnimating => driver?.isAnimating ?? (_state?._dir != 0);
+
+  /// 模拟翻书: the idle pictures of the current / previous page are ready (tests).
+  @visibleForTesting
+  bool get idlePicturesReady => _state?._idlePicturesReady ?? false;
+
+  /// 模拟翻书: the running turn draws from a picture (tests).
+  @visibleForTesting
+  bool get turnUsesPicture => _state?._flipImage != null;
 }
 
 class NovelPager extends StatefulWidget {
@@ -117,6 +125,16 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
   /// background colour: a textured paper is not that colour).
   Color? _paperOfPage;
 
+  // 模拟翻书 pictures taken while the pager is idle: the current page (lifted by a forward turn) and the previous page (it comes in on
+  // a backward turn; rendered underneath the opaque current page for that purpose). A turn then starts straight from a picture —
+  // nothing is rebuilt or photographed in its first frame, which is what made every turn start with a visible "refresh" (the
+  // Android original draws from bitmaps and has none of it; owner, 2026-10-30).
+  ui.Image? _curPic;
+  ui.Image? _prevPic;
+  int _idleGen = 0;
+  bool _idleDirty = true;
+
+
   bool get _vertical => widget.mode == TurnMode.verticalSlide;
   bool get _bookMode => widget.mode == TurnMode.book || widget.mode == TurnMode.appleBook;
   bool get _flipMode => widget.mode == TurnMode.simulation;
@@ -193,6 +211,7 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
       widget.controller?._state = this;
     }
     if (old.duration != widget.duration) _anim.duration = widget.duration;
+    _idleDirty = true; // the pages may have changed
   }
 
   @override
@@ -201,6 +220,8 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
     if (_timings != null) SchedulerBinding.instance.removeTimingsCallback(_timings!);
     _anim.dispose();
     _flipImage?.dispose();
+    _curPic?.dispose();
+    _prevPic?.dispose();
     super.dispose();
   }
 
@@ -212,6 +233,7 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
     _busy = false;
     _touch = null;
     _dropImage();
+    _idleDirty = true;
     if (d != 0) widget.onTurned(d);
   }
 
@@ -222,6 +244,7 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
     _touch = null;
     _anim.value = 0;
     _dropImage();
+    _idleDirty = true;
   }
 
   void _dropImage() {
@@ -230,10 +253,73 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
     _captureFor = 0;
   }
 
+  // ------------------------------------------------------------------ idle pictures (模拟翻书)
+
+  /// Whether both idle pictures that the current position allows are ready (tests).
+  bool get _idlePicturesReady => _curPic != null && (_prevPic != null || !widget.canTurn(-1));
+
+  /// Called from an idle build: once per change, one frame after the page was painted, photographs the current page and the
+  /// previous one (frames rather than a timer: nothing may stay pending when the pager goes away).
+  void _scheduleIdlePictures() {
+    if (!_idleDirty) return;
+    _idleDirty = false;
+    final gen = ++_idleGen;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || gen != _idleGen) return;
+      SchedulerBinding.instance.scheduleFrame();
+      SchedulerBinding.instance.addPostFrameCallback((_) => _takeIdlePictures(gen));
+    });
+  }
+
+  Future<void> _takeIdlePictures(int gen) async {
+    {
+      if (!mounted || gen != _idleGen || _dir != 0) return;
+      final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
+      final front = _frontKey.currentContext?.findRenderObject();
+      final cur = front is RenderRepaintBoundary ? await _snap(front, dpr) : null;
+      final paper = front is RenderRepaintBoundary && cur != null ? await _paperColorOf(front) : null;
+      final prevRo = widget.canTurn(-1) ? _prevKey.currentContext?.findRenderObject() : null;
+      final prev = prevRo is RenderRepaintBoundary ? await _snap(prevRo, dpr) : null;
+      if (!mounted || gen != _idleGen || _dir != 0) {
+        cur?.dispose();
+        prev?.dispose();
+        return;
+      }
+      _curPic?.dispose();
+      _prevPic?.dispose();
+      _curPic = cur;
+      _prevPic = prev;
+      if (paper != null) _paperOfPage = paper;
+    }
+  }
+
+  static Future<ui.Image?> _snap(RenderRepaintBoundary ro, double dpr) async {
+    try {
+      return await ro.toImage(pixelRatio: dpr);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// 仿真翻页 rolls a picture of the front page, 模拟翻书 lifts the corner of one: taken once the page has been painted (the previous
-  /// page appears under the current one for a frame when turning back; the curl is drawn from the live widgets until then).
+  /// page appears under the current one for a frame when turning back; the curl is drawn from the live widgets until then) — or,
+  /// in 模拟翻书, ready before the turn starts (the idle pictures), in which case the first frame already uses it.
   Future<void> _capture(int dir) async {
     if (!(_flipMode || _bookMode) || _captureFor == dir) return;
+    if (_bookMode && _flipImage == null) {
+      final ready = dir == 1 ? _curPic : _prevPic;
+      if (ready != null) {
+        if (dir == 1) {
+          _curPic = null;
+        } else {
+          _prevPic = null;
+        }
+        _flipImage = ready;
+        _captureFor = dir;
+        _turnBegan();
+        return;
+      }
+    }
     _captureFor = dir;
     _turnBegan();
     await WidgetsBinding.instance.endOfFrame;
@@ -445,6 +531,15 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
   Widget _compose(double w, double h) {
     if (_flipMode && _dir == 0) return RepaintBoundary(key: _curKey, child: widget.pageBuilder(0));
     final cur = widget.pageBuilder(0);
+    if (_bookMode && _dir == 0) {
+      // idle: the current page in a boundary to photograph, the previous page painted underneath it for the same purpose (pages
+      // paint their own paper, so it never shows)
+      _scheduleIdlePictures();
+      return Stack(fit: StackFit.expand, children: [
+        if (widget.canTurn(-1)) RepaintBoundary(key: _prevKey, child: widget.pageBuilder(-1)),
+        RepaintBoundary(key: _frontKey, child: cur),
+      ]);
+    }
     if (_dir == 0) return cur;
     final other = widget.pageBuilder(_dir);
     final t = _anim.value;
@@ -501,6 +596,7 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, box) {
+      if (box.biggest != _size) _idleDirty = true;
       _size = box.biggest;
       final content = ClipRect(child: _compose(_size.width, _size.height));
       final gestures = <Type, GestureRecognizerFactory>{

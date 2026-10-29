@@ -149,10 +149,11 @@ abstract class BookShadows {
   /// Shadow ink: a warm dark, never pure black.
   static const Color ink = Color(0xFF2E2620);
 
-  /// Strength of the paper's shadow on the page below (alpha 0..1) and of the crease / bend bands.
-  static double underAlpha = 0.26;
-  static double creaseAlpha = 0.16;
-  static double bendAlpha = 0.12;
+  /// Strength of the paper's shadow on the page below (alpha 0..1) and of the crease / bend bands. Tuned to the owner's Android
+  /// screenshots (2026-10-30): a deep, wide gradient along the crease on the back, a clear soft band on the page below.
+  static double underAlpha = 0.30;
+  static double creaseAlpha = 0.32;
+  static double bendAlpha = 0.16;
 
   static Offset _normalTowards(Offset l1, Offset l2, Offset target) {
     final dx = l2.dx - l1.dx, dy = l2.dy - l1.dy;
@@ -193,7 +194,7 @@ abstract class BookShadows {
   }
 
   /// Blur radius of the paper's shadow on the page below for a curl of [reach].
-  static double shadowSigma(double reach) => (reach / 12).clamp(2.0, 10.0);
+  static double shadowSigma(double reach) => (reach / 9).clamp(3.0, 16.0);
 
   static void paint(Canvas canvas, PaperPoint p) {
     final reach = p.reach;
@@ -222,10 +223,10 @@ abstract class BookShadows {
     );
     canvas.restore();
     // 2. on the back of the paper: darker at the crease d-i, fading towards the touch point
-    strip(canvas, size, back, p.d, p.i, p.a, (reach / 4).clamp(6.0, 48.0), [ink.withValues(alpha: creaseAlpha), ink.withValues(alpha: 0)]);
+    strip(canvas, size, back, p.d, p.i, p.a, (reach / 3).clamp(16.0, 96.0), [ink.withValues(alpha: creaseAlpha), ink.withValues(alpha: 0)]);
     // 3. on the front page where it bends up: along the two folds c-b and k-j, on the flat side (the far corner is always there)
     final flat = Offset(0, p.fromBottom ? 0 : size.height);
-    final w = (reach / 8).clamp(4.0, 24.0);
+    final w = (reach / 6).clamp(6.0, 32.0);
     strip(canvas, size, front, p.c, p.b, flat, w, [ink.withValues(alpha: bendAlpha), ink.withValues(alpha: 0)]);
     strip(canvas, size, front, p.k, p.j, flat, w, [ink.withValues(alpha: bendAlpha), ink.withValues(alpha: 0)]);
   }
