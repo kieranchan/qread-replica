@@ -108,7 +108,8 @@ AI 对话「问点什么…」；主题编辑器的配色分组、恢复默认�
   `pymobiledevice3 apps pull`）：新书 `useReplaceRule = true`，原有三本仍为 false；阅读器「更多 → 替换净化」第一下提示「已关闭替换净化」。
 - ⑧ 顺带发现：阅读器「更多 → 替换净化」只改了内存里的 Book，没有像「Ai净化」那样写回书架（`BookSelfN.setUseReplaceRule` 有定义无调用），
   重启后开关复原（《斩神》早先打开过，书架文件里仍是 false）→ `TopMenuActions.replacePurify` 现在写回书架
-  （`test/reader_ui/replace_purify_toggle_test.dart`）。
+  （`test/reader_ui/replace_purify_toggle_test.dart`）。装机复测（f9f1953）：《诡秘之主》在阅读器里关 → 重启后书架文件 false，
+  再开 → 重启后 true，两个方向都落盘。测完《诡秘之主》已从书架删除，阅读设置的默认开关已关回。
 
 ## 核对后确认已有（字符串核对的误报，措辞不同）
 
