@@ -1,5 +1,5 @@
 // 模拟翻书 drawn from a picture of the page (widget/bookfx/book_painter.dart): the flat part keeps the page's pixels, the lifted
-// corner shows the page underneath, the back of the paper is the mirrored front washed out towards white.
+// corner shows the page underneath, the back of the paper is the mirrored front in its own colours (Legado's drawing).
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';

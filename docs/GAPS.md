@@ -139,6 +139,16 @@ AI 对话「问点什么…」；主题编辑器的配色分组、恢复默认�
     现在 `NovelPager` 在静止时就把当前页和上一页（画在当前页底下，页面自己有不透明纸底所以看不见）截成图片，翻页第一帧直接用
     图片（`_curPic` / `_prevPic`，`idlePicturesReady` / `turnUsesPicture` 给测试用），不再重建、不再截图；翻完或页面变化后重新截。
     截图用帧回调而不是定时器（测试结束不允许有挂起的 timer）。`test/reader_ui/curl_idle_pictures_test.dart`。
+- owner 给了安卓 Legado 3.26.08011308 的 APK（`analysis/android/legado/`，git 忽略），用 REA（jadx）反编译：混淆后的
+  `nn.i` 就是 `SimulationPageDelegate`。照它 1:1 重写了 `BookCurlPainter` / `BookShadows`：
+  · 几何与我们的 `PaperPoint` 完全一致（touch/corner/middle → control1/2、start1/2、end1/2、vertex1/2；水平拖动时 Legado 也用
+    `/0.1` 的退化分支，我们保留 1% 错开）。
+  · 四步绘制：① 当前页画在路径 A 之外；② 下一页区域（A ∩ start1-vertex1-vertex2-start2-corner）里沿折线画 `0xFF111111→0x00111111`
+    渐变，宽 = 触点到书角距离/4；③ 翘边两条 25 px 的 `0x80111111→0x00111111`（起点偏移 35.35 px）；④ 纸背 = 页面按 control1–control2
+    镜像、**不提亮**（ColorMatrix 是单位阵）、再沿折痕画 `0x00333333→0xB0333333`。渐变都是 Android 的 `GradientDrawable` 旋转
+    `mDegrees = atan2(control1.x − corner.x, control2.y − corner.y)` 后放进 clip 里；像素常数按设备像素比换算。
+  · 位图时机：Legado 在翻页开始时对已存在的三个 PageView 直接 `draw()` 成位图（不重排版），我们的静止时截图等价。
+  · 对比图：`artifacts/2026-10-30-curl/frames4/`（zoom_diag02 / zoom_fwd03 与安卓截图几乎一致）。
 - 顺带：早先刷新把书源的限次提示写进缓存的章节（如《我不是戏神》第 8 章只剩「您今日免登录访问次数已达上限」）现在打开时会
   自动重新获取一次（每次启动每章一次，`ReadApi.looksLikeLoginWall` / `healedOnce`），拿不到或仍是提示就继续显示缓存。
 

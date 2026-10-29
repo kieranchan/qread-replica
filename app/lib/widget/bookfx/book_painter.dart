@@ -1,12 +1,18 @@
 // widget/bookfx/book_painter.dart — "模拟翻书" (original `_BookPageState` in book.dart with `BookPainter` / `PrecomputedClipPath` of
-// widget/bookfx): the page corner follows the finger. The classic corner-curl look (the Android original's picture): the page
-// underneath, the front page clipped to the part still lying flat, the back of the paper (the front page mirrored across the fold
-// e-h, washed out towards white), the shadow the lifted paper casts on the page below, the crease shadow on the back and the
-// shadow on the front page where it bends up.
+// widget/bookfx): the page corner follows the finger.
 //
-// Two ways to draw it: from a picture of the front page ([BookCurl.frontImage], one `drawImageRect` per region — what the pager
-// uses once it has taken the picture, so a frame of the curl costs almost nothing), or from the live widgets (clip / transform /
-// colour-filter the page widget itself) for the first frames before the picture exists.
+// Drawing follows Legado's `SimulationPageDelegate` step for step (the owner's reference for this effect is the Android original;
+// decompiled from legado 3.26.08011308, class `nn.i`): 1. the current page outside path A (the curled region); 2. the next page inside
+// A and the polygon start1-vertex1-vertex2-start2-corner, with the "back shadow" gradient 0xFF111111 -> 0x00111111 along the fold,
+// touch-to-corner distance / 4 wide; 3. the "front shadow" 0x80111111 -> 0x00111111, 25 px wide, along the lifted paper's two edges;
+// 4. the back of the paper (the page mirrored across control1-control2, its own colours: Legado's colour matrix is the identity)
+// with the "folder shadow" 0x00333333 -> 0xB0333333 along the crease. Legado's widths are Android pixels; they are scaled by the
+// device pixel ratio here so they measure the same on the phone.
+//
+// Two ways to draw it: from a picture of the front page ([BookCurl.frontImage], what the pager uses — the picture is taken while the
+// pager is idle, so a turn costs no rebuild), or from the live widgets (clip / transform the page widget itself) when no picture is
+// ready yet.
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -36,10 +42,9 @@ class BookCurl extends StatelessWidget {
     this.paperColor = const Color(0xFFF2EEE4),
   });
 
-  /// The back of the paper is the page mirrored in its own colours (the paper stays the paper, as in the Android original — not the
-  /// classic algorithm's blend towards white), with this much of the paper colour laid over it so that the mirrored text shows a
-  /// little lighter than on the front.
-  static const double backPaperBlend = 0.25;
+  /// The back of the paper is the page mirrored in its own colours, as in Legado (identity colour matrix) and the Android original's
+  /// pictures; nothing is laid over it.
+  static const double backPaperBlend = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -48,10 +53,11 @@ class BookCurl extends StatelessWidget {
       final img = frontImage;
       if ((touch - corner).distance < 1 || size.isEmpty) return img == null ? front : _flat(img, size);
       final p = PaperPoint(touch, corner, size);
+      final scale = 1 / (MediaQuery.maybeDevicePixelRatioOf(context) ?? 3);
       if (img != null) {
         return Stack(fit: StackFit.expand, children: [
           under,
-          IgnorePointer(child: CustomPaint(painter: BookCurlPainter(p, img, paperColor), size: size)),
+          IgnorePointer(child: CustomPaint(painter: BookCurlPainter(p, img, paperColor, pixelScale: scale), size: size)),
         ]);
       }
       return Stack(fit: StackFit.expand, children: [
@@ -60,11 +66,11 @@ class BookCurl extends StatelessWidget {
         ClipPath(
           clipper: _PathClip(p.backPath()),
           child: Stack(fit: StackFit.expand, children: [
+            ColoredBox(color: paperColor),
             Transform(transform: Matrix4.fromList(p.foldMatrix()), child: front),
-            ColoredBox(color: paperColor.withValues(alpha: backPaperBlend)),
           ]),
         ),
-        IgnorePointer(child: CustomPaint(painter: BookShadowPainter(p), size: size)),
+        IgnorePointer(child: CustomPaint(painter: BookShadowPainter(p, pixelScale: scale), size: size)),
       ]);
     });
   }
@@ -100,7 +106,10 @@ class BookCurlPainter extends CustomPainter {
   final PaperPoint p;
   final ui.Image image;
   final Color paperColor;
-  BookCurlPainter(this.p, this.image, this.paperColor);
+
+  /// Logical pixels per Android pixel (1 / device pixel ratio) for Legado's pixel constants.
+  final double pixelScale;
+  BookCurlPainter(this.p, this.image, this.paperColor, {this.pixelScale = 1 / 3});
 
   /// Draws [image] over [size] (the picture is the page at the device pixel ratio, so unmirrored it lands pixel for pixel on the
   /// screen: nearest sampling keeps it identical to the live page — bilinear made the text go a touch soft the moment the picture
@@ -116,12 +125,16 @@ class BookCurlPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // the part of the front page still lying flat
+    // 1. the current page outside the curled region
     canvas.save();
     canvas.clipPath(p.frontPath());
     drawPage(canvas, image, size, null);
     canvas.restore();
-    // the back of the lifted paper: the front mirrored across the fold in its own colours, a little paper colour over it
+    // 2. the page below shows through the widget underneath; its shadow along the fold
+    BookShadows.nextPageShadow(canvas, p);
+    // 3. the lifted paper's edges
+    BookShadows.edgeShadows(canvas, p, pixelScale);
+    // 4. the back of the paper: the page mirrored across control1-control2 in its own colours, the crease shadow over it
     canvas.save();
     canvas.clipPath(p.backPath());
     canvas.drawRect(Offset.zero & size, Paint()..color = paperColor);
@@ -129,117 +142,185 @@ class BookCurlPainter extends CustomPainter {
     canvas.transform(Float64List.fromList(p.foldMatrix()));
     drawPage(canvas, image, size, Paint()..filterQuality = FilterQuality.low);
     canvas.restore();
-    canvas.drawRect(Offset.zero & size, Paint()..color = paperColor.withValues(alpha: BookCurl.backPaperBlend));
+    BookShadows.creaseShadow(canvas, p, pixelScale);
     canvas.restore();
-    BookShadows.paint(canvas, p);
   }
 
   @override
-  bool shouldRepaint(BookCurlPainter old) => old.p.a != p.a || old.p.f != p.f || old.image != image || old.paperColor != paperColor;
+  bool shouldRepaint(BookCurlPainter old) =>
+      old.p.a != p.a || old.p.f != p.f || old.image != image || old.paperColor != paperColor || old.pixelScale != pixelScale;
 }
 
-/// The shadows of the curl, shared by both ways of drawing it.
-///
-/// 2026-10-30 (owner: the black shadows were unbearable, and turning back flashed): the old strips were linear gradients painted over
-/// the whole clip region — a clamped gradient keeps its first colour on the far side of its start line, so the "shadow on the page
-/// below" laid a flat 33% black over the entire next page until the turn ended (the dark look, and the sudden darkening at the start
-/// of a backward turn / brightening at the end of a forward one). Now: the lifted paper casts a soft blurred shadow on the page
-/// below, hugging its edge; the crease and the bend are narrow warm bands that end where they should.
+enum _Orient { leftRight, rightLeft, topBottom, bottomTop }
+
+/// Legado's three shadow gradients, drawn its way (a rotated `GradientDrawable` inside clip paths), shared by both ways of
+/// drawing the curl.
 abstract class BookShadows {
-  /// Shadow ink: a warm dark, never pure black.
-  static const Color ink = Color(0xFF2E2620);
+  /// On the back of the paper, along the crease (`mFolderShadowColors`).
+  static const List<Color> folderShadow = [Color(0x00333333), Color(0xB0333333)];
 
-  /// Strength of the paper's shadow on the page below (alpha 0..1) and of the crease / bend bands. Tuned to the owner's Android
-  /// screenshots (2026-10-30): a deep, wide gradient along the crease on the back, a clear soft band on the page below.
-  static double underAlpha = 0.30;
-  static double creaseAlpha = 0.32;
-  static double bendAlpha = 0.16;
+  /// On the page below, along the fold (`mBackShadowColors`).
+  static const List<Color> backShadow = [Color(0xFF111111), Color(0x00111111)];
 
-  static Offset _normalTowards(Offset l1, Offset l2, Offset target) {
-    final dx = l2.dx - l1.dx, dy = l2.dy - l1.dy;
-    var n = Offset(-dy, dx);
-    final len = n.distance;
-    if (len == 0) return Offset.zero;
-    n = n / len;
-    final side = (target - l1).dx * n.dx + (target - l1).dy * n.dy;
-    return side < 0 ? -n : n;
+  /// Along the lifted paper's two edges (`mFrontShadowColors`).
+  static const List<Color> frontShadow = [Color(0x80111111), Color(0x00111111)];
+
+  /// Legado's pixel constants (Android px): width of the edge shadows, and how far from the touch their clip triangles start.
+  static const double edgeShadowPx = 25;
+  static const double edgeOffsetPx = 35.35;
+
+  /// `mIsRtOrLb`: the lifted corner is the right-top or the left-bottom one.
+  static bool rtOrLb(PaperPoint p) => (p.f.dx == 0 && p.f.dy == p.size.height) || (p.f.dy == 0 && p.f.dx == p.size.width);
+
+  /// `mDegrees`: the fold's angle, used to rotate the gradients about start1.
+  static double degrees(PaperPoint p) => math.atan2(p.e.dx - p.f.dx, p.h.dy - p.f.dy) * 180 / math.pi;
+
+  /// `mMaxLength`.
+  static double maxLength(Size s) => math.sqrt(s.width * s.width + s.height * s.height);
+
+  /// Legado's path A: the curled region (start1 -curve- end1, touch, end2 -curve- start2, corner).
+  static Path pathA(PaperPoint p) => Path()
+    ..moveTo(p.c.dx, p.c.dy)
+    ..quadraticBezierTo(p.e.dx, p.e.dy, p.b.dx, p.b.dy)
+    ..lineTo(p.a.dx, p.a.dy)
+    ..lineTo(p.k.dx, p.k.dy)
+    ..quadraticBezierTo(p.h.dx, p.h.dy, p.j.dx, p.j.dy)
+    ..lineTo(p.f.dx, p.f.dy)
+    ..close();
+
+  /// `clipOutPath`: everything of [size] outside [path].
+  static Path outside(Path path, Size size) => Path()
+    ..fillType = PathFillType.evenOdd
+    ..addRect(Offset.zero & size)
+    ..addPath(path, Offset.zero);
+
+  static void _rotateAbout(Canvas canvas, double deg, Offset pivot) {
+    canvas.translate(pivot.dx, pivot.dy);
+    canvas.rotate(deg * math.pi / 180);
+    canvas.translate(-pivot.dx, -pivot.dy);
   }
 
-  /// The band of [width] along the line l1-l2 (extended far past both ends) on the side of [n].
-  static Path _band(Offset l1, Offset l2, Offset n, double width, double extent) {
-    final d = l2 - l1;
-    final len = d.distance;
-    if (len == 0) return Path();
-    final u = d / len;
-    final p1 = l1 - u * extent, p2 = l2 + u * extent;
-    return Path()
-      ..moveTo(p1.dx, p1.dy)
-      ..lineTo(p2.dx, p2.dy)
-      ..lineTo(p2.dx + n.dx * width, p2.dy + n.dy * width)
-      ..lineTo(p1.dx + n.dx * width, p1.dy + n.dy * width)
+  /// A `GradientDrawable` of [colors] with [orient] filling [r] (colors[0] at the edge the orientation starts from).
+  static void _gradient(Canvas canvas, Rect r, List<Color> colors, _Orient orient) {
+    if (r.isEmpty) return;
+    final (Offset from, Offset to) = switch (orient) {
+      _Orient.leftRight => (r.centerLeft, r.centerRight),
+      _Orient.rightLeft => (r.centerRight, r.centerLeft),
+      _Orient.topBottom => (r.topCenter, r.bottomCenter),
+      _Orient.bottomTop => (r.bottomCenter, r.topCenter),
+    };
+    canvas.drawRect(r, Paint()..shader = ui.Gradient.linear(from, to, colors));
+  }
+
+  /// Step 2 of `drawNextPageAreaAndShadow`: inside A and start1-vertex1-vertex2-start2-corner, the back shadow from the fold
+  /// towards the corner, touch-to-corner distance / 4 wide.
+  static void nextPageShadow(Canvas canvas, PaperPoint p) {
+    final region = Path()
+      ..moveTo(p.c.dx, p.c.dy)
+      ..lineTo(p.d.dx, p.d.dy)
+      ..lineTo(p.i.dx, p.i.dy)
+      ..lineTo(p.j.dx, p.j.dy)
+      ..lineTo(p.f.dx, p.f.dy)
       ..close();
-  }
-
-  /// A gradient of [colors] starting on the line l1-l2 and running [width] towards the side of [towards], inside [clip] — and only
-  /// inside its own band, nothing beyond it.
-  static void strip(Canvas canvas, Size size, Path clip, Offset l1, Offset l2, Offset towards, double width, List<Color> colors) {
-    final n = _normalTowards(l1, l2, towards);
-    if (n == Offset.zero || width <= 0) return;
-    final mid = Offset((l1.dx + l2.dx) / 2, (l1.dy + l2.dy) / 2);
-    final paint = Paint()..shader = ui.Gradient.linear(mid, mid + n * width, colors);
+    final w = p.reach / 4;
+    final ml = maxLength(p.size);
     canvas.save();
-    canvas.clipPath(clip);
-    canvas.drawPath(_band(l1, l2, n, width, size.longestSide * 2), paint);
+    canvas.clipPath(pathA(p));
+    canvas.clipPath(region);
+    _rotateAbout(canvas, degrees(p), p.c);
+    if (rtOrLb(p)) {
+      _gradient(canvas, Rect.fromLTRB(p.c.dx, p.c.dy, p.c.dx + w, p.c.dy + ml), backShadow, _Orient.leftRight);
+    } else {
+      _gradient(canvas, Rect.fromLTRB(p.c.dx - w, p.c.dy, p.c.dx, p.c.dy + ml), backShadow, _Orient.rightLeft);
+    }
     canvas.restore();
   }
 
-  /// Blur radius of the paper's shadow on the page below for a curl of [reach].
-  static double shadowSigma(double reach) => (reach / 9).clamp(3.0, 16.0);
-
-  static void paint(Canvas canvas, PaperPoint p) {
-    final reach = p.reach;
-    if (reach < 1) return;
+  /// `drawCurrentPageShadow`: the two edge shadows of the lifted paper, outside A, 25 px wide.
+  static void edgeShadows(Canvas canvas, PaperPoint p, double pixelScale) {
+    final rt = rtOrLb(p);
+    final a = p.a, e = p.e, h = p.h, c = p.c, j = p.j;
     final size = p.size;
-    final front = p.frontPath();
-    final back = p.backPath();
-    final under = p.underPath();
-    // 1. the lifted paper's shadow on the page below: the silhouette of everything that is not the page below (the flat page and
-    //    the back of the paper), blurred and nudged a little towards the corner, drawn only where the page below shows — a soft
-    //    contact shadow along the whole paper edge, the curved folds and the lifted tip alike
-    final sigma = shadowSigma(reach);
-    // only the part inside the page: the geometry's polygons run far outside it, and a blurred shape beyond the top or left edge
-    // would bleed a shadow in along that edge (the whole first frame of a backward turn was tinted that way)
-    final lifted = Path.combine(PathOperation.intersect, Path.combine(PathOperation.union, front, back), Path()..addRect(Offset.zero & size));
-    final dir = p.f - p.a;
-    final u = dir / dir.distance;
+    final ml = maxLength(size);
+    final w = edgeShadowPx * pixelScale, one = pixelScale;
+    final ang = math.pi / 4 - (rt ? math.atan2(e.dy - a.dy, a.dx - e.dx) : math.atan2(a.dy - e.dy, a.dx - e.dx));
+    final off = edgeOffsetPx * pixelScale;
+    final p1 = Offset(a.dx + math.cos(ang) * off, rt ? a.dy + math.sin(ang) * off : a.dy - math.sin(ang) * off);
+    final notA = outside(pathA(p), size);
+    // along touch - control1 (the edge that meets the corner's horizontal side)
+    var tri = Path()
+      ..moveTo(p1.dx, p1.dy)
+      ..lineTo(a.dx, a.dy)
+      ..lineTo(e.dx, e.dy)
+      ..lineTo(c.dx, c.dy)
+      ..close();
     canvas.save();
-    canvas.clipPath(under);
-    canvas.translate(u.dx * sigma * 0.5, u.dy * sigma * 0.5);
-    canvas.drawPath(
-      lifted,
-      Paint()
-        ..color = ink.withValues(alpha: underAlpha)
-        ..maskFilter = ui.MaskFilter.blur(ui.BlurStyle.normal, sigma),
-    );
+    canvas.clipPath(notA);
+    canvas.clipPath(tri);
+    _rotateAbout(canvas, math.atan2(a.dx - e.dx, e.dy - a.dy) * 180 / math.pi, e);
+    if (rt) {
+      _gradient(canvas, Rect.fromLTRB(e.dx, e.dy - ml, e.dx + w, e.dy), frontShadow, _Orient.leftRight);
+    } else {
+      _gradient(canvas, Rect.fromLTRB(e.dx - w, e.dy - ml, e.dx + one, e.dy), frontShadow, _Orient.rightLeft);
+    }
     canvas.restore();
-    // 2. on the back of the paper: darker at the crease d-i, fading towards the touch point
-    strip(canvas, size, back, p.d, p.i, p.a, (reach / 3).clamp(16.0, 96.0), [ink.withValues(alpha: creaseAlpha), ink.withValues(alpha: 0)]);
-    // 3. on the front page where it bends up: along the two folds c-b and k-j, on the flat side (the far corner is always there)
-    final flat = Offset(0, p.fromBottom ? 0 : size.height);
-    final w = (reach / 6).clamp(6.0, 32.0);
-    strip(canvas, size, front, p.c, p.b, flat, w, [ink.withValues(alpha: bendAlpha), ink.withValues(alpha: 0)]);
-    strip(canvas, size, front, p.k, p.j, flat, w, [ink.withValues(alpha: bendAlpha), ink.withValues(alpha: 0)]);
+    // along touch - control2 (the edge that meets the corner's vertical side)
+    tri = Path()
+      ..moveTo(p1.dx, p1.dy)
+      ..lineTo(a.dx, a.dy)
+      ..lineTo(h.dx, h.dy)
+      ..lineTo(j.dx, j.dy)
+      ..close();
+    canvas.save();
+    canvas.clipPath(notA);
+    canvas.clipPath(tri);
+    _rotateAbout(canvas, math.atan2(h.dy - a.dy, h.dx - a.dx) * 180 / math.pi, h);
+    final hy = h.dy < 0 ? h.dy - size.height : h.dy;
+    final hyp = math.sqrt(h.dx * h.dx + hy * hy);
+    final top = rt ? h.dy : h.dy - w, bottom = rt ? h.dy + w : h.dy + one;
+    final r = hyp > ml ? Rect.fromLTRB(h.dx - w - hyp, top, h.dx + ml - hyp, bottom) : Rect.fromLTRB(h.dx - ml, top, h.dx, bottom);
+    _gradient(canvas, r, frontShadow, rt ? _Orient.topBottom : _Orient.bottomTop);
+    canvas.restore();
+  }
+
+  /// The gradient of `drawCurrentBackArea`: the folder shadow along the crease, drawn by the caller inside the back area's clip.
+  static void creaseShadow(Canvas canvas, PaperPoint p, double pixelScale) {
+    final f1 = (((p.c.dx + p.e.dx) / 2).truncateToDouble() - p.e.dx).abs();
+    final f2 = (((p.j.dy + p.h.dy) / 2).truncateToDouble() - p.h.dy).abs();
+    final f3 = math.min(f1, f2);
+    final one = pixelScale;
+    final ml = maxLength(p.size);
+    canvas.save();
+    _rotateAbout(canvas, degrees(p), p.c);
+    if (rtOrLb(p)) {
+      _gradient(canvas, Rect.fromLTRB(p.c.dx - one, p.c.dy, p.c.dx + f3 + one, p.c.dy + ml), folderShadow, _Orient.leftRight);
+    } else {
+      _gradient(canvas, Rect.fromLTRB(p.c.dx - f3 - one, p.c.dy, p.c.dx + one, p.c.dy + ml), folderShadow, _Orient.rightLeft);
+    }
+    canvas.restore();
+  }
+
+  /// All shadows for the live-widget way of drawing (the pages themselves are widgets).
+  static void paint(Canvas canvas, PaperPoint p, double pixelScale) {
+    if (p.reach < 1) return;
+    nextPageShadow(canvas, p);
+    edgeShadows(canvas, p, pixelScale);
+    canvas.save();
+    canvas.clipPath(p.backPath());
+    creaseShadow(canvas, p, pixelScale);
+    canvas.restore();
   }
 }
 
 /// The shadows alone (the live-widget way of drawing the curl paints the pages itself).
 class BookShadowPainter extends CustomPainter {
   final PaperPoint p;
-  BookShadowPainter(this.p);
+  final double pixelScale;
+  BookShadowPainter(this.p, {this.pixelScale = 1 / 3});
 
   @override
-  void paint(Canvas canvas, Size size) => BookShadows.paint(canvas, p);
+  void paint(Canvas canvas, Size size) => BookShadows.paint(canvas, p, pixelScale);
 
   @override
-  bool shouldRepaint(BookShadowPainter old) => old.p.a != p.a || old.p.f != p.f;
+  bool shouldRepaint(BookShadowPainter old) => old.p.a != p.a || old.p.f != p.f || old.pixelScale != pixelScale;
 }
