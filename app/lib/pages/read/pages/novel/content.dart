@@ -236,9 +236,11 @@ class ReaderStatusBar extends StatelessWidget {
         return Text(clockText(), style: style);
       case SlotItem.batteryInside:
       case SlotItem.batteryOutside:
+        // the original paints the glyph at Size(fontSize + 10, fontSize - 1) (0x6339a0 / 0x633fa8)
+        final glyph = BatteryPainter.sizeFor(fs);
         final battery = id == SlotItem.batteryInside
-            ? BatteryIcon(color: style.color ?? color, height: fs * 0.9, percentInside: true)
-            : BatteryIcon(color: style.color ?? color, height: fs * 0.8, percentText: style);
+            ? BatteryIcon(color: style.color ?? color, height: glyph.height, width: glyph.width, percentInside: true)
+            : BatteryIcon(color: style.color ?? color, height: glyph.height, width: glyph.width, percentText: style);
         // 0x6344a8: level text (`<level>%`), the battery, 充电中; its leading showProgress text is left out (see [progressText])
         return battery;
       case SlotItem.chapterProgress:

@@ -483,10 +483,11 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
         if (img != null) {
           return BookCurl(front: front, under: under, frontImage: img, touch: a, corner: _corner, paperColor: _paperOfPage ?? widget.paperColor);
         }
-        // until the picture exists: the live widgets, with a full copy of the front page painted underneath for the picture
+        // until the picture exists: the live widgets, with a full copy of the front page painted underneath for the picture; the
+        // same paper colour as the picture frames will use, else the back of the paper changes tint when the picture arrives
         return Stack(fit: StackFit.expand, children: [
           RepaintBoundary(key: _frontKey, child: front),
-          BookCurl(front: front, under: under, touch: a, corner: _corner, paperColor: widget.paperColor),
+          BookCurl(front: front, under: under, touch: a, corner: _corner, paperColor: _paperOfPage ?? widget.paperColor),
         ]);
       case TurnMode.none:
         return cur;

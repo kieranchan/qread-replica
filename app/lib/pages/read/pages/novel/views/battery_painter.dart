@@ -1,5 +1,10 @@
 // pages/read/pages/novel/views/battery_painter.dart — the battery glyph of the reader's status line (original `BatteryPainter`, a
-// CustomPainter: outline, cap and a fill proportional to the level; "充电中" is shown next to it while charging).
+// CustomPainter the footer item builds at `Size(fontSize + 10, fontSize - 1)` (0x6339a0 / 0x633fa8) with the level, the charging
+// state and the text colour; "充电中" is shown next to it while charging). The painter's own body is not in the blutter output,
+// so the drawing follows the system battery glyph: a rounded outline with a small terminal, the level as a rounded bar inside, red
+// when low, a lightning bolt knocked out of the bar while charging.
+import 'dart:math' as math;
+
 import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/material.dart';
 
@@ -14,32 +19,76 @@ class BatteryPainter extends CustomPainter {
 
   const BatteryPainter({required this.level, required this.color, this.charging = false, this.percentInside = false});
 
+  /// Below this level the bar turns red (unless charging).
+  static const int lowLevel = 20;
+  static const Color lowColor = Color(0xFFE5484D);
+
+  /// The glyph the original footer asks for: `Size(fontSize + 10, fontSize - 1)`.
+  static Size sizeFor(double fontSize) => Size(fontSize + 10, math.max(6, fontSize - 1));
+
+  /// The lightning bolt inside a battery body [r] (a polygon in 0..1 coordinates, scaled to the middle of the body).
+  static Path bolt(Rect r) {
+    final w = r.height * 0.62, h = r.height * 0.82;
+    final o = Offset(r.center.dx - w / 2, r.center.dy - h / 2);
+    Offset p(double x, double y) => Offset(o.dx + x * w, o.dy + y * h);
+    return Path()
+      ..moveTo(p(0.58, 0).dx, p(0.58, 0).dy)
+      ..lineTo(p(0.08, 0.58).dx, p(0.08, 0.58).dy)
+      ..lineTo(p(0.46, 0.58).dx, p(0.46, 0.58).dy)
+      ..lineTo(p(0.4, 1).dx, p(0.4, 1).dy)
+      ..lineTo(p(0.92, 0.4).dx, p(0.92, 0.4).dy)
+      ..lineTo(p(0.54, 0.4).dx, p(0.54, 0.4).dy)
+      ..close();
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
-    final capW = size.width * 0.08;
-    final body = Rect.fromLTWH(0, 0, size.width - capW, size.height);
-    final stroke = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-    canvas.drawRRect(RRect.fromRectAndRadius(body.deflate(0.5), const Radius.circular(2)), stroke);
-    final cap = Rect.fromLTWH(size.width - capW, size.height * 0.3, capW, size.height * 0.4);
-    canvas.drawRRect(RRect.fromRectAndRadius(cap, const Radius.circular(1)), Paint()..color = color);
+    final h = size.height;
+    final stroke = (h / 9).clamp(1.0, 1.4);
+    final nubW = (h * 0.16).clamp(1.5, 3.0);
+    final gap = stroke * 0.5;
+    final body = Rect.fromLTWH(0, 0, size.width - nubW - gap, h);
+    final outer = Radius.circular(h * 0.27);
+    // the terminal on the right, rounded on its outer side
+    final nub = Rect.fromLTWH(body.right + gap, h * 0.3, nubW, h * 0.4);
+    canvas.drawRRect(
+      RRect.fromRectAndCorners(nub, topRight: Radius.circular(nubW), bottomRight: Radius.circular(nubW)),
+      Paint()..color = color,
+    );
     final l = level;
-    if (l == null) return;
-    final inner = body.deflate(2);
-    if (percentInside) {
-      final tp = TextPainter(
-        text: TextSpan(text: '$l', style: TextStyle(color: color, fontSize: body.height * 0.75, height: 1)),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tp.paint(canvas, Offset(body.center.dx - tp.width / 2, body.center.dy - tp.height / 2));
-      tp.dispose();
-      return;
+    if (l != null) {
+      final inner = body.deflate(stroke * 1.8);
+      if (percentInside) {
+        final tp = TextPainter(
+          text: TextSpan(text: '$l', style: TextStyle(color: color, fontSize: h * 0.78, height: 1, fontWeight: FontWeight.w500)),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        tp.paint(canvas, Offset(body.center.dx - tp.width / 2, body.center.dy - tp.height / 2));
+        tp.dispose();
+      } else {
+        final frac = l.clamp(0, 100) / 100;
+        final barW = math.max(inner.height * 0.35, inner.width * frac);
+        final bar = RRect.fromRectAndRadius(Rect.fromLTWH(inner.left, inner.top, barW, inner.height), Radius.circular(math.max(0.5, outer.x - stroke * 1.8)));
+        final barColor = (l <= lowLevel && !charging) ? lowColor : color;
+        if (charging) {
+          // the bolt is cut out of the bar so the page shows through it
+          canvas.saveLayer(body, Paint());
+          canvas.drawRRect(bar, Paint()..color = barColor);
+          canvas.drawPath(bolt(inner), Paint()..blendMode = BlendMode.clear);
+          canvas.restore();
+        } else {
+          canvas.drawRRect(bar, Paint()..color = barColor);
+        }
+      }
     }
-    final w = inner.width * (l.clamp(0, 100) / 100);
-    final fill = Paint()..color = (l <= 20 && !charging) ? Colors.red : color;
-    canvas.drawRect(Rect.fromLTWH(inner.left, inner.top, w, inner.height), fill);
+    // the outline last, so nothing paints over it
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(body.deflate(stroke / 2), outer),
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke,
+    );
   }
 
   @override
@@ -63,13 +112,16 @@ class BatteryIcon extends StatefulWidget {
   final Color color;
   final double height;
 
+  /// Glyph width; the original's `fontSize + 10` when the footer builds it, else 2.2 x the height.
+  final double? width;
+
   /// 内置百分比电池 (the level inside the glyph).
   final bool percentInside;
 
   /// 外置百分比电池: the "level%" text before the glyph in this style (0x6339a0).
   final TextStyle? percentText;
 
-  const BatteryIcon({super.key, required this.color, this.height = 10, this.percentInside = false, this.percentText});
+  const BatteryIcon({super.key, required this.color, this.height = 10, this.width, this.percentInside = false, this.percentText});
 
   @override
   State<BatteryIcon> createState() => _BatteryIconState();
@@ -103,9 +155,9 @@ class _BatteryIconState extends State<BatteryIcon> {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (pt != null && _level != null) Text('$_level%', style: pt),
-        if (pt != null && _level != null) const SizedBox(width: 2),
+        if (pt != null && _level != null) const SizedBox(width: 3),
         CustomPaint(
-          size: Size(widget.height * 2.2, widget.height),
+          size: Size(widget.width ?? widget.height * 2.2, widget.height),
           painter: BatteryPainter(level: _level, color: widget.color, charging: _charging, percentInside: widget.percentInside),
         ),
         if (_charging) Text(' 充电中', style: pt ?? TextStyle(fontSize: widget.height, color: widget.color)),

@@ -31,11 +31,14 @@ class PaperPoint {
     ahIntercept = a.dy - ahSlope * a.dx;
   }
 
-  /// The touch must not sit exactly on the corner's edges (divisions by zero).
+  /// The touch must not sit on the corner's edges (divisions by zero), and not nearly on them either: a finger dragged straight
+  /// along the bottom edge (every 左右 turn) made `h` / `j` / `k` land millions of pixels away and the first frames of a turn painted
+  /// garbage (the flash at the start of a backward turn). The fold is kept at least ~1° off the edge, which the eye cannot tell.
   static Offset _safe(Offset a, Offset f) {
     var x = a.dx, y = a.dy;
-    if ((f.dx - x).abs() < 0.1) x = f.dx - 0.1;
-    if ((f.dy - y).abs() < 0.1) y = f.dy + (f.dy == 0 ? 0.1 : -0.1);
+    final eps = math.max(0.5, (a - f).distance * 0.01);
+    if ((f.dx - x).abs() < eps) x = f.dx - eps;
+    if ((f.dy - y).abs() < eps) y = f.dy + (f.dy == 0 ? eps : -eps);
     return Offset(x, y);
   }
 
@@ -68,8 +71,22 @@ class PaperPoint {
 
   bool get fromBottom => f.dy > 0;
 
+  // the three regions are asked for several times per frame (pages, shadows): built once per PaperPoint
+  late final Path _front = _buildFront();
+  late final Path _back = Path.combine(PathOperation.difference, _backPolygon(), frontPath());
+  late final Path _under = Path.combine(
+      PathOperation.difference, Path.combine(PathOperation.difference, Path()..addRect(Offset.zero & size), frontPath()), backPath());
+
   /// The part of the page still lying flat.
-  Path frontPath() {
+  Path frontPath() => _front;
+
+  /// The back of the lifted paper.
+  Path backPath() => _back;
+
+  /// The visible part of the page underneath.
+  Path underPath() => _under;
+
+  Path _buildFront() {
     final w = size.width, hh = size.height;
     final p = Path();
     if (fromBottom) {
@@ -95,23 +112,13 @@ class PaperPoint {
     return p;
   }
 
-  /// The back of the lifted paper.
-  Path backPath() {
-    final p = Path()
-      ..moveTo(i.dx, i.dy)
-      ..lineTo(d.dx, d.dy)
-      ..lineTo(b.dx, b.dy)
-      ..lineTo(a.dx, a.dy)
-      ..lineTo(k.dx, k.dy)
-      ..close();
-    return Path.combine(PathOperation.difference, p, frontPath());
-  }
-
-  /// The visible part of the page underneath.
-  Path underPath() {
-    final all = Path()..addRect(Offset.zero & size);
-    return Path.combine(PathOperation.difference, Path.combine(PathOperation.difference, all, frontPath()), backPath());
-  }
+  Path _backPolygon() => Path()
+    ..moveTo(i.dx, i.dy)
+    ..lineTo(d.dx, d.dy)
+    ..lineTo(b.dx, b.dy)
+    ..lineTo(a.dx, a.dy)
+    ..lineTo(k.dx, k.dy)
+    ..close();
 
   /// Reflection across the fold line e-h: maps the corner f onto the touch a (the back of the paper is the mirrored front).
   List<double> foldMatrix() {
