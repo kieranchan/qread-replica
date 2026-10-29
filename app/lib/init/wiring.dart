@@ -33,6 +33,7 @@ import '../pages/search/search_book_page.dart';
 import '../pages/setting/extras_routes.dart';
 import '../pages/theme/theme_update_check.dart';
 import '../pages/web/web_hooks.dart';
+import '../pages/wifi_page.dart';
 import '../qread/qread_jobs.dart';
 import '../read/api/read_storage_root.dart';
 import '../service/app_links_service.dart';
@@ -127,6 +128,8 @@ abstract class Wiring {
       if (a != null) unawaited(AudioLyrics.write(a.book.bookUrl, a.book.durChapterIndex, lyric));
     };
 
+    // Wi-Fi传书 uploads go onto the shelf like 本地导入 (the page only saves the file; the import is the shelf area's)
+    WiFiPage.importBook = ShelfRoutes.importUploadedFile;
     // files opened with the app, qread:// and legado:// / yuedu:// links (original service/app_links_service.dart)
     await AppLinksService.init(null);
     // book intros with <usehtml> are rendered by flutter_html as in the original

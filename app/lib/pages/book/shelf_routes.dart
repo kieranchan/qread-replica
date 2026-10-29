@@ -7,6 +7,7 @@
 //
 // Route names are the original file stems.
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
@@ -16,6 +17,7 @@ import '../../data/user.dart';
 import '../../models/book.dart';
 import '../../models/source.dart';
 import '../../read/api/readapi.dart';
+import '../../read/local_book_importer.dart';
 import '../bookshelf_page.dart';
 import '../discovery_page.dart';
 import '../discovery_page_new.dart';
@@ -75,6 +77,18 @@ abstract class ShelfRoutes {
     await Groupdata.syncCloud();
     await BookSelfN.syncCloud();
   };
+
+  /// A book file that arrived through Wi-Fi传书 (wifi_page.dart saves it under `books/` and calls [WiFiPage.importBook]): imported
+  /// like 本地导入 and put on the shelf. Returns the error text for the upload reply, null when the book is on the shelf.
+  static Future<String?> importUploadedFile(File file) async {
+    try {
+      final local = await const LocalBookImporter().import(file);
+      await BookSelfN.add(local.book);
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
 
   static Future<bool> restoreCloudShelf() async {
     if (!UserSession.isLoggedIn || !UserSession.cloudbookself) return false;
