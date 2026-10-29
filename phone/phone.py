@@ -17,6 +17,14 @@
 #   phone.py d <path> [k=v ...]    raw request: d /size | d /tap x= y= | d /long x= y= ms= | d /drag x1= y1= x2= y2= ms= |
 #                                  d /type s=斩神 (replaces the focused field) | d /submit | d /back
 # Switch the driver off (qa-off) when done. QREAD_BUNDLE overrides the bundle id (Sideloadly adds a team suffix).
+#
+# Installing a new CI build without Sideloadly's window (2026-10-29): Sideloadly keeps the free developer certificate and its key in
+# %APPDATA%\sideloadly (cert-<apple id>.pem, key.pem) and the phone holds the matching 7-day profile; re-sign the unsigned IPA with
+# zsign (tools/zsign/zsign.exe, GitHub release v1.1.3, sha256 checked) and install it as an upgrade (data stays):
+#   tools/zsign/zsign.exe -k %APPDATA%/sideloadly/key.pem -c %APPDATA%/sideloadly/cert-*.pem -m <profile>.mobileprovision #       -b com.kieranchan.qreadreplica.newread.3L3D6T66V5 -z 6 -o signed.ipa newread-unsigned.ipa
+#   pymobiledevice3 provision dump <dir>        # the profile: newest CreationDate for the app id above (expires after 7 days)
+#   pymobiledevice3 apps install signed.ipa    # "Installation succeed."; the app's container is kept
+# When the profile has expired, one Sideloadly run by the owner refreshes it (and the key stays the same).
 import asyncio
 import json
 import os
