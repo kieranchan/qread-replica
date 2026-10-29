@@ -179,14 +179,33 @@ class ReadApi {
     final chapter = chapters[index];
     ChapterContent? raw;
     final cacheable = !isLocalBook(book);
+    String? wall;
     if (cacheable && !refresh) {
       final cached = await bookContent.readFromLocal(book.bookUrl, index);
-      if (cached != null) raw = ChapterContent.fromText(cached);
+      if (cached != null) {
+        if (looksLikeLoginWall(cached) && healedOnce.add('${book.bookUrl}#$index')) {
+          // a source's login / daily-limit message was cached as the chapter (before the refresh guard existed): fetch again once
+          // per session; the message stays if the source still answers with it or cannot be reached
+          log?.call('缓存的正文像是书源的登录或限制提示，重新获取');
+          wall = cached;
+        } else {
+          raw = ChapterContent.fromText(cached);
+        }
+      }
     }
     if (raw == null) {
       final l = loader;
       if (l == null) throw StateError('正文获取失败: 没有章节来源');
-      raw = await l(chapter);
+      if (wall != null) {
+        try {
+          raw = await l(chapter);
+        } catch (e) {
+          log?.call('重新获取失败，仍显示缓存：$e');
+          raw = ChapterContent.fromText(wall);
+        }
+      } else {
+        raw = await l(chapter);
+      }
       if (cacheable && raw.isPlainText && raw.text.isNotEmpty) {
         // a manual 刷新 that comes back with a stub (a source's login wall or daily limit, e.g. `您今日免登录访问次数已达上限…`)
         // must not overwrite a real cached chapter: the stub is shown, the cache stays
@@ -210,6 +229,17 @@ class ReadApi {
     final n = fresh.trim().length;
     return n < stubMaxChars && cached.trim().length > n * 5;
   }
+
+  /// A cached "chapter" that is really a source's message (`您今日免登录访问次数已达上限(3次)！继续阅读请登录后刷新页面。` and the
+  /// like): short and talking about logging in or a limit.
+  static final RegExp _wallWords = RegExp(r'登录|访问次数|已达上限|次数限制');
+  static bool looksLikeLoginWall(String cached) {
+    final t = cached.trim();
+    return t.length < 300 && _wallWords.hasMatch(t);
+  }
+
+  /// Chapters (`<bookUrl>#<index>`) whose cached message was already fetched again in this session.
+  static final Set<String> healedOnce = {};
 
   /// Title replace rules.
   Future<String> purifyTitle(String title) async {

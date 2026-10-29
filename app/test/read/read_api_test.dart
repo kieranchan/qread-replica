@@ -241,6 +241,44 @@ void main() {
       ReadApi.log = null;
     });
 
+    test('a cached login / limit message is fetched again, once per session; a failing fetch keeps it on screen', () async {
+      const wall = '您今日免登录访问次数已达上限(3次)！继续阅读请登录后刷新页面。';
+      ReadApi.healedOnce.clear();
+      var answer = wall;
+      var loads = 0;
+      final log = <String>[];
+      ReadApi.log = log.add;
+      final api = ReadApi(_webBook(), chapters: _chapters(2), loader: (c) async {
+        loads++;
+        return ChapterContent.fromText(answer);
+      });
+      await api.bookContent.saveToLocal(api.book.bookUrl, 0, wall, book: api.book); // cached before the refresh guard existed
+      // the source still answers with the message: shown, and asked only once in this session
+      expect((await api.loadChapter(0)).content.text, wall);
+      expect(loads, 1);
+      expect(log, contains(contains('重新获取')));
+      expect((await api.loadChapter(0)).content.text, wall);
+      expect(loads, 1);
+      // next session: the real chapter comes back and replaces the cached message
+      ReadApi.healedOnce.clear();
+      answer = '真正的正文。' * 50;
+      expect((await api.loadChapter(0)).content.text, startsWith('真正的正文。'));
+      expect(loads, 2);
+      expect(await api.bookContent.readFromLocal(api.book.bookUrl, 0), startsWith('真正的正文。'));
+      expect((await api.loadChapter(0)).content.text, startsWith('真正的正文。'), reason: 'a real chapter is never re-fetched');
+      expect(loads, 2);
+      // the source cannot be reached: the cached message stays on screen instead of an error
+      ReadApi.healedOnce.clear();
+      await api.bookContent.saveToLocal(api.book.bookUrl, 1, wall, book: api.book);
+      final failing = ReadApi(_webBook(), chapters: _chapters(2), loader: (c) async => throw Exception('net down'));
+      expect((await failing.loadChapter(1)).content.text, wall);
+      expect(log.last, contains('重新获取失败'));
+      expect(ReadApi.looksLikeLoginWall('正文' * 200), isFalse);
+      expect(ReadApi.looksLikeLoginWall('请登录后查看本章'), isTrue);
+      expect(ReadApi.looksLikeLoginWall('他登录了飞船，' * 60), isFalse, reason: 'long real text that merely mentions logging in');
+      ReadApi.log = null;
+    });
+
     test('purification result is cached per chapter and invalidated by a rule change', () async {
       var loads = 0;
       final book = _webBook(rules: true);
