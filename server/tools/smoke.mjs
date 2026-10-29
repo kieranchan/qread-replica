@@ -53,6 +53,11 @@ try {
   check('upload bookshelf', up.code === 0, JSON.stringify(up));
   check('etag = md5', (await post('/getEtag', t)).data === crypto.createHash('md5').update(body).digest('hex'));
   check('list round trip', (await post('/getBooks', t)).data === body);
+  // reading position (the app's 进度同步确认 reads it back with getpos)
+  check('getpos nothing stored', (await post('/getpos', { ...t, book: 'smoke-book' })).code === -5);
+  check('autopos', (await post('/autopos', { ...t, st: '0', book: 'smoke-book', index: 3, pos: 0.25, title: '第四章', bid: '', t: Date.now() })).code === 0);
+  const pos = await post('/getpos', { ...t, book: 'smoke-book' });
+  check('getpos record', pos.code === 0 && pos.data?.index === 3 && pos.data?.pos === 0.25 && pos.data?.appid === 'smoke-1', JSON.stringify(pos));
   // device backup (书架备份): openAuto hands out the upload url, the app PUTs its shelf, 备份导入 finds it through getBookSelf
   const open = await post('/openAuto', { ...t, st: '0' });
   check('openAuto upload url', open.code === 0 && /\/autobackup\/[0-9a-f]{32}$/.test(open.data ?? ''), JSON.stringify(open));
