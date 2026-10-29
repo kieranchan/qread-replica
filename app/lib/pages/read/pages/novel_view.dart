@@ -37,6 +37,7 @@ import '../../../read/util/highlight_apply.dart';
 import '../../../read/util/list_content.dart';
 import '../../../read/util/listcontroller.dart';
 import '../../../read/util/read.dart';
+import '../../../read/util/read_ahead.dart';
 import '../../../util/epub/epub_zh_convert.dart';
 import '../../../util/image/image_service.dart';
 import '../../../util/source/image_meta.dart';
@@ -184,6 +185,8 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    ReadAhead.stop(widget.book.bookUrl);
+    if (ReadAhead.log == _logLine) ReadAhead.log = null;
     if (ReadApi.log == _logLine) ReadApi.log = null;
     if (ReadApi.aiError == _aiError) ReadApi.aiError = null;
     if (ReadApi.refreshCurrent == _refreshFromSource) ReadApi.refreshCurrent = null;
@@ -424,8 +427,11 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     } catch (_) {}
   }
 
-  /// `preloadAt`: lays out the neighbours of the current chapter in the background.
+  /// `preloadAt`: lays out the neighbours of the current chapter in the background, and keeps the next 缓存章数 chapters
+  /// downloaded (read_ahead.dart).
   void _preload() {
+    ReadAhead.log ??= _logLine;
+    ReadAhead.touch(_api, _ci);
     for (final i in [_ci + 1, _ci - 1]) {
       if (i < 0 || i >= _chapters.length || _pages.containsKey(i)) continue;
       _ensurePages(i).then((_) {

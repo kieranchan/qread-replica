@@ -14,6 +14,7 @@ import 'package:get/get.dart';
 import '../../common/common.dart';
 import '../../common/nav.dart';
 import '../../storage/storage.dart';
+import '../../read/util/read_ahead.dart';
 import '../../theme/widgets.dart';
 import '../../util/toast.dart';
 import 'choose_svg.dart';
@@ -82,9 +83,9 @@ class _SeachSettingPageState extends State<SeachSettingPage> {
           ListTile(
             key: const Key('ss_cachebook'),
             title: const Text('缓存章数'),
-            subtitle: const Text('阅读时预先缓存的数量，如果书源不允许下载请设置为0。'),
-            trailing: Text('${Storage.getInt('cachebook', 5)} 章'),
-            onTap: () => _int('cachebook', '预缓存章数', 5, min: 0),
+            subtitle: const Text('阅读时预先缓存后面的章节数（0 = 关闭）；如果书源不允许下载请设置为0。'),
+            trailing: Text('${Storage.getInt('cachebook', ReadAhead.defaultCount)} 章'),
+            onTap: () => _int('cachebook', '预缓存章数', ReadAhead.defaultCount, min: 0, max: ReadAhead.maxCount),
           ),
         ]),
         SectionCard(title: '自动更新', children: [
