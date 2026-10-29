@@ -112,6 +112,10 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
   EdgeInsets _safe = EdgeInsets.zero;
   int _gen = 0;
 
+  /// Jump generation: a chapter jump whose load finishes after a newer jump (fast 上一章 taps, or the reader already closed) must
+  /// not set the position back and save that older chapter as the progress.
+  int _jumpGen = 0;
+
   String? _status = '目录加载中...';
   String? _error;
   bool _inited = false;
@@ -588,7 +592,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
   }
 
   Future<void> _saveProgress() async {
-    if (!_inited || _pages[_ci] == null) return;
+    if (!mounted || !_inited || _pages[_ci] == null) return;
     try {
       await _api.saveProgress(chapterIndex: _ci, pos: chapterProgress, chapterTitle: chapterTitle);
       // a listening 时光源 gets `saveRead` with every saved progress (0xe078d4)
@@ -617,6 +621,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
       Toast.show('当前章节超出目录总章节，请前往目录重新选择章节');
       return;
     }
+    final jump = ++_jumpGen;
     setState(() {
       _status = '正文加载中...';
       _sel = null;
@@ -624,11 +629,12 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     try {
       await _ensurePages(index);
     } catch (e) {
+      if (jump != _jumpGen || !mounted) return;
       _fail('正文获取失败: $e');
       return;
     }
     final pages = _pages[index];
-    if (pages == null || !mounted) return;
+    if (pages == null || !mounted || jump != _jumpGen) return; // superseded by a newer jump, or the reader is gone
     final rc = _content[index]!;
     _ci = index;
     if (last) {
