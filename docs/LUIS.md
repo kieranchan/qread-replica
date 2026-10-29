@@ -61,7 +61,23 @@ export function myAdapter() {
 Register it in `defaultAdapters()` (`api.mjs`). The engine adds the timeout (15 s per adapter in a search, 30 s
 otherwise), the cache, the tier gate and the wire names; an adapter that throws only marks its own entry in
 `source_time_cost` (`error`), the others still answer. Tests inject adapters with `createApp({ luisAdapters })`.
+Site adapters use `adapters/http.mjs`: one client per site with a minimum interval between requests, browser headers,
+one retry with back-off, GB18030 decoding and small HTML helpers. The transport is `node:http(s)` with the lenient
+header parser (undici's `fetch` rejects 七猫's responses) and gzip / br decoding; tests pass `fetchImpl` and get the
+fetch path with fixtures (`test/luis_sites.test.mjs`).
 
+* **起点** (`qidian.mjs`, free): the mobile site m.qidian.com (the desktop site answers a WAF challenge page to scripts).
+  Search `/soushu/<key>.html` (items with `data-bid`), book `/book/<bid>/` (JSON-LD Book + og meta), catalog
+  `/book/<bid>/catalog/` (volume bars become volume headers), chapter `/chapter/<bid>/<cid>/` (`h1.title`, `div.content > p`,
+  cut before the comments). Free chapters only; locked ones are listed with `is_pay`. Paced at 600 ms per request with a
+  mobile UA; a captcha page answers as a failure (`起点返回了验证页`).
+* **七猫** (`qimao.mjs`, free): the site's own JSON API without signatures — `qimaoapi/api/search/result?keyword=&page=`,
+  `book-detail/main-info?book_id=` + `book-detail/intro?book_id=`, `book/chapter-list?book_id=&page=` (100 per page);
+  chapter text from the server-rendered reader page `/shuku/<book_id>-<chapter_id>/` (`h2.chapter-title`, `div.article > p`).
+  The parameter must be `keyword` / `book_id` (other names answer empty lists or 请求参数错误).
+* **晋江** (`jjwxc.mjs`, free): GB18030 pages — `search.php?kw=<gbk>&t=1`, `onebook.php?novelid=` (intro, 文章类型/进度/字数/标签,
+  `tr[itemprop=chapter]` rows; VIP rows link to the vip page and are marked `is_pay`), chapter text in
+  `div.noveltext > #paragraph_comment_content` (toolbar / bookmark widgets dropped, 作者有话说 appended when rendered).
 * **维基文库** (`wikisource.mjs`, free): MediaWiki API of zh.wikisource.org. Search = full-text search with chapter
   pages folded into their work; catalog = the work page's subpage links in order (volume pages one level deep);
   content = the parsed page converted to simplified Chinese (`variant=zh-hans`; titles stay as written),
@@ -91,6 +107,8 @@ server/deploy/deploy.sh && ssh … qread-admin set-source luis <sources/luis/dis
 ```
 
 ## What is deliberately not here
-Adapters for commercial platforms (番茄、七猫、书旗、起点、QQ阅读 …): their web APIs answer empty bodies or
-challenge pages to plain requests and their chapter text is obfuscated or signed (2026-10-29 probes), so each one is
-its own reverse-engineering decision, taken per platform with the owner. The framework above is what they plug into.
+番茄 (every API needs the `a_bogus` signature and chapter text is obfuscated through a custom font) and 书旗 (the sites
+answer 403 to scripts; chapter URLs are app-signed): both would need adversarial work-arounds and were not built.
+QQ阅读 is possible (Nuxt page state carries book details and free chapter text) but its search call and catalog API were
+not found yet. Only chapters the platforms publish for free are ever served; VIP chapters are listed locked.
+The evaluation with the probes is `analysis/luis/PLATFORMS-2026-10-29.md` (local only).

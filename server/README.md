@@ -59,8 +59,9 @@ avatar/theme URLs), `QREAD_REGISTER` (`invite` | `closed`), `QREAD_MAIL` (`off`;
 The owner's own 聚合书源 backend, wire-compatible with the 大灰狼 service (`../docs/LUIS.md`): `/luis/search`, `/detail`,
 `/catalog`, `/content`, `/discovestyle`, `/get_discover`, `/sources/config`, `/get_avatar`; `/luis/login` sets the `qttoken` /
 `deviceId` cookies the 时光源 page (`../sources/luis`, hosted at `/tsy/luis.html`) relies on, `/luis/user` is the user centre.
-Platform adapters live in `src/luis/adapters/` (维基文库 free; 路易斯书库 members only = the TXT books added with
-`admin luis-add-book`); tiers follow the account's membership. Cache in `luis_cache` (`admin luis-cache-clear`).
+Platform adapters live in `src/luis/adapters/` (起点 mobile site, 七猫 web API, 晋江, 维基文库: free, free chapters only;
+路易斯书库 members only = the TXT books added with `admin luis-add-book`); tiers follow the account's membership. Cache in
+`luis_cache` (`admin luis-cache-clear`).
 
 ## Admin CLI
 `node src/admin.mjs help` (on the VM: `qread-admin help`). Typical: `create-user <name> <email> --random --days 3650`,

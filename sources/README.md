@@ -26,7 +26,8 @@ luis/                     路易斯聚合（自己的平台 server/src/luis，�
 **路易斯聚合**（你自己的平台，后端在 `server/src/luis/`，见 [`../docs/LUIS.md`](../docs/LUIS.md)）：导入
 [`luis/dist/source.json`](luis/dist/source.json)（或托管版 [`luis/dist/source.hosted.json`](luis/dist/source.hosted.json)，页面在
 `https://qread.forfine.me/tsy/luis.html`）。「登录 / 账户」打开 `https://qread.forfine.me/luis/login`，账号与会员中心通用；平台列表
-（免费 / 登录 / 会员）由后端 `/luis/sources/config` 提供，新增适配器后 App 端无需改动。
+（免费 / 登录 / 会员）由后端 `/luis/sources/config` 提供，新增适配器后 App 端无需改动。目前的平台：起点（手机站）、七猫、晋江、
+维基文库（免费，只有平台本身免费公开的章节）和路易斯书库（会员）。
 
 原版记录同样可以直接导入（复刻版已实现它用到的全部 handler）：
 `{"bookSourceUrl":"http://svip.langge.uk","bookSourceName":"大灰狼聚合书源","bookSourceGroup":"大灰狼-聚合","html":"http://svip.langge.uk/qydsy.html","login":true,"enabledExplore":true}`

@@ -6,13 +6,17 @@ import { ApiError, CODE, readBody, fmtDate } from '../util.mjs';
 import { LuisEngine } from './engine.mjs';
 import { wikisourceAdapter } from './adapters/wikisource.mjs';
 import { libraryAdapter } from './adapters/library.mjs';
+import { qidianAdapter } from './adapters/qidian.mjs';
+import { qimaoAdapter } from './adapters/qimao.mjs';
+import { jjwxcAdapter } from './adapters/jjwxc.mjs';
 import { LOGIN_HTML, USER_HTML, APP_JS } from './pages.mjs';
 
 const MIN = 60_000;
 const YEAR = 365 * 24 * 3600;
 
+/** The platforms in the order the page shows them: the free sites first, the owner's library last. */
 export function defaultAdapters(db) {
-  return [wikisourceAdapter(), libraryAdapter(db)];
+  return [qidianAdapter(), qimaoAdapter(), jjwxcAdapter(), wikisourceAdapter(), libraryAdapter(db)];
 }
 
 function parseCookies(req) {
