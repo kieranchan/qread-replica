@@ -35,6 +35,7 @@ import '../qread/qread_jobs.dart';
 import '../read/api/read_storage_root.dart';
 import '../service/app_links_service.dart';
 import '../widget/book/intro_html_flutter.dart';
+import '../widget/book/toc_cache.dart';
 import '../storage/storage.dart';
 import '../theme/extras_init.dart';
 import '../util/legado/js_engines.dart';
@@ -139,6 +140,10 @@ abstract class Wiring {
     Nav.openBook = (context, book) => ShelfRoutes.push(context, 'book_detail_page', book);
     Nav.openSearch = (context, {key, sources}) =>
         Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SearchBookPage(searchKey: key ?? '', sources: sources)));
+
+    // The reader's catalog comes from the TOC cache first (the original's reader init logs `目录缓存获取成功`), the engine only
+    // when nothing is stored: opening a book from the shelf must not wait for the network (or start a 时光源 page).
+    ReadPage.webChapters = (book) => TocCache.load(book);
 
     Nav.openReader = (context, book, {chapterIndex, chapters}) async {
       await MainPage.stampReading();
