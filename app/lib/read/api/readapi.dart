@@ -188,12 +188,27 @@ class ReadApi {
       if (l == null) throw StateError('正文获取失败: 没有章节来源');
       raw = await l(chapter);
       if (cacheable && raw.isPlainText && raw.text.isNotEmpty) {
-        await bookContent.saveToLocal(book.bookUrl, index, raw.text, book: book);
+        // a manual 刷新 that comes back with a stub (a source's login wall or daily limit, e.g. `您今日免登录访问次数已达上限…`)
+        // must not overwrite a real cached chapter: the stub is shown, the cache stays
+        final old = refresh ? await bookContent.readFromLocal(book.bookUrl, index) : null;
+        if (old != null && looksLikeStub(raw.text, old)) {
+          log?.call('刷新得到的正文明显短于缓存（${raw.text.trim().length} / ${old.length} 字），可能是书源的登录或限制提示，已保留原缓存');
+        } else {
+          await bookContent.saveToLocal(book.bookUrl, index, raw.text, book: book);
+        }
       }
     }
     final title = await purifyTitle(chapter.name);
     final content = await purify(index, raw);
     return ReadChapter(chapter, title, content.$1, purified: content.$2);
+  }
+
+  /// A freshly fetched text that is tiny next to the cached chapter (under [stubMaxChars] characters and less than a fifth of
+  /// the cached length) is taken for a source's message rather than the chapter.
+  static const int stubMaxChars = 200;
+  static bool looksLikeStub(String fresh, String cached) {
+    final n = fresh.trim().length;
+    return n < stubMaxChars && cached.trim().length > n * 5;
   }
 
   /// Title replace rules.

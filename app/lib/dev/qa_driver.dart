@@ -170,11 +170,18 @@ abstract class QaDriver {
 
   static Rect _globalRect(RenderBox b) => MatrixUtils.transformRect(b.getTransformTo(null), Offset.zero & b.size);
 
+  /// Walks stop after this long / this many entries, so a page with a platform view (浏览器, 书源登录) answers a partial list
+  /// instead of leaving the driver unanswered (seen on the phone: `/texts` never returned on a WebView page).
+  static const Duration walkBudget = Duration(seconds: 3);
+  static const int walkLimit = 400;
+
   static List<Map<String, Object?>> _texts() {
     final out = <Map<String, Object?>>[];
     final view = WidgetsBinding.instance.platformDispatcher.implicitView!;
     final screen = Offset.zero & (view.physicalSize / view.devicePixelRatio);
+    final sw = Stopwatch()..start();
     void visit(Element e) {
+      if (sw.elapsed > walkBudget || out.length >= walkLimit) return;
       final ro = e.renderObject;
       if (e is RenderObjectElement && ro is RenderParagraph && ro.attached && ro.hasSize) {
         final r = _globalRect(ro);
@@ -201,7 +208,9 @@ abstract class QaDriver {
     final view = WidgetsBinding.instance.renderViews.first;
     final dpr = WidgetsBinding.instance.platformDispatcher.implicitView!.devicePixelRatio;
     final rootNode = view.owner?.semanticsOwner?.rootSemanticsNode;
+    final sw = Stopwatch()..start();
     void visit(SemanticsNode n, Matrix4 parent) {
+      if (sw.elapsed > walkBudget || out.length >= walkLimit) return;
       final m = n.transform == null ? parent : (parent.clone()..multiply(n.transform!));
       final r = MatrixUtils.transformRect(m, n.rect);
       final d = n.getSemanticsData();

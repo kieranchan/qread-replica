@@ -220,6 +220,27 @@ void main() {
       expect(() => api.loadChapter(9), throwsRangeError);
     });
 
+    test('a refresh that returns a source stub keeps the cached chapter; a real new text replaces it', () async {
+      var answer = '第一段正文。' * 60;
+      final log = <String>[];
+      ReadApi.log = log.add;
+      final api = ReadApi(_webBook(), chapters: _chapters(2), loader: (c) async => ChapterContent.fromText(answer));
+      expect((await api.loadChapter(0)).content.text.length, answer.length);
+      answer = '您今日免登录访问次数已达上限(3次)！继续阅读请登录后刷新页面。';
+      final stub = await api.loadChapter(0, refresh: true);
+      expect(stub.content.text, answer, reason: 'the message is shown');
+      expect(await api.bookContent.readFromLocal(api.book.bookUrl, 0), startsWith('第一段正文。'), reason: 'the cache is kept');
+      expect(log.last, contains('已保留原缓存'));
+      expect((await api.loadChapter(0)).content.text, startsWith('第一段正文。'));
+      answer = '修订后的正文。' * 40;
+      await api.loadChapter(0, refresh: true);
+      expect(await api.bookContent.readFromLocal(api.book.bookUrl, 0), startsWith('修订后的正文。'));
+      expect(ReadApi.looksLikeStub('短', '长' * 10), isTrue);
+      expect(ReadApi.looksLikeStub('短' * 50, '长' * 100), isFalse);
+      expect(ReadApi.looksLikeStub('短' * 199, '长' * 5000), isTrue);
+      ReadApi.log = null;
+    });
+
     test('purification result is cached per chapter and invalidated by a rule change', () async {
       var loads = 0;
       final book = _webBook(rules: true);
