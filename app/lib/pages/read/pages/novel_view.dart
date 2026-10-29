@@ -42,6 +42,8 @@ import '../../../util/epub/epub_zh_convert.dart';
 import '../../../util/image/image_service.dart';
 import '../../../util/source/image_meta.dart';
 import '../../../util/source/source_events.dart';
+import '../../../read/util/progress_sync.dart';
+import '../../../theme/widgets.dart';
 import '../../../util/toast.dart';
 import '../../../widget/delayed_selection_area.dart';
 import '../../../widget/note_sheet.dart';
@@ -274,6 +276,8 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     _applySystemUi();
     _logLine('开始加载初始章节');
     if (_size != null) await relayout();
+    // 进度同步确认 (0xecac28): once the book is up, the server's position is compared with this device's (another device may be ahead)
+    unawaited(ProgressSync.run(this, context: () => mounted ? context : null));
   }
 
   void _fail(String message) {
@@ -831,19 +835,26 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
   @override
   bool get isBookmarked => _currentBookmark != null;
 
+  /// The confirmation before a bookmark is added / removed (0x108f418 添加书签, 0x108f6ec 删除书签); tests replace it.
+  static Future<bool> Function(BuildContext context, String title, String content) confirmDialog = Dialogs.confirm;
+
   @override
   Future<void> toggleBookmark() async {
+    final have = _currentBookmark;
+    final adding = have == null;
     try {
-      final have = _currentBookmark;
-      if (have != null) {
+      if (!adding) {
+        if (!await confirmDialog(context, '删除书签', '确定要删除当前页的书签吗？')) return;
         await NoteDataN.delete(have.id);
-        Toast.show('已删除书签');
+        Toast.show('删除成功');
       } else {
         final pages = _pages[_ci];
         if (pages == null) {
           Toast.show('正在加载中，请稍后再试！');
           return;
         }
+        if (!await confirmDialog(context, '添加书签', '确定要将当前进度添加为书签吗？')) return;
+        if (!mounted) return;
         final p = pages[_pi];
         final text = _content[_ci]?.content.text ?? '';
         final snippet = text.substring(p.start.clamp(0, text.length), math.min(text.length, p.start + 60)).trim();
@@ -859,11 +870,11 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
           ),
           bookmark: true,
         );
-        Toast.show('已添加书签');
+        Toast.show('添加成功');
       }
       if (mounted) setState(() {});
     } catch (e) {
-      Toast.show('书签操作失败:$e');
+      Toast.show(adding ? '添加失败:$e' : '删除失败:$e');
     }
   }
 

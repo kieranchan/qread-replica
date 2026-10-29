@@ -35,6 +35,9 @@ class _FakeRemote implements ReadProgressRemote {
   Future<void> addReads(Book book) async {
     calls.add('addreads ${book.bookUrl} ${book.readchapter}');
   }
+
+  @override
+  Future<RemotePosition?> fetchPos(Book book) async => null;
 }
 
 Book _webBook({bool rules = false}) => Book(bookUrl: 'https://example.com/book/1', name: '测试书', author: 'A', origin: 'https://example.com', useReplaceRule: rules);
@@ -420,6 +423,31 @@ void main() {
       expect(posts[1].$2['readchapter'], '1,2');
       final bad = ServerReadProgressRemote(post: (u, b) async => {'code': -1, 'errorMsg': 'nope'}, enabled: () => true);
       expect(bad.autoPos(book, 0, 0), throwsA(anything));
+    });
+
+    test('getpos: the stored record, null for nothing stored / sync off', () async {
+      var answer = <String, dynamic>{'code': -5};
+      final posts = <String>[];
+      var enabled = true;
+      final remote = ServerReadProgressRemote(
+        post: (url, body) async {
+          posts.add(url.split('/').last);
+          return answer;
+        },
+        enabled: () => enabled,
+      );
+      final book = Book(bookUrl: 'u');
+      expect(await remote.fetchPos(book), isNull);
+      answer = {'code': 0, 'data': {'index': '7', 'pos': 0.5, 'title': '第八章', 'bid': 'B', 'appid': 'ipad', 't': 123}};
+      final p = (await remote.fetchPos(book))!;
+      expect((p.index, p.pos, p.title, p.bid, p.appid, p.time), (7, 0.5, '第八章', 'B', 'ipad', 123));
+      expect(posts, ['getpos', 'getpos']);
+      enabled = false;
+      expect(await remote.fetchPos(book), isNull);
+      expect(posts.length, 2);
+      answer = {'code': -1, 'errorMsg': 'nope'};
+      enabled = true;
+      expect(remote.fetchPos(book), throwsA(anything));
     });
   });
 

@@ -312,56 +312,91 @@ class _ButtomMenuState extends State<ButtomMenu> {
 
   // ------------------------------------------------------------------ 间距设置
 
+  /// The original's 间距 panel (0x674b68) is split into 页面间距 / 标题间距 / 页眉页脚 groups; the group shown here.
+  int _spaceTab = 0;
+
+  static String _autoOrInt(double v) => v < 0 ? '自动' : v.round().toString();
+
   Widget _space(BuildContext context) {
+    const tabs = ['页面间距', '标题间距', '页眉页脚'];
+    final sliders = switch (_spaceTab) {
+      1 => [
+          _SettingSlider(label: '标题上边距', value: s.titleTopMargin.toDouble(), min: 0, max: 100, divisions: 100, onCommit: (v) => s.setTitle(top: v.round())),
+          _SettingSlider(label: '标题下边距', value: s.titleBottomMargin.toDouble(), min: 0, max: 100, divisions: 100, onCommit: (v) => s.setTitle(bottom: v.round())),
+          _SettingSlider(
+            label: '标题字体',
+            hint: '比正文字体大多少',
+            value: s.titlefontSize.toDouble(),
+            min: -10,
+            max: 30,
+            divisions: 40,
+            onCommit: (v) => s.setTitle(size: v.round()),
+          ),
+        ],
+      2 => [
+          _SettingSlider(
+            label: '上方安全距离',
+            hint: '页眉到屏幕顶部的距离，-1为自动识别。',
+            value: s.safeTop.toDouble(),
+            min: -1,
+            max: 200,
+            divisions: 201,
+            format: _autoOrInt,
+            onCommit: (v) => s.setSafeDistance(top: v.round()),
+          ),
+          _SettingSlider(
+            label: '下方安全距离',
+            hint: '页脚到屏幕底部的距离，-1为自动识别。',
+            value: s.safeBottom.toDouble(),
+            min: -1,
+            max: 200,
+            divisions: 201,
+            format: _autoOrInt,
+            onCommit: (v) => s.setSafeDistance(bottom: v.round()),
+          ),
+          for (final e in [
+            ('页眉左边距', 'headerLeftMargin', s.headerLeftMargin),
+            ('页眉右边距', 'headerRightMargin', s.headerRightMargin),
+            ('页脚左边距', 'footerLeftMargin', s.footerLeftMargin),
+            ('页脚右边距', 'footerRightMargin', s.footerRightMargin),
+          ])
+            _SettingSlider(label: e.$1, value: e.$3.toDouble(), min: 0, max: 200, divisions: 200, onCommit: (v) => s.setInt(e.$2, v.round())),
+          _SettingSlider(
+            label: '页眉脚字体',
+            value: s.headerFooterFontSize.toDouble().clamp(8, 25),
+            min: 8,
+            max: 25,
+            divisions: 17,
+            onCommit: (v) => s.setInt('headerFooterFontSize', v.round()),
+          ),
+        ],
+      _ => [
+          _SettingSlider(label: '行距', value: s.lineHeight, min: 1, max: 4, divisions: 30, digits: 1, onCommit: s.setLineHeight),
+          _SettingSlider(label: '段距', value: s.paragraphSpacing, min: 0, max: 100, divisions: 100, onCommit: s.setParagraphSpacing),
+          _SettingSlider(label: '字距', value: s.letterSpacing, min: -2, max: 10, divisions: 24, digits: 1, onCommit: s.setLetterSpacing),
+          _SettingSlider(label: '缩进', value: s.kong.toDouble(), min: 0, max: 4, divisions: 4, onCommit: (v) => s.setKong(v.round())),
+          _SettingSlider(label: '上边距', value: s.topMargin.toDouble(), min: 0, max: 100, divisions: 100, onCommit: (v) => s.setMargins(top: v.round())),
+          _SettingSlider(label: '下边距', value: s.bottomMargin.toDouble(), min: 0, max: 100, divisions: 100, onCommit: (v) => s.setMargins(bottom: v.round())),
+          _SettingSlider(label: '左边距', value: s.leftMargin.toDouble(), min: 0, max: 100, divisions: 100, onCommit: (v) => s.setMargins(left: v.round())),
+          _SettingSlider(label: '右边距', value: s.rightMargin.toDouble(), min: 0, max: 100, divisions: 100, onCommit: (v) => s.setMargins(right: v.round())),
+        ],
+    };
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _title('间距设置'),
-        _SettingSlider(label: '行距', value: s.lineHeight, min: 1, max: 4, divisions: 30, digits: 1, onCommit: s.setLineHeight),
-        _SettingSlider(label: '段距', value: s.paragraphSpacing, min: 0, max: 100, divisions: 100, onCommit: s.setParagraphSpacing),
-        _SettingSlider(label: '字距', value: s.letterSpacing, min: -2, max: 10, divisions: 24, digits: 1, onCommit: s.setLetterSpacing),
-        _SettingSlider(label: '缩进', value: s.kong.toDouble(), min: 0, max: 4, divisions: 4, onCommit: (v) => s.setKong(v.round())),
-        _SettingSlider(
-          label: '上边距',
-          value: s.topMargin.toDouble(),
-          min: 0,
-          max: 100,
-          divisions: 100,
-          onCommit: (v) => s.setMargins(top: v.round()),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Wrap(
+            spacing: 6,
+            children: [
+              for (var i = 0; i < tabs.length; i++)
+                ChoiceChip(label: Text(tabs[i]), selected: _spaceTab == i, onSelected: (_) => setState(() => _spaceTab = i)),
+            ],
+          ),
         ),
-        _SettingSlider(
-          label: '下边距',
-          value: s.bottomMargin.toDouble(),
-          min: 0,
-          max: 100,
-          divisions: 100,
-          onCommit: (v) => s.setMargins(bottom: v.round()),
-        ),
-        _SettingSlider(
-          label: '左边距',
-          value: s.leftMargin.toDouble(),
-          min: 0,
-          max: 100,
-          divisions: 100,
-          onCommit: (v) => s.setMargins(left: v.round()),
-        ),
-        _SettingSlider(
-          label: '右边距',
-          value: s.rightMargin.toDouble(),
-          min: 0,
-          max: 100,
-          divisions: 100,
-          onCommit: (v) => s.setMargins(right: v.round()),
-        ),
-        _SettingSlider(
-          label: '标题间距',
-          value: s.titleBottomMargin.toDouble(),
-          min: 0,
-          max: 100,
-          divisions: 100,
-          onCommit: (v) => s.setTitle(bottom: v.round()),
-        ),
+        ...sliders,
         const SizedBox(height: 8),
       ],
     );
@@ -582,6 +617,10 @@ class _SettingSlider extends StatefulWidget {
   final int? divisions;
   final int digits;
   final String unit;
+  /// A one-line explanation under the slider (the original's subtitle, e.g. `页眉到屏幕顶部的距离，-1为自动识别。`).
+  final String? hint;
+  /// Overrides the value text (e.g. `自动` for -1).
+  final String Function(double v)? format;
   final Future<void> Function(double v) onCommit;
 
   const _SettingSlider({
@@ -593,6 +632,8 @@ class _SettingSlider extends StatefulWidget {
     this.divisions,
     this.digits = 0,
     this.unit = '',
+    this.hint,
+    this.format,
   });
 
   @override
@@ -605,25 +646,33 @@ class _SettingSliderState extends State<_SettingSlider> {
   @override
   Widget build(BuildContext context) {
     final v = (_v ?? widget.value).clamp(widget.min, widget.max);
+    final text = widget.format?.call(v) ?? '${v.toStringAsFixed(widget.digits)}${widget.unit}';
+    final hint = widget.hint;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 56, child: Text(widget.label)),
-          Expanded(
-            child: Slider(
-              value: v,
-              min: widget.min,
-              max: widget.max,
-              divisions: widget.divisions,
-              onChanged: (x) => setState(() => _v = x),
-              onChangeEnd: (x) async {
-                await widget.onCommit(x);
-                if (mounted) setState(() => _v = null);
-              },
-            ),
+          Row(
+            children: [
+              SizedBox(width: widget.label.length > 4 ? 92 : 56, child: Text(widget.label)),
+              Expanded(
+                child: Slider(
+                  value: v,
+                  min: widget.min,
+                  max: widget.max,
+                  divisions: widget.divisions,
+                  onChanged: (x) => setState(() => _v = x),
+                  onChangeEnd: (x) async {
+                    await widget.onCommit(x);
+                    if (mounted) setState(() => _v = null);
+                  },
+                ),
+              ),
+              SizedBox(width: 64, child: Text(text, textAlign: TextAlign.end)),
+            ],
           ),
-          SizedBox(width: 64, child: Text('${v.toStringAsFixed(widget.digits)}${widget.unit}', textAlign: TextAlign.end)),
+          if (hint != null) Padding(padding: const EdgeInsets.only(bottom: 4), child: Text(hint, style: Theme.of(context).textTheme.bodySmall)),
         ],
       ),
     );

@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:newread/data/note_data_n.dart';
 import 'package:newread/models/book.dart';
+import 'package:newread/pages/read/pages/novel_view.dart';
 import 'package:newread/pages/read/read_page.dart';
 import 'package:newread/read/api/readapi.dart';
 import 'package:newread/read/setting/read_setting.dart';
@@ -74,9 +75,10 @@ void main() {
     expect(s.pageIndex, 0);
     await settle(tester, until: () => f.book.durChapterIndex == 1);
 
-    // --- bookmark toggle (NoteDataN, `bm_` ids)
+    // --- bookmark toggle (NoteDataN, `bm_` ids); the 添加书签 / 删除书签 confirmations are answered yes
+    NovelViewState.confirmDialog = (_, _, _) async => true;
     unawaited(s.toggleBookmark());
-    await settle(tester, until: () => s.isBookmarked && Toast.log.contains('已添加书签'));
+    await settle(tester, until: () => s.isBookmarked && Toast.log.contains('添加成功'));
     final marks = NoteDataN.notes.where((n) => n.bookUrl == f.book.bookUrl && NoteDataN.isBookmark(n)).toList();
     expect(marks.single.chapterIndex, 1);
     expect(marks.single.id, startsWith('bm_'));

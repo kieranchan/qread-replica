@@ -185,6 +185,26 @@ test('cloud sync: items, md5, lists and etag/update-url flow', async () => {
   assert.equal((await post('/getBooks', { tockenid: other.token })).json.code, -5);
 });
 
+test('reading position: autopos stores the record, getpos answers it (nothing stored = -5)', async () => {
+  const u = await newUser('ivanpos', { days: 30 });
+  const t = { tockenid: u.token, appid: u.appid };
+  assert.equal((await post('/getpos', { ...t, book: 'u1' })).json.code, -5);
+  assert.notEqual((await post('/getpos', t)).json.code, 0); // a book is required
+  assert.equal((await post('/autopos', { ...t, st: '0', book: 'u1', index: 3, pos: 0.25, title: '第四章', bid: 'B1', t: Date.now() })).json.code, 0);
+  const r = (await post('/getpos', { ...t, book: 'u1' })).json;
+  assert.equal(r.code, 0);
+  assert.deepEqual({ index: r.data.index, pos: r.data.pos, title: r.data.title, bid: r.data.bid, appid: r.data.appid }, { index: 3, pos: 0.25, title: '第四章', bid: 'B1', appid: u.appid });
+  assert.ok(r.data.t > 0);
+  // a later report from another device replaces it
+  assert.equal((await post('/autopos', { ...t, appid: 'ipad-2', st: '0', book: 'u1', index: 5, pos: 0, bid: 'B1', t: Date.now() })).json.code, 0);
+  const r2 = (await post('/getpos', { ...t, book: 'u1' })).json.data;
+  assert.equal(r2.index, 5);
+  assert.equal(r2.appid, 'ipad-2');
+  // other users see nothing
+  const other = await newUser('ivanpos2', { days: 30 });
+  assert.equal((await post('/getpos', { tockenid: other.token, book: 'u1' })).json.code, -5);
+});
+
 test('devices: list, remove, token dies with the device', async () => {
   const u = await newUser('hank');
   const second = await post('/login', { username: 'hank', password: 'secret-pw', platform: 'ios', model: 'iPad', appid: 'ipad-1' });

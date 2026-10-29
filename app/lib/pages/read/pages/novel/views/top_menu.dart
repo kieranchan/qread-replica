@@ -22,6 +22,7 @@ import '../../../../../read/util/down_notification.dart';
 import '../../../../../read/util/replace_rules.dart';
 import '../../../../../storage/setting.dart';
 import '../../../../../storage/storage.dart';
+import '../../../../../theme/widgets.dart';
 import '../../../../../util/source/source_events.dart';
 import '../../../../../util/toast.dart';
 import '../../../../../widget/ui/q_glass.dart';
@@ -70,19 +71,31 @@ abstract class TopMenuActions {
       Toast.show('已有缓存任务正在进行中');
       return;
     }
+    // 0x95acb4: 后20章 / 后50章 / 后100章 / 后面全部章节, plus 自定义 (0x95b738: 自定义下载章节数, 请输入章节数)
     final n = await showDialog<int>(
       context: context,
       builder: (ctx) => SimpleDialog(
         title: const Text('选择下载章节'),
         children: [
-          for (final e in const [(20, '后20章'), (50, '后50章'), (100, '后100章'), (-1, '全部')])
+          for (final e in const [(20, '后20章'), (50, '后50章'), (100, '后100章'), (-1, '后面全部章节'), (0, '自定义')])
             SimpleDialogOption(onPressed: () => Navigator.pop(ctx, e.$1), child: Text(e.$2)),
         ],
       ),
     );
     if (n == null) return;
+    var count = n;
+    if (n == 0) {
+      if (!context.mounted) return;
+      final s = await Dialogs.input(context, '自定义下载章节数', hint: '请输入章节数', keyboardType: TextInputType.number);
+      if (s == null) return;
+      count = int.tryParse(s.trim()) ?? 0;
+      if (count <= 0) {
+        Toast.show('请输入正确的章节数');
+        return;
+      }
+    }
     final from = host.chapterIndex;
-    final to = n < 0 ? host.chapters.length - 1 : from + n - 1;
+    final to = count < 0 ? host.chapters.length - 1 : (from + count - 1).clamp(from, host.chapters.length - 1);
     Toast.show('准备缓存...');
     final helper = DownNotificationHelper.instance;
     try {

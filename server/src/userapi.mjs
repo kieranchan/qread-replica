@@ -407,11 +407,27 @@ export function createUserApi(svc, cfg, limiter = new RateLimiter()) {
     const { user } = cloud(c);
     const book = String(c.p.book ?? '');
     if (!book) throw new ApiError(CODE.ERR, 'bad book');
-    const data = JSON.stringify({ index: c.p.index, pos: c.p.pos, bid: c.p.bid, validateDocument: c.p.validateDocument, whiteSpace: c.p.whiteSpace });
+    const data = JSON.stringify({ index: c.p.index, pos: c.p.pos, title: c.p.title ?? '', bid: c.p.bid, validateDocument: c.p.validateDocument, whiteSpace: c.p.whiteSpace });
     svc.db
       .prepare('INSERT INTO reads(user_id, book, appid, data, updated_at) VALUES (?,?,?,?,?) ON CONFLICT(user_id, book) DO UPDATE SET appid=excluded.appid, data=excluded.data, updated_at=excluded.updated_at')
       .run(user.id, `pos:${book}`, String(c.p.appid ?? ''), data, c.now);
     return ok();
+  };
+  // The stored position of a book (the app's 进度同步确认 compares it with the device's own progress when a book is opened and offers
+  // 覆盖 / 跳转; the original app did this against the bound 轻阅读后端's record). `-5` when nothing is stored.
+  h.getpos = (c) => {
+    const { user } = cloud(c);
+    const book = String(c.p.book ?? '');
+    if (!book) throw new ApiError(CODE.ERR, 'bad book');
+    const row = svc.db.prepare('SELECT appid, data, updated_at FROM reads WHERE user_id = ? AND book = ?').get(user.id, `pos:${book}`);
+    if (!row) return noData();
+    let d = {};
+    try {
+      d = JSON.parse(row.data) ?? {};
+    } catch {
+      d = {};
+    }
+    return ok({ index: Number(d.index ?? 0) || 0, pos: Number(d.pos ?? 0) || 0, title: String(d.title ?? ''), bid: String(d.bid ?? ''), appid: row.appid, t: row.updated_at });
   };
   return h;
 }
