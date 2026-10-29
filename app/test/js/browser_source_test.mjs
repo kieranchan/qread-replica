@@ -68,6 +68,7 @@ test('field: what follows a label', () => {
   assert.equal(page.field('没有', '作\\s*者', 20), '');
   assert.equal(page.field('垃圾分类人人有责，分类：仙侠', '(?:分\\s*类|类\\s*[型别])', 12), '仙侠');
   assert.equal(page.field('创作者很多', '作\\s*[者家]', 20), '');
+  assert.equal(page.field('野亮 字数：44万字 状态：全本', '字\\s*数', 12), '44万字');
 });
 
 test('isChapterHref: navigation and site pages are not chapters', () => {

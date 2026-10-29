@@ -3,6 +3,7 @@
 //   QREAD_SSH_TARGET=user@host node tools/smoke.mjs https://qread.forfine.me [ssh-target] [ssh-key]
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -23,7 +24,16 @@ const name = 'smoke' + crypto.randomBytes(4).toString('hex');
 const pw = crypto.randomBytes(9).toString('base64url');
 try {
   check('healthz', (await (await fetch(base + '/healthz')).json()).ok === true);
-  check('browser page (阅读模式 parser) is served', (await fetch(base + '/static/browser.html')).status === 200);
+  const browserPage = await fetch(base + '/static/browser.html');
+  check('browser page (阅读模式 parser) is served', browserPage.status === 200);
+  try {
+    // the served copy should be the app's built-in page (node tools/browser_page.mjs + qread-admin set-static browser after edits)
+    const dart = fs.readFileSync(new URL('../../app/lib/util/source/browser_source_page.dart', import.meta.url), 'utf8');
+    const builtIn = dart.slice(dart.indexOf("r'''") + 4, dart.indexOf("'''", dart.indexOf("r'''") + 4)).trim();
+    check('browser page is the current built-in one (else re-export and set-static browser)', (await browserPage.text()).trim() === builtIn);
+  } catch (e) {
+    check('browser page compared with the app source', false, String(e));
+  }
   const invite = admin('make-codes', 'invite', '--valid-days', '1');
   check('register with invite', (await post('/register', { username: name, email: `${name}@example.invalid`, password: pw, code: invite })).code === 0);
   check('register again with the same invite is refused', (await post('/register', { username: name + 'x', email: `${name}x@example.invalid`, password: pw, code: invite })).code !== 0);

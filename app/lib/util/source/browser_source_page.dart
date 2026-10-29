@@ -290,6 +290,9 @@ async function getinfo(html, bookurl) {
 
     var kind = meta(doc, ['meta[property$="category"]', 'meta[name$="category"]']) || field(text, '(?:分\\s*类|类\\s*[型别])', 12);
     var status = meta(doc, ['meta[property$="status"]', 'meta[name$="status"]']) || field(text, '状\\s*态', 8);
+    // the detail page shows wordCount as 「n万字」: the page's 字数 when it has one, else the status as the original's page did
+    var words = field(text, '字\\s*数', 12);
+    if (words && !/\d/.test(words)) words = '';
     var latest = pickLatest(doc, rawText);
 
     var intro = meta(doc, ['meta[property="og:description"]', 'meta[property$="description"]', 'meta[name="description"]']);
@@ -307,7 +310,7 @@ async function getinfo(html, bookurl) {
       coverUrl: cover || '',
       tocUrl: bookurl,
       bookUrl: bookurl,
-      wordCount: status || ''
+      wordCount: words || status || ''
     };
     flutterBridge.log('详情 ' + bookInfo.name + ' ' + bookInfo.author);
     return JSON.stringify(bookInfo);
