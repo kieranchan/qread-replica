@@ -121,7 +121,9 @@ class _CleanPageState extends State<CleanPage> {
       await Get.to(() => const TTsSetting());
       return _measure();
     }
-    if (!await Dialogs.confirm(context, '清理缓存', '确定要清理$label吗？')) return;
+    // 0x698c1c: the confirmation names the space that will be freed (预计释放空间)
+    final size = _sizes?[label];
+    if (!await Dialogs.confirm(context, '清理缓存', size == null ? '确定要清理$label吗？' : '确定要清理$label吗？\n预计释放空间 ${formatBytes(size)}', confirmText: '确认清理')) return;
     try {
       switch (label) {
         case '图片缓存':

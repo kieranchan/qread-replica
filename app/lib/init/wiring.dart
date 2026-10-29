@@ -30,6 +30,7 @@ import '../pages/read/tts_bridge.dart';
 import '../pages/rss_page.dart';
 import '../pages/search/search_book_page.dart';
 import '../pages/setting/extras_routes.dart';
+import '../pages/theme/theme_update_check.dart';
 import '../pages/web/web_hooks.dart';
 import '../qread/qread_jobs.dart';
 import '../read/api/read_storage_root.dart';
@@ -38,6 +39,7 @@ import '../widget/book/intro_html_flutter.dart';
 import '../widget/book/toc_cache.dart';
 import '../storage/storage.dart';
 import '../theme/extras_init.dart';
+import '../util/cron/clean_jobs.dart';
 import '../util/legado/js_engines.dart';
 import 'glue_routes.dart';
 import 'reader_ai_adapter.dart';
@@ -84,6 +86,10 @@ abstract class Wiring {
     // shelf: loads the shelf and routes reader progress into it (ReadApi.onProgress)
     await ShelfRoutes.init();
     await ExtrasInit.init();
+    // start-up housekeeping of the original (util/cron/book.dart) a minute after launch, and the plaza theme update notice
+    CleanJobs.log ??= debugPrint;
+    CleanJobs.scheduleAtStartup();
+    unawaited(ThemeUpdateCheck.notify());
     // device backups (书架备份 / 书源备份): debounced uploads after every save, re-opened at start-up as the original does
     Bookdata.onSaved = AutoBackup.scheduleBooks;
     Sourcedata.store.onSaved = AutoBackup.scheduleSources;

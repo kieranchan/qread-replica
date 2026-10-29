@@ -390,6 +390,12 @@ class BookshelfPageState extends BookApiPage<BookshelfPage> with AutomaticKeepAl
         final r = await AddConfigDialog.show(context);
         if (r != null && mounted) await Nav.openNamed(context, 'config_import', arguments: {'type': r.type.name});
       case 'editbookshelf':
+        // 0xf75494: with the cloud shelf on, editing waits for a refresh when the cloud copy is newer
+        if (!await BookSelfN.cloudIsCurrent()) {
+          Toast.show('云端数据已更新请先刷新书架');
+          return;
+        }
+        if (!mounted) return;
         setState(() {
           _isedit = true;
           _selected.clear();

@@ -6,10 +6,13 @@
 //   Nav.openNamed  = (c, name, {arguments}) => ShelfRoutes.handles(name) ? ShelfRoutes.push(c, name, arguments) : <other areas>;
 //
 // Route names are the original file stems.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../data/bookself.dart';
 import '../../data/source.dart';
+import '../../data/user.dart';
 import '../../models/book.dart';
 import '../../models/source.dart';
 import '../../read/api/readapi.dart';
@@ -64,5 +67,25 @@ abstract class ShelfRoutes {
       await BookSelfN.updateProgress(book.bookUrl,
           index: book.durChapterIndex, pos: book.durChapterPos, title: book.durChapterTitle, readchapter: book.readchapter);
     };
+    // 恢复云端书架 (main_page 0x10bca48): a signed-in user with the cloud shelf on gets the cloud copy merged at start-up
+    unawaited(restoreCloudShelf());
+  }
+
+  /// The start-up merge of groups and shelf with the cloud (what 刷新书架 does), only with the cloud shelf on and a session.
+  static Future<void> Function() cloudSync = () async {
+    await Groupdata.syncCloud();
+    await BookSelfN.syncCloud();
+  };
+
+  static Future<bool> restoreCloudShelf() async {
+    if (!UserSession.isLoggedIn || !UserSession.cloudbookself) return false;
+    try {
+      debugPrint('恢复云端书架');
+      await cloudSync();
+      return true;
+    } catch (e) {
+      debugPrint('恢复云端书架失败: $e');
+      return false;
+    }
   }
 }

@@ -96,7 +96,7 @@ abstract class TopMenuActions {
     }
     final from = host.chapterIndex;
     final to = count < 0 ? host.chapters.length - 1 : (from + count - 1).clamp(from, host.chapters.length - 1);
-    Toast.show('准备缓存...');
+    Toast.show('已添加下载任务');
     final helper = DownNotificationHelper.instance;
     try {
       final r = await CacheBook(

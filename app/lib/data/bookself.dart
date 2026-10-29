@@ -634,6 +634,18 @@ abstract class BookSelfN {
         return result;
       });
 
+  /// 0xf75494: 编辑书架 is refused while the cloud holds newer data (`云端数据已更新请先刷新书架`). True when the cloud shelf is off,
+  /// nobody is signed in, the client's etag is current, or the server cannot be asked (editing is not blocked by a network error).
+  static Future<bool> cloudIsCurrent({CloudApi? api}) async {
+    if (!UserSession.cloudbookself || !UserSession.isLoggedIn) return true;
+    try {
+      final r = await (api ?? defaultCloudApi).updateUrl(CloudKind.books, Storage.getString(PrefKeys.etag));
+      return r != '';
+    } catch (_) {
+      return true;
+    }
+  }
+
   /// Merge of the same book from this device ([l]) and the cloud ([r]); returns [l] updated in place.
   static Book mergeBooks(Book l, Book r) {
     if (r.durChapterTime > l.durChapterTime) {
