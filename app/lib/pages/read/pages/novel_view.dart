@@ -1113,7 +1113,9 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
       decorate: _decorate,
       onLongPress: delta == 0 ? _onLongPress : null,
       bookName: widget.book.name,
-      showStatus: false,
+      // 模拟翻书 keeps the header / footer inside the page (they lift and mirror with it, as in the original); the other paged modes
+      // draw them once over the pager
+      showStatus: _setting.turn == TurnMode.book,
     );
   }
 
@@ -1198,6 +1200,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
         ],
       );
     }
+    final pageOwnBars = _setting.turn == TurnMode.book;
     return Stack(
       children: [
         Positioned.fill(
@@ -1215,7 +1218,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
             onVerticalPullUpdate: _onPullUpdate,
           ),
         ),
-        Positioned.fill(child: _statusBars(config)),
+        if (!pageOwnBars) Positioned.fill(child: _statusBars(config)),
       ],
     );
   }

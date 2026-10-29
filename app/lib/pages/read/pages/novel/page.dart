@@ -12,6 +12,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../../../read/setting/read_setting.dart';
 import '../../../../widget/bookfx/book_painter.dart';
@@ -41,6 +42,9 @@ class NovelPagerController {
 }
 
 class NovelPager extends StatefulWidget {
+  /// Logs the frames of every 仿真翻页 / 模拟翻书 turn (`[curl] …`; on the phone `syslog live -pn Runner`).
+  static bool verbose = true;
+
   final int mode;
   final Duration duration;
 
@@ -94,11 +98,17 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
   Offset _down = Offset.zero;
   bool _horizontal = true;
 
-  // 仿真翻页: picture of the page that rolls
+  // 仿真翻页: picture of the page that rolls; 模拟翻书: picture of the page whose corner is lifted
   final GlobalKey _curKey = GlobalKey(debugLabel: 'flip-cur');
   final GlobalKey _prevKey = GlobalKey(debugLabel: 'flip-prev');
+  final GlobalKey _frontKey = GlobalKey(debugLabel: 'curl-front');
   ui.Image? _flipImage;
   int _captureFor = 0;
+
+  // frame timing of a turn (`[curl] …` in the log) when [NovelPager.verbose]
+  final List<FrameTiming> _turnFrames = [];
+  bool _measuring = false;
+  TimingsCallback? _timings;
 
   bool get _vertical => widget.mode == TurnMode.verticalSlide;
   bool get _bookMode => widget.mode == TurnMode.book || widget.mode == TurnMode.appleBook;
@@ -109,6 +119,29 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
     super.initState();
     _anim = AnimationController(vsync: this, duration: widget.duration)..addListener(_tick);
     widget.controller?._state = this;
+    if (NovelPager.verbose) {
+      _timings = _onTimings;
+      SchedulerBinding.instance.addTimingsCallback(_timings!);
+    }
+  }
+
+  /// Collects the frames of a turn and logs them once it is over: how many, how many over the 120 Hz / 60 Hz budgets, the worst.
+  void _onTimings(List<FrameTiming> list) {
+    if (_measuring || _dir != 0) _turnFrames.addAll(list);
+    if (_measuring || _dir != 0 || _turnFrames.isEmpty) return;
+    var over8 = 0, over16 = 0, worst = 0, build = 0, raster = 0;
+    for (final f in _turnFrames) {
+      final t = f.totalSpan.inMicroseconds;
+      if (t > 8400) over8++;
+      if (t > 16800) over16++;
+      if (t > worst) worst = t;
+      build += f.buildDuration.inMicroseconds;
+      raster += f.rasterDuration.inMicroseconds;
+    }
+    final n = _turnFrames.length;
+    debugPrint('[curl] mode ${widget.mode}: $n frames, $over8 over 8.3 ms, $over16 over 16.7 ms, worst ${(worst / 1000).toStringAsFixed(1)} ms, '
+        'avg build ${(build / n / 1000).toStringAsFixed(1)} ms, avg raster ${(raster / n / 1000).toStringAsFixed(1)} ms');
+    _turnFrames.clear();
   }
 
   void _tick() {
@@ -131,6 +164,7 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
   @override
   void dispose() {
     if (widget.controller?._state == this) widget.controller?._state = null;
+    if (_timings != null) SchedulerBinding.instance.removeTimingsCallback(_timings!);
     _anim.dispose();
     _flipImage?.dispose();
     super.dispose();
@@ -139,6 +173,7 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
   void _finish() {
     final d = _dir;
     _dir = 0;
+    _measuring = false;
     _anim.value = 0;
     _busy = false;
     _touch = null;
@@ -148,6 +183,7 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
 
   void _cancelled() {
     _dir = 0;
+    _measuring = false;
     _busy = false;
     _touch = null;
     _anim.value = 0;
@@ -160,14 +196,16 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
     _captureFor = 0;
   }
 
-  /// 仿真翻页 rolls a picture of the front page: taken once the page has been painted (the previous page appears under the current one
-  /// for a frame when turning back).
+  /// 仿真翻页 rolls a picture of the front page, 模拟翻书 lifts the corner of one: taken once the page has been painted (the previous
+  /// page appears under the current one for a frame when turning back; the curl is drawn from the live widgets until then).
   Future<void> _capture(int dir) async {
-    if (!_flipMode || _captureFor == dir) return;
+    if (!(_flipMode || _bookMode) || _captureFor == dir) return;
     _captureFor = dir;
+    _measuring = true;
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted || _dir != dir) return;
-    final ro = (dir == 1 ? _curKey : _prevKey).currentContext?.findRenderObject();
+    final key = _bookMode ? _frontKey : (dir == 1 ? _curKey : _prevKey);
+    final ro = key.currentContext?.findRenderObject();
     if (ro is! RenderRepaintBoundary) return;
     try {
       final img = await ro.toImage(pixelRatio: MediaQuery.maybeDevicePixelRatioOf(context) ?? 1);
@@ -248,6 +286,7 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
         final w = _size.width, h = _size.height;
         _touch = delta == 1 ? Offset(w - 1, h - 1) : Offset(-w, h);
       });
+      _capture(delta);
       if (!await _animateCurl(_curlTarget(true))) return false;
       setState(_finish);
       return true;
@@ -373,7 +412,13 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
         final front = _dir == 1 ? cur : other;
         final under = _dir == 1 ? other : cur;
         if (a == null) return _dir == 1 ? front : under;
-        return BookCurl(front: front, under: under, touch: a, corner: _corner, paperColor: widget.paperColor);
+        final img = _flipImage;
+        if (img != null) return BookCurl(front: front, under: under, frontImage: img, touch: a, corner: _corner, paperColor: widget.paperColor);
+        // until the picture exists: the live widgets, with a full copy of the front page painted underneath for the picture
+        return Stack(fit: StackFit.expand, children: [
+          RepaintBoundary(key: _frontKey, child: front),
+          BookCurl(front: front, under: under, touch: a, corner: _corner, paperColor: widget.paperColor),
+        ]);
       case TurnMode.none:
         return cur;
       default: // cover

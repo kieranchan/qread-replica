@@ -57,6 +57,13 @@ available in that mode (as in the original). Host test: `test/reader_ui/apple_bo
 Deliberate deviation: the original refuses the mode whenever 完整CSS (`needcss2`, default on) is set but shows that switch only for
 EPUB books, so a TXT / web book could never use it; the replica refuses (and falls back) only for EPUB books in css mode.
 
+模拟翻书 (2026-10-29, the look of the Android original's corner curl): once a turn starts the pager takes a picture of the lifted page
+and `BookCurlPainter` (widget/bookfx/book_painter.dart) draws the whole curl from it — the flat part, the mirrored washed-out back,
+the shadow on the page below, the crease and the bend of the front page — so a frame of the curl is a few image draws instead of
+clipping and colour-filtering live widget trees. In this mode the header / footer are part of the page (they lift and mirror with
+it, as in the original) instead of the fixed overlay the other paged modes keep. Every turn logs its frames (`[curl] mode 6: n
+frames, x over 8.3 ms, …`, `NovelPager.verbose`); `test/reader_ui/book_curl_painter_test.dart` checks the regions.
+
 Not available (pages keep the original strings and say so): Baidu/Weiyun drives (vendor credentials), the Edge voice (its client
 token is not copied). The update check (关于 page and main-page start-up) asks the owner's server, which
 answers from `qread-admin set-update`.
