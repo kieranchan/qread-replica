@@ -37,13 +37,10 @@ class BookCurl extends StatelessWidget {
     this.paperColor = const Color(0xFFF2EEE4),
   });
 
-  /// The back of the paper: the page mirrored and blended towards white (55 % of the colour + 80/255, like the classic algorithm).
-  static const ColorFilter backFilter = ColorFilter.matrix(<double>[
-    0.55, 0, 0, 0, 80, //
-    0, 0.55, 0, 0, 80, //
-    0, 0, 0.55, 0, 80, //
-    0, 0, 0, 1, 0,
-  ]);
+  /// The back of the paper is the page mirrored in its own colours (the paper stays the paper, as in the Android original — not the
+  /// classic algorithm's blend towards white), with this much of the paper colour laid over it so that the mirrored text shows a
+  /// little lighter than on the front.
+  static const double backPaperBlend = 0.25;
 
   @override
   Widget build(BuildContext context) {
@@ -63,10 +60,10 @@ class BookCurl extends StatelessWidget {
         ClipPath(clipper: _PathClip(p.frontPath()), child: front),
         ClipPath(
           clipper: _PathClip(p.backPath()),
-          child: Transform(
-            transform: Matrix4.fromList(p.foldMatrix()),
-            child: ColorFiltered(colorFilter: backFilter, child: front),
-          ),
+          child: Stack(fit: StackFit.expand, children: [
+            Transform(transform: Matrix4.fromList(p.foldMatrix()), child: front),
+            ColoredBox(color: paperColor.withValues(alpha: backPaperBlend)),
+          ]),
         ),
         IgnorePointer(child: CustomPaint(painter: BookShadowPainter(p), size: size)),
       ]);
@@ -123,14 +120,15 @@ class BookCurlPainter extends CustomPainter {
     canvas.clipPath(p.frontPath());
     drawPage(canvas, image, size, null);
     canvas.restore();
-    // the back of the lifted paper: the front mirrored across the fold, washed out
+    // the back of the lifted paper: the front mirrored across the fold in its own colours, a little paper colour over it
     canvas.save();
     canvas.clipPath(p.backPath());
-    canvas.transform(Float64List.fromList(p.foldMatrix()));
     canvas.drawRect(Offset.zero & size, Paint()..color = paperColor);
-    drawPage(canvas, image, size, Paint()
-      ..filterQuality = FilterQuality.low
-      ..colorFilter = BookCurl.backFilter);
+    canvas.save();
+    canvas.transform(Float64List.fromList(p.foldMatrix()));
+    drawPage(canvas, image, size, null);
+    canvas.restore();
+    canvas.drawRect(Offset.zero & size, Paint()..color = paperColor.withValues(alpha: BookCurl.backPaperBlend));
     canvas.restore();
     BookShadows.paint(canvas, p);
   }

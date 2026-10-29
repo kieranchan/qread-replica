@@ -11,7 +11,7 @@ Future<ui.Image> _page(int w, int h) async {
   final rec = ui.PictureRecorder();
   final c = Canvas(rec);
   c.drawRect(Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()), Paint()..color = const Color(0xFF2040C0)); // a blue page
-  c.drawRect(Rect.fromLTWH(0, 0, w / 2, h.toDouble()), Paint()..color = const Color(0xFF802020)); // dark red left half
+  c.drawRect(const Rect.fromLTWH(0, 0, 20, 20), Paint()..color = const Color(0xFF802020)); // a dark red mark top-left
   return rec.endRecording().toImage(w, h);
 }
 
@@ -40,7 +40,6 @@ void main() {
     final out = await _paint(p, page, size);
     expect(out.width, 200);
     int rgb(Color c) => c.toARGB32() & 0xffffff;
-    int sum(Color c) => ((c.r + c.g + c.b) * 255).round();
     // top-left: the page still lies flat (dark red)
     expect(rgb(await _pixel(out, 10, 10)), 0x802020);
     // the lifted corner shows the page underneath (green, darkened by the paper's shadow near the fold)
@@ -48,11 +47,19 @@ void main() {
     expect(under.r, 0);
     expect(under.b, 0);
     expect(under.g, greaterThan(0.5));
-    // the back of the paper near the touch point: the front mirrored and washed out (lighter than the blue, not blue, not green)
-    final back = await _pixel(out, 120, 215);
-    expect(rgb(back), isNot(0x2040c0));
-    expect(rgb(back), isNot(0x00ff00));
-    expect(sum(back), greaterThan(0x20 + 0x40 + 0xc0));
+    // the back of the paper (inside the polygon d-b-a-k-i): the blue page mirrored in its own colours with a quarter of the paper
+    // colour over it, darker only by the crease shadow — never washed out towards white
+    const paper = Color(0xFFF2EEE4);
+    const blue = Color(0xFF2040C0);
+    final centre = (p.d + p.b + p.a + p.k + p.i) / 5;
+    final back = await _pixel(out, centre.dx.round(), centre.dy.round());
+    for (final (got, b, pp) in [(back.r, blue.r, paper.r), (back.g, blue.g, paper.g), (back.b, blue.b, paper.b)]) {
+      final expected = b * (1 - BookCurl.backPaperBlend) + pp * BookCurl.backPaperBlend;
+      expect(got, lessThanOrEqualTo(expected + 0.02), reason: 'lighter than the mirrored page at $centre');
+      expect(got, greaterThanOrEqualTo(expected * 0.7), reason: 'darker than the crease shadow allows at $centre');
+    }
+    // the old blend towards white would have given (97, 115, 185): the blue channel is higher now, red / green lower
+    expect((back.b * 255).round(), greaterThan(185 * 0.7));
     page.dispose();
     out.dispose();
   });
