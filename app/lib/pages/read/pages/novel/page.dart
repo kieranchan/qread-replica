@@ -7,6 +7,7 @@
 //
 // One widget drives all modes: a drag (or [NovelPagerController.turn]) moves an animation from 0 to 1 and the mode decides how the
 // current and the neighbouring screen are drawn at that point; in the corner-curl modes the touch point itself is animated.
+import 'dart:developer' show Timeline;
 import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
@@ -105,10 +106,16 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
   ui.Image? _flipImage;
   int _captureFor = 0;
 
-  // frame timing of a turn (`[curl] …` in the log) when [NovelPager.verbose]
-  final List<FrameTiming> _turnFrames = [];
-  bool _measuring = false;
+  // frame timing of a turn (`[curl] …` in the log) when [NovelPager.verbose]: the engine reports frame timings in batches, about
+  // once a second, so every turn is a time window and the frames inside it are summed up when a later batch arrives
+  final List<(int start, int end)> _turnWindows = [];
+  final Map<int, List<FrameTiming>> _turnFrames = {};
+  int _turnStartedAt = 0;
   TimingsCallback? _timings;
+
+  /// The paper colour of the lifted page, read from its picture (the back of the paper is tinted with it, not with the theme's
+  /// background colour: a textured paper is not that colour).
+  Color? _paperOfPage;
 
   bool get _vertical => widget.mode == TurnMode.verticalSlide;
   bool get _bookMode => widget.mode == TurnMode.book || widget.mode == TurnMode.appleBook;
@@ -125,23 +132,50 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
     }
   }
 
-  /// Collects the frames of a turn and logs them once it is over: how many, how many over the 120 Hz / 60 Hz budgets, the worst.
+  /// Sorts the reported frames into the turn windows and logs a window once a later frame shows it is complete: how many frames,
+  /// how many over the 120 Hz / 60 Hz budgets, the worst, the average build and raster times.
   void _onTimings(List<FrameTiming> list) {
-    if (_measuring || _dir != 0) _turnFrames.addAll(list);
-    if (_measuring || _dir != 0 || _turnFrames.isEmpty) return;
-    var over8 = 0, over16 = 0, worst = 0, build = 0, raster = 0;
-    for (final f in _turnFrames) {
-      final t = f.totalSpan.inMicroseconds;
-      if (t > 8400) over8++;
-      if (t > 16800) over16++;
-      if (t > worst) worst = t;
-      build += f.buildDuration.inMicroseconds;
-      raster += f.rasterDuration.inMicroseconds;
+    if (_turnWindows.isEmpty || list.isEmpty) return;
+    var latest = 0;
+    for (final f in list) {
+      final t = f.timestampInMicroseconds(ui.FramePhase.vsyncStart);
+      if (t > latest) latest = t;
+      for (final w in _turnWindows) {
+        if (t >= w.$1 - 20000 && t <= w.$2) (_turnFrames[w.$1] ??= []).add(f);
+      }
     }
-    final n = _turnFrames.length;
-    debugPrint('[curl] mode ${widget.mode}: $n frames, $over8 over 8.3 ms, $over16 over 16.7 ms, worst ${(worst / 1000).toStringAsFixed(1)} ms, '
-        'avg build ${(build / n / 1000).toStringAsFixed(1)} ms, avg raster ${(raster / n / 1000).toStringAsFixed(1)} ms');
-    _turnFrames.clear();
+    for (final w in List.of(_turnWindows)) {
+      if (w.$2 == 0 || latest <= w.$2) continue;
+      _turnWindows.remove(w);
+      final frames = _turnFrames.remove(w.$1) ?? const [];
+      if (frames.isEmpty) continue;
+      var over8 = 0, over16 = 0, worst = 0, build = 0, raster = 0;
+      for (final f in frames) {
+        final t = f.totalSpan.inMicroseconds;
+        if (t > 8400) over8++;
+        if (t > 16800) over16++;
+        if (t > worst) worst = t;
+        build += f.buildDuration.inMicroseconds;
+        raster += f.rasterDuration.inMicroseconds;
+      }
+      final n = frames.length;
+      debugPrint('[curl] mode ${widget.mode}: ${((w.$2 - w.$1) / 1000).round()} ms, $n frames, $over8 over 8.3 ms, $over16 over 16.7 ms, '
+          'worst ${(worst / 1000).toStringAsFixed(1)} ms, avg build ${(build / n / 1000).toStringAsFixed(1)} ms, '
+          'avg raster ${(raster / n / 1000).toStringAsFixed(1)} ms');
+    }
+  }
+
+  void _turnBegan() {
+    if (_timings == null) return;
+    _turnStartedAt = Timeline.now;
+    _turnWindows.add((_turnStartedAt, 0));
+  }
+
+  void _turnEnded() {
+    if (_timings == null || _turnStartedAt == 0) return;
+    final i = _turnWindows.indexWhere((w) => w.$1 == _turnStartedAt);
+    if (i >= 0) _turnWindows[i] = (_turnStartedAt, Timeline.now);
+    _turnStartedAt = 0;
   }
 
   void _tick() {
@@ -173,7 +207,7 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
   void _finish() {
     final d = _dir;
     _dir = 0;
-    _measuring = false;
+    _turnEnded();
     _anim.value = 0;
     _busy = false;
     _touch = null;
@@ -183,7 +217,7 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
 
   void _cancelled() {
     _dir = 0;
-    _measuring = false;
+    _turnEnded();
     _busy = false;
     _touch = null;
     _anim.value = 0;
@@ -201,7 +235,7 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
   Future<void> _capture(int dir) async {
     if (!(_flipMode || _bookMode) || _captureFor == dir) return;
     _captureFor = dir;
-    _measuring = true;
+    _turnBegan();
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted || _dir != dir) return;
     final key = _bookMode ? _frontKey : (dir == 1 ? _curKey : _prevKey);
@@ -209,12 +243,45 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
     if (ro is! RenderRepaintBoundary) return;
     try {
       final img = await ro.toImage(pixelRatio: MediaQuery.maybeDevicePixelRatioOf(context) ?? 1);
+      final paper = _bookMode ? await _paperColorOf(ro) : null;
       if (!mounted || _dir != dir || _flipImage != null) {
         img.dispose();
         return;
       }
-      setState(() => _flipImage = img);
+      setState(() {
+        _flipImage = img;
+        if (paper != null) _paperOfPage = paper;
+      });
     } catch (_) {}
+  }
+
+  /// The paper colour of a page: the mean of the lighter half of a tiny picture of it (the text is the darker part).
+  static Future<Color?> _paperColorOf(RenderRepaintBoundary ro) async {
+    final thumb = await ro.toImage(pixelRatio: 0.04);
+    try {
+      final bd = await thumb.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (bd == null) return null;
+      final n = bd.lengthInBytes ~/ 4;
+      if (n == 0) return null;
+      var lum = 0;
+      for (var i = 0; i < n; i++) {
+        lum += bd.getUint8(i * 4) + bd.getUint8(i * 4 + 1) + bd.getUint8(i * 4 + 2);
+      }
+      final mean = lum / n;
+      var r = 0, g = 0, b = 0, m = 0;
+      for (var i = 0; i < n; i++) {
+        final pr = bd.getUint8(i * 4), pg = bd.getUint8(i * 4 + 1), pb = bd.getUint8(i * 4 + 2);
+        if (pr + pg + pb < mean) continue;
+        r += pr;
+        g += pg;
+        b += pb;
+        m++;
+      }
+      if (m == 0) return null;
+      return Color.fromARGB(255, r ~/ m, g ~/ m, b ~/ m);
+    } finally {
+      thumb.dispose();
+    }
   }
 
   // ------------------------------------------------------------------ corner curl geometry
@@ -413,7 +480,9 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
         final under = _dir == 1 ? other : cur;
         if (a == null) return _dir == 1 ? front : under;
         final img = _flipImage;
-        if (img != null) return BookCurl(front: front, under: under, frontImage: img, touch: a, corner: _corner, paperColor: widget.paperColor);
+        if (img != null) {
+          return BookCurl(front: front, under: under, frontImage: img, touch: a, corner: _corner, paperColor: _paperOfPage ?? widget.paperColor);
+        }
         // until the picture exists: the live widgets, with a full copy of the front page painted underneath for the picture
         return Stack(fit: StackFit.expand, children: [
           RepaintBoundary(key: _frontKey, child: front),
