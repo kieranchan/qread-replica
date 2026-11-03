@@ -9,6 +9,7 @@
 // Background colours (0x2460c4 / 0x245b64 / 0x245728): the selected style id is `background` (day) or `darkbackground` (night, default
 // `4`); ids below `Common.background.length` are the built-in colours `#e6e6e6 #c4b395 #cad9e8 #d1edd1 #000000 #ffffff` (text colour
 // `Colors.white70` on `#000000`, otherwise `Colors.black87`), larger ids name a `BackGround` of `Ground.grounds`.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -75,7 +76,26 @@ abstract class SlotItem {
   static const int title = 5;
   static const int bookName = 6;
 
-  static const List<String> names = ['时间', '内置百分比电池', '外置百分比电池', '章节进度', '全文进度', '标题', '书名'];
+  // Legado's tips (ReadTipConfig of the Android 阅读 app, PageView.upTipStyle / setContent): 页数及进度 `1/6  0.0%`, 章节序号 `3/120`,
+  // the level in a box (its BatteryView), 时间+电量方框 `HH:mm  69`, 时间+电量% `HH:mm 69%`, 电量% `69%`
+  static const int pageAndTotal = 7;
+  static const int chapterAndTotal = 8;
+  static const int batteryBox = 9;
+  static const int timeBatteryBox = 10;
+  static const int timeBatteryPercent = 11;
+  static const int batteryPercent = 12;
+
+  static const List<String> names = [
+    '时间', '内置百分比电池', '外置百分比电池', '章节进度', '全文进度', '标题', '书名', //
+    '页数及进度', '章节序号', '电量(方框)', '时间+电量(方框)', '时间+电量%', '电量%',
+  ];
+}
+
+/// How the header / footer are drawn: the original 轻悦时光 way, or like Legado (the Android 阅读 app the owner prefers: tips in the
+/// body typeface at 12 pt, the text colour itself, Legado's items and its battery box).
+abstract class StatusStyle {
+  static const int qread = 0;
+  static const int legado = 1;
 }
 
 /// `fen` (更多设置 "分割线": 不显示 / 页眉 / 页脚 / 页眉和页脚): a line under the header and / or above the footer.
@@ -144,6 +164,18 @@ class ReadSetting extends ChangeNotifier {
     'customFooterRight': [SlotItem.batteryOutside],
   };
 
+  /// The slots of the Legado style: Legado's own defaults are 时间 | – | 电量 up and 标题 | – | 页数及进度 down (ReadBookConfig.Config:
+  /// tipHeaderLeft 2, tipHeaderRight 3, tipFooterLeft 1, tipFooterRight 6); the owner's Legado shows the book name at the footer's
+  /// left, which is what they asked for (2026-11-03).
+  static const Map<String, List<int>> legadoSlotDefaults = {
+    'customHeaderLeft': [SlotItem.time],
+    'customHeaderCenter': [],
+    'customHeaderRight': [SlotItem.batteryBox],
+    'customFooterLeft': [SlotItem.bookName],
+    'customFooterCenter': [],
+    'customFooterRight': [SlotItem.pageAndTotal],
+  };
+
   /// Called when the reader switches day/night so the app theme can follow (wired by the lead; null = reader only).
   static void Function(bool night)? onNightChanged;
 
@@ -177,6 +209,11 @@ class ReadSetting extends ChangeNotifier {
 
   /// The custom header / footer slots ([slotDefaults]).
   Map<String, List<int>> slots = {for (final e in slotDefaults.entries) e.key: List<int>.of(e.value)};
+
+  /// [StatusStyle]; Legado unless the prefs say otherwise.
+  int statusStyle = StatusStyle.legado;
+
+  bool get legadoStatus => statusStyle == StatusStyle.legado;
 
   int fontSize = 30;
   double lineHeight = 2;
@@ -244,6 +281,12 @@ class ReadSetting extends ChangeNotifier {
     for (final k in slotDefaults.keys) {
       slots[k] = slot(k);
     }
+    statusStyle = Storage.getInt('statusStyle', StatusStyle.legado).clamp(0, 1);
+    // first start with the Legado style (2026-11-03): slots still at the original's defaults take Legado's; customised ones stay
+    if (statusStyle == StatusStyle.legado && !Storage.getBool('legadoSlotsApplied')) {
+      if (_slotsEqual(slotDefaults)) _applySlots(legadoSlotDefaults);
+      unawaited(Storage.setBool('legadoSlotsApplied', true));
+    }
 
     fontSize = Storage.getInt(fontSizeKey, 30).clamp(10, 55);
     final lh = Storage.getDouble('lineHeight');
@@ -253,7 +296,8 @@ class ReadSetting extends ChangeNotifier {
     fontFamily = Storage.getString('fontFamily');
     paragraphSpacing = Storage.getDouble('paragraphSpacing', 10).clamp(0, 100);
     kong = Storage.getInt('kong', 2).clamp(0, 8);
-    fen = Storage.getInt('fen').clamp(0, 3);
+    // Legado shows a line above the footer by default (showFooterLine true, showHeaderLine false); the original shows none
+    fen = Storage.containsKey('fen') ? Storage.getInt('fen').clamp(0, 3) : fenDefault(statusStyle);
     titleAlign = Storage.getInt('titleAlign').clamp(0, 2);
     titleTopMargin = Storage.getInt('titleTopMargin').clamp(0, 200);
     titleBottomMargin = Storage.getInt('titleBottomMargin').clamp(0, 200);
@@ -499,6 +543,45 @@ class ReadSetting extends ChangeNotifier {
   Future<void> setSlot(String key, List<int> items) async {
     slots[key] = List<int>.of(items);
     await Storage.setString(key, jsonEncode(items));
+    notifyListeners();
+  }
+
+  bool _slotsEqual(Map<String, List<int>> other) {
+    for (final e in other.entries) {
+      final mine = slots[e.key] ?? const <int>[];
+      if (mine.length != e.value.length) return false;
+      for (var i = 0; i < mine.length; i++) {
+        if (mine[i] != e.value[i]) return false;
+      }
+    }
+    return true;
+  }
+
+  void _applySlots(Map<String, List<int>> values) {
+    for (final e in values.entries) {
+      slots[e.key] = List<int>.of(e.value);
+      unawaited(Storage.setString(e.key, jsonEncode(e.value)));
+    }
+  }
+
+  /// The 分割线 default of a style: Legado's footer line, none for the original.
+  static int fenDefault(int style) => style == StatusStyle.legado ? DividerMode.footer : DividerMode.none;
+
+  /// Switches the header / footer style; the slots and the 分割线 take that style's defaults when they still hold the other
+  /// style's.
+  Future<void> setStatusStyle(int v) async {
+    final next = v.clamp(0, 1);
+    if (next == statusStyle) return;
+    final fromDefaults = next == StatusStyle.legado ? slotDefaults : legadoSlotDefaults;
+    final toDefaults = next == StatusStyle.legado ? legadoSlotDefaults : slotDefaults;
+    if (fen == fenDefault(statusStyle)) {
+      fen = fenDefault(next);
+      await Storage.setInt('fen', fen);
+    }
+    statusStyle = next;
+    if (_slotsEqual(fromDefaults)) _applySlots(toDefaults);
+    await Storage.setInt('statusStyle', next);
+    await Storage.setBool('legadoSlotsApplied', true);
     notifyListeners();
   }
 

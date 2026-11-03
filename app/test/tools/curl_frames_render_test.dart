@@ -8,8 +8,12 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:newread/pages/read/pages/novel/content.dart';
 import 'package:newread/pages/read/pages/novel/views/battery_painter.dart';
+import 'package:newread/read/setting/read_setting.dart';
 import 'package:newread/widget/bookfx/book_painter.dart';
+
+import '../support/env.dart';
 
 const _paper = Color(0xFFF2EEE4);
 const _w = 440.0, _h = 956.0;
@@ -106,6 +110,58 @@ void main() {
     });
     // ignore: avoid_print
     print(report);
+  }, skip: !enabled);
+
+  testWidgets('render the Legado-style header and footer to PNG', (tester) async {
+    final out = Directory(Platform.environment['CURL_OUT'] ?? 'build/curl_frames')..createSync(recursive: true);
+    tester.view.physicalSize = const Size(_w * 2, _h * 2);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    await tester.runAsync(() async {
+      await newDevice();
+      ReaderBattery.last = (level: 69, charging: false);
+      ReaderBattery.read = () async => (level: 69, charging: false);
+      final s = ReadSetting();
+      final key = GlobalKey();
+      const ink = Color(0xFF3E3D3B);
+      Widget bar(bool header) => ReaderStatusBar(
+            setting: s,
+            header: header,
+            color: ink,
+            title: '第1章：被下药后，遇上个极品美男',
+            bookName: '左神丹！右神兽！废柴小姐横着走',
+            pageNum: 2,
+            totalPage: 6,
+            bookProgress: 0.0,
+            chapterIndex: 0,
+            chapterCount: 120,
+            clock: () => '15:12',
+          );
+      await tester.pumpWidget(MaterialApp(
+        home: RepaintBoundary(
+          key: key,
+          child: Container(
+            color: const Color(0xFFEDD9B2),
+            width: _w,
+            height: 160,
+            child: Column(children: [
+              bar(true),
+              const Spacer(),
+              const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text('正文……', style: TextStyle(color: ink, fontSize: 20))),
+              const Spacer(),
+              bar(false),
+            ]),
+          ),
+        ),
+      ));
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      final img = await (key.currentContext!.findRenderObject() as RenderRepaintBoundary).toImage(pixelRatio: 4);
+      final bd = await img.toByteData(format: ui.ImageByteFormat.png);
+      File('${out.path}/status_legado.png').writeAsBytesSync(bd!.buffer.asUint8List());
+      img.dispose();
+    });
   }, skip: !enabled);
 
   testWidgets('render the footer battery glyph variants to PNG', (tester) async {

@@ -1130,6 +1130,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
       decorate: _decorate,
       onLongPress: delta == 0 ? _onLongPress : null,
       bookName: widget.book.name,
+      chapterCount: _chapters.length,
       // 模拟翻书 keeps the header / footer inside the page (they lift and mirror with it, as in the original); the other paged modes
       // draw them once over the pager
       showStatus: _setting.turn == TurnMode.book,
@@ -1143,6 +1144,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     return IgnorePointer(
       child: Stack(
         children: ContentPage.statusBars(
+          chapterCount: _chapters.length,
           page: page,
           setting: _setting,
           config: config,

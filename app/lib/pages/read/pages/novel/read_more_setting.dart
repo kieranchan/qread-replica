@@ -171,6 +171,7 @@ class _ReadMoreSettingPageState extends State<ReadMoreSettingPage> {
               _switch('完整CSS', s.needcss2, (v) => s.setBool('needcss2', v), help: '是否用 webview 显示 epub 书本，使用 webview 后能显示完整 css。'),
             _choice<int>('朗读标识', s.readHighlightType, const {0: '下划线', 1: '阴影'}, (v) => s.setInt('readHighlightType', v)),
             _choice<int>('标题对齐方式', s.titleAlign, const {0: '左对齐', 1: '居中', 2: '右对齐'}, (v) => s.setTitle(align: v)),
+            _choice<int>('页眉页脚样式', s.statusStyle, const {StatusStyle.qread: '轻悦时光', StatusStyle.legado: 'Legado（安卓阅读）'}, s.setStatusStyle),
             _choice<int>('分割线', s.fen, const {0: '不显示', 1: '页眉', 2: '页脚', 3: '页眉和页脚'}, s.setFen),
             _choice<int>('显示进度', s.showProgress, const {0: '不显示', 1: '章节进度', 2: '全文进度', 3: '章节进度和全文进度'}, s.setShowProgress),
             _switch('显示段评', s.needdp, (v) => s.setBool('needdp', v)),

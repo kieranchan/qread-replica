@@ -36,6 +36,9 @@ String chapterProgressText(int pageNum, int totalPage) => totalPage <= 0 ? '分�
 /// Slot item 全文进度 (0x632f5c, item 4): the book percent with two decimals.
 String bookProgressText(double bookProgress) => '${(bookProgress * 100).clamp(0, 100).toStringAsFixed(2)}%';
 
+/// Legado's readProgress: one decimal (`0.0%`).
+String legadoProgressText(double bookProgress) => '${(bookProgress * 100).clamp(0, 100).toStringAsFixed(1)}%';
+
 /// The `showProgress` text (显示进度: 不显示 / 章节进度 / 全文进度 / 章节进度和全文进度; settings field_af, default "1" at 0x8f7eb4).
 /// TODO(asm): the battery item 0x6344a8 starts with `Text(widget.field_27.field_2f)` when it is non-zero, but what that string holds
 /// is not confirmed, and showing this text there put a second `2/9` beside the 章节进度 slot, so the reader does not draw it; the
@@ -206,6 +209,9 @@ class PageBody extends StatelessWidget {
   }
 }
 
+/// Height of Legado's one-pixel divider in logical pixels, never thinner than half a point.
+double legadoLineHeight(double dpr) => (1 / dpr).clamp(0.5, 1.0);
+
 /// The header or footer of a reader screen: the three custom slots of the original, a divider line (`fen`).
 class ReaderStatusBar extends StatelessWidget {
   final ReadSetting setting;
@@ -217,6 +223,13 @@ class ReaderStatusBar extends StatelessWidget {
   final int totalPage;
   final double bookProgress;
 
+  /// For Legado's 章节序号 item.
+  final int chapterIndex;
+  final int chapterCount;
+
+  /// `HH:mm` of the time items (tests pass a fixed one).
+  final String Function()? clock;
+
   const ReaderStatusBar({
     super.key,
     required this.setting,
@@ -227,13 +240,35 @@ class ReaderStatusBar extends StatelessWidget {
     this.pageNum = 0,
     this.totalPage = 0,
     this.bookProgress = 0,
+    this.chapterIndex = 0,
+    this.chapterCount = 0,
+    this.clock,
   });
+
+  /// Legado's 页数及进度: `index+1/pageSize  progress` with the chapter's page count still unknown shown as `-`.
+  String pageAndTotalText() => '${totalPage <= 0 ? '$pageNum/-' : '$pageNum/$totalPage'}  ${legadoProgressText(bookProgress)}';
+
+  /// Legado's 章节序号: `chapterIndex+1/chapterSize`.
+  String chapterAndTotalText() => chapterCount <= 0 ? '${chapterIndex + 1}/-' : '${chapterIndex + 1}/$chapterCount';
 
   Widget? _item(int id, TextStyle style) {
     final fs = style.fontSize ?? 12;
+    final c = style.color ?? color;
     switch (id) {
+      case SlotItem.pageAndTotal:
+        return Text(pageAndTotalText(), style: style);
+      case SlotItem.chapterAndTotal:
+        return Text(chapterAndTotalText(), style: style);
+      case SlotItem.batteryBox:
+        return BatteryIcon(color: c, mode: BatteryIconMode.box, textStyle: style.copyWith(fontSize: fs - 1), clock: clock);
+      case SlotItem.timeBatteryBox:
+        return BatteryIcon(color: c, mode: BatteryIconMode.timeBox, textStyle: style.copyWith(fontSize: fs - 1), clock: clock);
+      case SlotItem.timeBatteryPercent:
+        return BatteryIcon(color: c, mode: BatteryIconMode.timePercent, textStyle: style, clock: clock);
+      case SlotItem.batteryPercent:
+        return BatteryIcon(color: c, mode: BatteryIconMode.percent, textStyle: style, clock: clock);
       case SlotItem.time:
-        return Text(clockText(), style: style);
+        return Text(clock?.call() ?? clockText(), style: style);
       case SlotItem.batteryInside:
       case SlotItem.batteryOutside:
         // the original paints the glyph at Size(fontSize + 10, fontSize - 1) (0x6339a0 / 0x633fa8)
@@ -274,12 +309,18 @@ class ReaderStatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style = TextStyle(fontSize: setting.statusFontSize, color: color, height: 1.2);
+    // the Legado style sets its tips in the page's own typeface (PageView.upTipStyle: ChapterProvider.typeface, 12 sp)
+    final family = setting.legadoStatus && setting.fontFamily.isNotEmpty ? setting.fontFamily : null;
+    final style = TextStyle(fontSize: setting.statusFontSize, color: color, height: 1.2, fontFamily: family);
     final prefix = header ? 'customHeader' : 'customFooter';
     final divider = setting.fen == DividerMode.both || setting.fen == (header ? DividerMode.header : DividerMode.footer);
     final left = (header ? setting.headerLeftMargin : setting.footerLeftMargin).toDouble();
     final right = (header ? setting.headerRightMargin : setting.footerRightMargin).toDouble();
-    final line = Container(height: 0.5, margin: EdgeInsets.only(left: left, right: right), color: color.withValues(alpha: 0.4));
+    // Legado's divider (view_book_page `vw_bottom_divider`): one pixel, edge to edge, the faint theme `divider` colour; the
+    // original's is a half-point line inside the margins
+    final line = setting.legadoStatus
+        ? Container(height: legadoLineHeight(MediaQuery.maybeDevicePixelRatioOf(context) ?? 1), color: color.withValues(alpha: 0.15))
+        : Container(height: 0.5, margin: EdgeInsets.only(left: left, right: right), color: color.withValues(alpha: 0.4));
     return SizedBox(
       height: header ? setting.headerHeight : setting.footerHeight,
       child: Column(
@@ -335,7 +376,11 @@ class ContentPage extends StatelessWidget {
     this.bookName = '',
     this.paintBackground = true,
     this.showStatus = true,
+    this.chapterCount = 0,
   });
+
+  /// Number of chapters of the book (Legado's 章节序号 tip).
+  final int chapterCount;
 
   /// The header and footer of [page] as positioned children of a screen-sized [Stack].
   static List<Widget> statusBars({
@@ -345,8 +390,10 @@ class ContentPage extends StatelessWidget {
     required EdgeInsets safe,
     double bookProgress = 0,
     String bookName = '',
+    int chapterCount = 0,
   }) {
-    final dim = config.textColor.withValues(alpha: 0.55);
+    // Legado draws its tips in the text colour itself (tipColor 0 -> textColor); the original dims them
+    final dim = setting.legadoStatus ? config.textColor : config.textColor.withValues(alpha: 0.55);
     final top = setting.safeTop >= 0 ? setting.safeTop.toDouble() : safe.top;
     final bottom = setting.safeBottom >= 0 ? setting.safeBottom.toDouble() : safe.bottom;
     return [
@@ -364,6 +411,8 @@ class ContentPage extends StatelessWidget {
             pageNum: page.pageNum,
             totalPage: page.totalPage,
             bookProgress: bookProgress,
+            chapterIndex: page.currentChapterIndex,
+            chapterCount: chapterCount,
           ),
         ),
       if (setting.showBottom)
@@ -380,6 +429,8 @@ class ContentPage extends StatelessWidget {
             pageNum: page.pageNum,
             totalPage: page.totalPage,
             bookProgress: bookProgress,
+            chapterIndex: page.currentChapterIndex,
+            chapterCount: chapterCount,
           ),
         ),
     ];
@@ -415,7 +466,7 @@ class ContentPage extends StatelessWidget {
               child: ClipRect(child: OverflowBox(alignment: Alignment.topLeft, maxHeight: double.infinity, child: body)),
             ),
             if (showStatus)
-              ...statusBars(page: page, setting: setting, config: config, safe: safe, bookProgress: bookProgress, bookName: bookName),
+              ...statusBars(page: page, setting: setting, config: config, safe: safe, bookProgress: bookProgress, bookName: bookName, chapterCount: chapterCount),
           ],
         ),
       );

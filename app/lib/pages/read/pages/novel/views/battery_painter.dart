@@ -120,6 +120,27 @@ abstract class ReaderBattery {
   }
 }
 
+/// How a battery item of the status line is drawn.
+enum BatteryIconMode {
+  /// 外置百分比电池: `95%` then the glyph.
+  outside,
+
+  /// 内置百分比电池: the level inside the glyph.
+  inside,
+
+  /// Legado's BatteryView: the level in a thin box with a terminal (`69`).
+  box,
+
+  /// Legado 时间+电量: `HH:mm  69` with the box.
+  timeBox,
+
+  /// Legado 时间+电量%: `HH:mm 69%`.
+  timePercent,
+
+  /// Legado 电量%: `69%`.
+  percent,
+}
+
 class BatteryIcon extends StatefulWidget {
   final Color color;
   final double height;
@@ -133,10 +154,57 @@ class BatteryIcon extends StatefulWidget {
   /// 外置百分比电池: the "level%" text before the glyph in this style (0x6339a0).
   final TextStyle? percentText;
 
-  const BatteryIcon({super.key, required this.color, this.height = 10, this.width, this.percentInside = false, this.percentText});
+  final BatteryIconMode mode;
+
+  /// Text style of the Legado modes (12 pt tips in the page's typeface; the box uses 11 pt).
+  final TextStyle? textStyle;
+
+  /// `HH:mm` of the time modes (tests pass a fixed one).
+  final String Function()? clock;
+
+  const BatteryIcon({
+    super.key,
+    required this.color,
+    this.height = 10,
+    this.width,
+    this.percentInside = false,
+    this.percentText,
+    this.mode = BatteryIconMode.outside,
+    this.textStyle,
+    this.clock,
+  });
 
   @override
   State<BatteryIcon> createState() => _BatteryIconState();
+}
+
+/// Legado's battery: the level in a thin rectangle with a short terminal on the right (BatteryView.drawBattery: the box runs
+/// 2 dp above and below the text line, the terminal is 2 dp wide and a third of the box high).
+class LegadoBatteryBox extends StatelessWidget {
+  final int? level;
+  final Color color;
+  final TextStyle style;
+  const LegadoBatteryBox({super.key, required this.level, required this.color, required this.style});
+
+  @override
+  Widget build(BuildContext context) {
+    final fs = style.fontSize ?? 11;
+    final boxH = fs * 1.3 + 2;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Container(
+          height: boxH,
+          padding: const EdgeInsets.fromLTRB(2, 0, 3, 0),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(border: Border.all(color: color, width: 1)),
+          child: Text(level == null ? '--' : '$level', style: style.copyWith(color: color, height: 1.1)),
+        ),
+        Container(width: 2, height: boxH / 3, color: color),
+      ],
+    );
+  }
 }
 
 class _BatteryIconState extends State<BatteryIcon> {
@@ -163,17 +231,42 @@ class _BatteryIconState extends State<BatteryIcon> {
   @override
   Widget build(BuildContext context) {
     final pt = widget.percentText;
+    final ts = (widget.textStyle ?? TextStyle(fontSize: widget.height, color: widget.color)).copyWith(color: widget.color);
+    final clock = widget.clock ?? _hhmm;
+    switch (widget.mode) {
+      case BatteryIconMode.box:
+        return LegadoBatteryBox(level: _level, color: widget.color, style: ts);
+      case BatteryIconMode.timeBox:
+        // Legado: `"$time  $level"` with the box around the level
+        return Row(mainAxisSize: MainAxisSize.min, children: [
+          Text('${clock()}  ', style: ts),
+          LegadoBatteryBox(level: _level, color: widget.color, style: ts),
+        ]);
+      case BatteryIconMode.timePercent:
+        return Text(_level == null ? clock() : '${clock()} $_level%', style: ts);
+      case BatteryIconMode.percent:
+        return Text(_level == null ? '' : '$_level%', style: ts);
+      case BatteryIconMode.outside:
+      case BatteryIconMode.inside:
+        break;
+    }
+    final inside = widget.percentInside || widget.mode == BatteryIconMode.inside;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (pt != null && _level != null) Text('$_level%', style: pt),
-        if (pt != null && _level != null) const SizedBox(width: 3),
+        if (pt != null && _level != null && !inside) Text('$_level%', style: pt),
+        if (pt != null && _level != null && !inside) const SizedBox(width: 3),
         CustomPaint(
           size: Size(widget.width ?? widget.height * 2.2, widget.height),
-          painter: BatteryPainter(level: _level, color: widget.color, charging: _charging, percentInside: widget.percentInside),
+          painter: BatteryPainter(level: _level, color: widget.color, charging: _charging, percentInside: inside),
         ),
         if (_charging) Text(' 充电中', style: pt ?? TextStyle(fontSize: widget.height, color: widget.color)),
       ],
     );
+  }
+
+  static String _hhmm() {
+    final t = DateTime.now();
+    return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
   }
 }

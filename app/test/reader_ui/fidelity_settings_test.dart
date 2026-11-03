@@ -24,6 +24,8 @@ void main() {
     Toast.sink = (_, _) {};
     UserSession.isvip = false;
     ReaderBattery.read = () async => (level: 76, charging: false);
+    // this file pins the original 轻悦时光 header / footer; the app's default style (Legado) swaps the slot defaults
+    await Storage.setInt('statusStyle', StatusStyle.qread);
   });
 
   test('keys and defaults of the original', () async {
@@ -55,7 +57,7 @@ void main() {
     final again = ReadSetting();
     expect(again.slots['customHeaderRight'], [6, 0]);
     expect(again.slots['customFooterLeft'], isEmpty); // an empty list stays empty
-    expect(SlotItem.names, ['时间', '内置百分比电池', '外置百分比电池', '章节进度', '全文进度', '标题', '书名']);
+    expect(SlotItem.names.sublist(0, 7), ['时间', '内置百分比电池', '外置百分比电池', '章节进度', '全文进度', '标题', '书名']);
   });
 
   test('屏幕常亮: 0 system, -1 always, minutes idle timer', () async {
@@ -162,6 +164,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(Storage.getString('wakelockTimeout'), '5');
 
+    // the 页眉页脚样式 row above pushed it below the fold of the lazily built list
+    await tester.scrollUntilVisible(find.text('按章节'), 200, scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('按章节'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('按分页').last);
