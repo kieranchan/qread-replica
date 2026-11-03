@@ -1138,8 +1138,9 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     );
   }
 
-  /// 模拟翻书: the page number on the back of the lifted page (owner: "页数的翻页时的背面显示"), in the footer's type; left out when
-  /// the footer's right slot already shows the page (Legado's 页数及进度), which mirrors there by itself.
+  /// 模拟翻书: the page number in the middle of the back of the lifted page (owner: "页数的翻页时的背面显示", "镜像的放在背面的中间"),
+  /// in the footer's type; left out when the footer's right slot already shows the page (Legado's 页数及进度), which mirrors onto the
+  /// curled corner by itself.
   BackLabel? _backLabel(int delta, ReadConfig config) {
     var pos = (_ci, _pi);
     if (delta != 0) {
@@ -1152,12 +1153,13 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     if (SlotItem.showsPage(_setting.slots['customFooterRight'] ?? const [])) return null;
     final family = _setting.legadoStatus && _setting.fontFamily.isNotEmpty ? _setting.fontFamily : null;
     final color = _setting.legadoStatus ? config.textColor : config.textColor.withValues(alpha: 0.55);
+    final centre = _setting.slots['customFooterCenter'] ?? const <int>[];
     return BackLabel(
       text: '${page.pageNum}/${page.totalPage}',
       style: TextStyle(fontSize: _setting.statusFontSize, color: color, height: 1.2, fontFamily: family),
       bottomInset: _setting.safeBottom >= 0 ? _setting.safeBottom.toDouble() : _safe.bottom,
       height: _setting.statusFontSize + 14.0,
-      rightMargin: _setting.footerRightMargin.toDouble(),
+      coverCentre: _setting.showBottom && centre.length == 1 && centre.first == SlotItem.chapterProgress,
     );
   }
 

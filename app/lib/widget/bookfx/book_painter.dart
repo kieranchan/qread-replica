@@ -20,28 +20,49 @@ import 'package:flutter/material.dart';
 
 import 'model/paper_point.dart';
 
-/// The page number printed on the back of the paper (owner, 2026-11-03: "页数的翻页时的背面显示"): the footer band of the lifted
-/// page is painted over in paper colour on the back and carries [text] at the right margin, mirrored with the rest of the back
-/// like Legado's page number — so it shows on the curled corner as soon as it lifts, whatever the footer itself carries.
+/// The page number on the back of the lifted paper (owner, 2026-11-03: "翻页时的背面是完整的对称的，页码你需要镜像的放在背面的
+/// 中间"): the back stays the complete mirror of the page; the number sits in the middle of the visible back strip at the footer's
+/// height, mirrored like everything on the back, on a small paper halo so it reads over whatever the mirror puts there. When the
+/// footer's centre slot holds the number alone, its own mirror image (which only reaches the back late in the turn) is patched out,
+/// so the back never shows two.
 class BackLabel {
   final String text;
   final TextStyle style;
 
-  /// The footer band: [height] tall, its bottom [bottomInset] above the page's bottom edge; the text ends [rightMargin] from the
-  /// right edge.
+  /// The footer band: [height] tall, its bottom [bottomInset] above the page's bottom edge.
   final double bottomInset;
   final double height;
-  final double rightMargin;
-  const BackLabel({required this.text, required this.style, required this.bottomInset, required this.height, this.rightMargin = 16});
 
+  /// Patch the footer's own number out of the mirror (the centre slot holds just the page number).
+  final bool coverCentre;
+  const BackLabel({required this.text, required this.style, required this.bottomInset, required this.height, this.coverCentre = false});
+
+  double footerY(Size size) => size.height - bottomInset - height / 2;
   Rect band(Size size) => Rect.fromLTWH(0, size.height - bottomInset - height, size.width, height);
 
-  /// Paints the band and the text in page coordinates (the caller applies the fold's mirror).
-  void paint(Canvas canvas, Size size, Color paperColor) {
-    final r = band(size);
-    canvas.drawRect(r, Paint()..color = paperColor);
+  /// The fold's x at [y] (the line e–h), kept on the page.
+  static double foldX(PaperPoint p, double y, Size size) {
+    final dy = p.h.dy - p.e.dy;
+    final x = dy.abs() < 1e-6 ? p.e.dx : p.e.dx + (p.h.dx - p.e.dx) * (y - p.e.dy) / dy;
+    return x.clamp(0.0, size.width);
+  }
+
+  /// Where the number goes, in page coordinates: at the footer's height, midway between the fold and the lifted corner's edge —
+  /// the middle of the visible back once mirrored.
+  Offset anchor(Size size, PaperPoint p) {
+    final y = footerY(size);
+    return Offset((foldX(p, y, size) + p.f.dx) / 2, y);
+  }
+
+  /// Paints in page coordinates (the caller applies the fold's mirror).
+  void paint(Canvas canvas, Size size, PaperPoint p, Color paperColor) {
     final tp = TextPainter(text: TextSpan(text: text, style: style), textDirection: TextDirection.ltr)..layout();
-    tp.paint(canvas, Offset(size.width - rightMargin - tp.width, r.center.dy - tp.height / 2));
+    final paper = Paint()..color = paperColor;
+    final box = Size(tp.width + 8, tp.height + 4);
+    if (coverCentre) canvas.drawRect(Rect.fromCenter(center: Offset(size.width / 2, footerY(size)), width: box.width, height: box.height), paper);
+    final c = anchor(size, p);
+    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: c, width: box.width, height: box.height), const Radius.circular(3)), paper);
+    tp.paint(canvas, c - Offset(tp.width / 2, tp.height / 2));
   }
 
   @override
@@ -51,10 +72,10 @@ class BackLabel {
       other.style == style &&
       other.bottomInset == bottomInset &&
       other.height == height &&
-      other.rightMargin == rightMargin;
+      other.coverCentre == coverCentre;
 
   @override
-  int get hashCode => Object.hash(text, style, bottomInset, height, rightMargin);
+  int get hashCode => Object.hash(text, style, bottomInset, height, coverCentre);
 }
 
 class BookCurl extends StatelessWidget {
@@ -154,7 +175,7 @@ class _BackLabelPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     canvas.save();
     canvas.transform(Float64List.fromList(p.foldMatrix()));
-    label.paint(canvas, size, paperColor);
+    label.paint(canvas, size, p, paperColor);
     canvas.restore();
   }
 
@@ -205,7 +226,7 @@ class BookCurlPainter extends CustomPainter {
     canvas.save();
     canvas.transform(Float64List.fromList(p.foldMatrix()));
     drawPage(canvas, image, size, Paint()..filterQuality = FilterQuality.low);
-    label?.paint(canvas, size, paperColor); // the page number, mirrored with the page
+    label?.paint(canvas, size, p, paperColor); // the page number, mirrored with the page
     canvas.restore();
     BookShadows.creaseShadow(canvas, p, pixelScale);
     canvas.restore();
