@@ -72,12 +72,16 @@ class NovelPager extends StatefulWidget {
   final NovelPagerController? controller;
   final Color paperColor;
 
+  /// 模拟翻书: the page number printed on the back of the page at [delta] (0 current, -1 previous) while it is lifted.
+  final BackLabel? Function(int delta)? backLabel;
+
   const NovelPager({
     super.key,
     required this.mode,
     required this.pageBuilder,
     required this.canTurn,
     required this.onTurned,
+    this.backLabel,
     this.duration = const Duration(milliseconds: 300),
     this.onBlocked,
     this.onTap,
@@ -575,14 +579,23 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
         final under = _dir == 1 ? other : cur;
         if (a == null) return _dir == 1 ? front : under;
         final img = _flipImage;
+        final label = widget.backLabel?.call(_dir == 1 ? 0 : -1);
         if (img != null) {
-          return BookCurl(front: front, under: under, frontImage: img, touch: a, corner: _corner, paperColor: _paperOfPage ?? widget.paperColor);
+          return BookCurl(
+            front: front,
+            under: under,
+            frontImage: img,
+            touch: a,
+            corner: _corner,
+            paperColor: _paperOfPage ?? widget.paperColor,
+            backLabel: label,
+          );
         }
         // until the picture exists: the live widgets, with a full copy of the front page painted underneath for the picture; the
         // same paper colour as the picture frames will use, else the back of the paper changes tint when the picture arrives
         return Stack(fit: StackFit.expand, children: [
           RepaintBoundary(key: _frontKey, child: front),
-          BookCurl(front: front, under: under, touch: a, corner: _corner, paperColor: _paperOfPage ?? widget.paperColor),
+          BookCurl(front: front, under: under, touch: a, corner: _corner, paperColor: _paperOfPage ?? widget.paperColor, backLabel: label),
         ]);
       case TurnMode.none:
         return cur;

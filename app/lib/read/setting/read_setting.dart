@@ -85,6 +85,9 @@ abstract class SlotItem {
   static const int timeBatteryPercent = 11;
   static const int batteryPercent = 12;
 
+  /// Whether [items] already show the page number (章节进度 `n/N` or Legado's 页数及进度).
+  static bool showsPage(List<int> items) => items.contains(chapterProgress) || items.contains(pageAndTotal);
+
   static const List<String> names = [
     '时间', '内置百分比电池', '外置百分比电池', '章节进度', '全文进度', '标题', '书名', //
     '页数及进度', '章节序号', '电量(方框)', '时间+电量(方框)', '时间+电量%', '电量%',
@@ -211,7 +214,7 @@ class ReadSetting extends ChangeNotifier {
   Map<String, List<int>> slots = {for (final e in slotDefaults.entries) e.key: List<int>.of(e.value)};
 
   /// [StatusStyle]; Legado unless the prefs say otherwise.
-  int statusStyle = StatusStyle.legado;
+  int statusStyle = StatusStyle.qread;
 
   bool get legadoStatus => statusStyle == StatusStyle.legado;
 
@@ -281,12 +284,9 @@ class ReadSetting extends ChangeNotifier {
     for (final k in slotDefaults.keys) {
       slots[k] = slot(k);
     }
-    statusStyle = Storage.getInt('statusStyle', StatusStyle.legado).clamp(0, 1);
-    // first start with the Legado style (2026-11-03): slots still at the original's defaults take Legado's; customised ones stay
-    if (statusStyle == StatusStyle.legado && !Storage.getBool('legadoSlotsApplied')) {
-      if (_slotsEqual(slotDefaults)) _applySlots(legadoSlotDefaults);
-      unawaited(Storage.setBool('legadoSlotsApplied', true));
-    }
+    // the original's look is the default (the owner tried Legado's as the default on 2026-11-03 and went back: "看习惯了");
+    // Legado's is chosen in 更多设置 → 页眉页脚样式, and only that switch moves the slots
+    statusStyle = Storage.getInt('statusStyle', StatusStyle.qread).clamp(0, 1);
 
     fontSize = Storage.getInt(fontSizeKey, 30).clamp(10, 55);
     final lh = Storage.getDouble('lineHeight');
@@ -546,28 +546,28 @@ class ReadSetting extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool _slotsEqual(Map<String, List<int>> other) {
-    for (final e in other.entries) {
-      final mine = slots[e.key] ?? const <int>[];
-      if (mine.length != e.value.length) return false;
-      for (var i = 0; i < mine.length; i++) {
-        if (mine[i] != e.value[i]) return false;
-      }
+  static bool _sameItems(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
     }
     return true;
   }
 
-  void _applySlots(Map<String, List<int>> values) {
-    for (final e in values.entries) {
-      slots[e.key] = List<int>.of(e.value);
-      unawaited(Storage.setString(e.key, jsonEncode(e.value)));
+  /// Slot by slot: one still holding [from]'s default takes [to]'s; a customised one is left alone.
+  void _swapDefaultSlots(Map<String, List<int>> from, Map<String, List<int>> to) {
+    for (final e in from.entries) {
+      if (!_sameItems(slots[e.key] ?? const <int>[], e.value)) continue;
+      final next = to[e.key] ?? const <int>[];
+      slots[e.key] = List<int>.of(next);
+      unawaited(Storage.setString(e.key, jsonEncode(next)));
     }
   }
 
   /// The 分割线 default of a style: Legado's footer line, none for the original.
   static int fenDefault(int style) => style == StatusStyle.legado ? DividerMode.footer : DividerMode.none;
 
-  /// Switches the header / footer style; the slots and the 分割线 take that style's defaults when they still hold the other
+  /// Switches the header / footer style; each slot and the 分割线 take that style's default when they still hold the other
   /// style's.
   Future<void> setStatusStyle(int v) async {
     final next = v.clamp(0, 1);
@@ -579,9 +579,8 @@ class ReadSetting extends ChangeNotifier {
       await Storage.setInt('fen', fen);
     }
     statusStyle = next;
-    if (_slotsEqual(fromDefaults)) _applySlots(toDefaults);
+    _swapDefaultSlots(fromDefaults, toDefaults);
     await Storage.setInt('statusStyle', next);
-    await Storage.setBool('legadoSlotsApplied', true);
     notifyListeners();
   }
 

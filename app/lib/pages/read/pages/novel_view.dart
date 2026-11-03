@@ -31,6 +31,7 @@ import '../../../read/pdf/pdf_file.dart';
 import '../../../qread/qread_jobs.dart';
 import '../../../read/setting/read_layout_style.dart';
 import '../../../read/setting/read_setting.dart';
+import '../../../widget/bookfx/book_painter.dart';
 import '../../../read/util/chapter_content.dart';
 import '../../../read/util/content_painter.dart';
 import '../../../read/util/highlight_apply.dart';
@@ -1137,6 +1138,29 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
     );
   }
 
+  /// 模拟翻书: the page number on the back of the lifted page (owner: "页数的翻页时的背面显示"), in the footer's type; left out when
+  /// the footer's right slot already shows the page (Legado's 页数及进度), which mirrors there by itself.
+  BackLabel? _backLabel(int delta, ReadConfig config) {
+    var pos = (_ci, _pi);
+    if (delta != 0) {
+      final n = _neighbor(delta);
+      if (n == null) return null;
+      pos = n;
+    }
+    final page = _myPage(pos.$1, pos.$2);
+    if (page == null) return null;
+    if (SlotItem.showsPage(_setting.slots['customFooterRight'] ?? const [])) return null;
+    final family = _setting.legadoStatus && _setting.fontFamily.isNotEmpty ? _setting.fontFamily : null;
+    final color = _setting.legadoStatus ? config.textColor : config.textColor.withValues(alpha: 0.55);
+    return BackLabel(
+      text: '${page.pageNum}/${page.totalPage}',
+      style: TextStyle(fontSize: _setting.statusFontSize, color: color, height: 1.2, fontFamily: family),
+      bottomInset: _setting.safeBottom >= 0 ? _setting.safeBottom.toDouble() : _safe.bottom,
+      height: _setting.statusFontSize + 14.0,
+      rightMargin: _setting.footerRightMargin.toDouble(),
+    );
+  }
+
   /// Header and footer of the current page, drawn once over the pager: they stay put while the pages turn.
   Widget _statusBars(ReadConfig config) {
     final page = _myPage(_ci, _pi);
@@ -1229,6 +1253,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
             controller: _pager,
             paperColor: config.backgroundColor,
             pageBuilder: (d) => _screen(d, config),
+            backLabel: pageOwnBars ? (d) => _backLabel(d, config) : null,
             canTurn: _canTurn,
             onTurned: _turned,
             onBlocked: _blocked,

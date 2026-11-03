@@ -14,6 +14,7 @@ import '../read/api/readapi.dart';
 import '../common/nav.dart';
 import '../data/bookself.dart';
 import '../data/cloud/auto_backup.dart';
+import '../data/cookie_persist.dart';
 import '../data/cloud/cloud_books.dart';
 import '../data/rss.dart';
 import '../data/source.dart';
@@ -79,6 +80,8 @@ abstract class Wiring {
     if (_done) return;
     _done = true;
     JsEngines.install();
+    // source cookies (logins) come back from the last launch before anything talks to a source
+    await CookiePersist.init();
 
     // reader: per-book stores live under the app root; the AI chat uses the AI module
     if (!ReadStorageRoot.isSet) ReadStorageRoot.dir = AppDirs.root;
