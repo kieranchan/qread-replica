@@ -397,7 +397,7 @@ class ContentPage extends StatelessWidget {
     final top = setting.safeTop >= 0 ? setting.safeTop.toDouble() : safe.top;
     final bottom = setting.safeBottom >= 0 ? setting.safeBottom.toDouble() : safe.bottom;
     return [
-      if (setting.showTop)
+      if (setting.headerShown)
         Positioned(
           left: 0,
           right: 0,

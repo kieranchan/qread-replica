@@ -81,7 +81,7 @@ class ListPage extends StatelessWidget {
               ),
             ),
           ),
-          if (setting.showTop)
+          if (setting.headerShown)
             Positioned(
               left: 0,
               right: 0,

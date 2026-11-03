@@ -130,6 +130,20 @@ void main() {
     expect(tester.widget<Text>(find.text('5/120')).style?.fontFamily, isNull);
   });
 
+  test('Legado style: the header shows only while the system status bar is hidden (headerMode 0)', () async {
+    final s = ReadSetting();
+    expect(s.hidetop, isTrue);
+    expect(s.headerShown, isTrue);
+    expect(s.headerHeight, s.statusFontSize + 14);
+    await s.setHidetop(false);
+    expect(s.headerShown, isFalse);
+    expect(s.headerHeight, 0);
+    await s.setStatusStyle(StatusStyle.qread); // the original always draws it
+    expect(s.headerShown, isTrue);
+    await s.setHeaderFooter(top: false);
+    expect(s.headerShown, isFalse);
+  });
+
   test('texts of the Legado items', () {
     final bar = ReaderStatusBar(setting: ReadSetting(), header: false, color: Colors.black, title: '', pageNum: 3, totalPage: 0, bookProgress: 1.5, chapterIndex: 0, chapterCount: 0);
     expect(bar.pageAndTotalText(), '3/-  100.0%');

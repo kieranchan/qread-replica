@@ -776,8 +776,12 @@ class ReadSetting extends ChangeNotifier {
     return FileImage(File(path));
   }
 
+  /// Whether the header is drawn: 页眉区域 on, and in the Legado style only while the system status bar is hidden (Legado's
+  /// headerMode 0 — its header carries the time and the battery the status bar would show).
+  bool get headerShown => showTop && (!legadoStatus || hidetop);
+
   /// Height of the header line / footer line (0 when hidden).
-  double get headerHeight => showTop ? statusFontSize + 14.0 : 0;
+  double get headerHeight => headerShown ? statusFontSize + 14.0 : 0;
   double get footerHeight => showBottom ? statusFontSize + 14.0 : 0;
 
   /// Columns: 界面设置 单列 / 双列 writes `ispad` (0xfa2690).
