@@ -20,70 +20,9 @@ import 'package:flutter/material.dart';
 
 import 'model/paper_point.dart';
 
-/// The page number on the back of the lifted paper (owner, 2026-11-03: "翻页时的背面是完整的对称的，页码你需要镜像的放在背面的
-/// 中间"): the back stays the complete mirror of the page; the number sits in the middle of the visible back strip at the footer's
-/// height, mirrored like everything on the back, on a small paper halo so it reads over whatever the mirror puts there. When the
-/// footer's centre slot holds the number alone, its own mirror image (which only reaches the back late in the turn) is patched out,
-/// so the back never shows two.
-class BackLabel {
-  final String text;
-  final TextStyle style;
-
-  /// The footer band: [height] tall, its bottom [bottomInset] above the page's bottom edge.
-  final double bottomInset;
-  final double height;
-
-  /// Patch the footer's own number out of the mirror (the centre slot holds just the page number).
-  final bool coverCentre;
-  const BackLabel({required this.text, required this.style, required this.bottomInset, required this.height, this.coverCentre = false});
-
-  double footerY(Size size) => size.height - bottomInset - height / 2;
-  Rect band(Size size) => Rect.fromLTWH(0, size.height - bottomInset - height, size.width, height);
-
-  /// The fold's x at [y] (the line e–h), kept on the page.
-  static double foldX(PaperPoint p, double y, Size size) {
-    final dy = p.h.dy - p.e.dy;
-    final x = dy.abs() < 1e-6 ? p.e.dx : p.e.dx + (p.h.dx - p.e.dx) * (y - p.e.dy) / dy;
-    return x.clamp(0.0, size.width);
-  }
-
-  /// Where the number goes, in page coordinates: at the footer's height, midway between the fold and the lifted corner's edge —
-  /// the middle of the visible back once mirrored.
-  Offset anchor(Size size, PaperPoint p) {
-    final y = footerY(size);
-    return Offset((foldX(p, y, size) + p.f.dx) / 2, y);
-  }
-
-  /// Paints in page coordinates (the caller applies the fold's mirror).
-  void paint(Canvas canvas, Size size, PaperPoint p, Color paperColor) {
-    final tp = TextPainter(text: TextSpan(text: text, style: style), textDirection: TextDirection.ltr)..layout();
-    final paper = Paint()..color = paperColor;
-    final box = Size(tp.width + 8, tp.height + 4);
-    if (coverCentre) canvas.drawRect(Rect.fromCenter(center: Offset(size.width / 2, footerY(size)), width: box.width, height: box.height), paper);
-    final c = anchor(size, p);
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: c, width: box.width, height: box.height), const Radius.circular(3)), paper);
-    tp.paint(canvas, c - Offset(tp.width / 2, tp.height / 2));
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      other is BackLabel &&
-      other.text == text &&
-      other.style == style &&
-      other.bottomInset == bottomInset &&
-      other.height == height &&
-      other.coverCentre == coverCentre;
-
-  @override
-  int get hashCode => Object.hash(text, style, bottomInset, height, coverCentre);
-}
-
 class BookCurl extends StatelessWidget {
   final Widget front;
   final Widget under;
-
-  /// The page number on the back of the paper, if any.
-  final BackLabel? backLabel;
 
   /// A picture of [front] (device pixels); when given, [front] is not built and the curl is painted from the picture.
   final ui.Image? frontImage;
@@ -100,7 +39,6 @@ class BookCurl extends StatelessWidget {
     required this.touch,
     required this.corner,
     this.frontImage,
-    this.backLabel,
     this.paperColor = const Color(0xFFF2EEE4),
   });
 
@@ -119,7 +57,7 @@ class BookCurl extends StatelessWidget {
       if (img != null) {
         return Stack(fit: StackFit.expand, children: [
           under,
-          IgnorePointer(child: CustomPaint(painter: BookCurlPainter(p, img, paperColor, pixelScale: scale, label: backLabel), size: size)),
+          IgnorePointer(child: CustomPaint(painter: BookCurlPainter(p, img, paperColor, pixelScale: scale), size: size)),
         ]);
       }
       return Stack(fit: StackFit.expand, children: [
@@ -130,7 +68,6 @@ class BookCurl extends StatelessWidget {
           child: Stack(fit: StackFit.expand, children: [
             ColoredBox(color: paperColor),
             Transform(transform: Matrix4.fromList(p.foldMatrix()), child: front),
-            if (backLabel != null) IgnorePointer(child: CustomPaint(painter: _BackLabelPainter(p, backLabel!, paperColor), size: size)),
           ]),
         ),
         IgnorePointer(child: CustomPaint(painter: BookShadowPainter(p, pixelScale: scale), size: size)),
@@ -164,25 +101,6 @@ class _FlatPainter extends CustomPainter {
   bool shouldRepaint(_FlatPainter old) => old.image != image;
 }
 
-/// The page number on the back when the curl is drawn from live widgets (the first frame of a turn without a picture).
-class _BackLabelPainter extends CustomPainter {
-  final PaperPoint p;
-  final BackLabel label;
-  final Color paperColor;
-  _BackLabelPainter(this.p, this.label, this.paperColor);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.save();
-    canvas.transform(Float64List.fromList(p.foldMatrix()));
-    label.paint(canvas, size, p, paperColor);
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(_BackLabelPainter old) => old.p.a != p.a || old.p.f != p.f || old.label != label || old.paperColor != paperColor;
-}
-
 /// The whole curl from a picture of the front page.
 class BookCurlPainter extends CustomPainter {
   final PaperPoint p;
@@ -191,10 +109,7 @@ class BookCurlPainter extends CustomPainter {
 
   /// Logical pixels per Android pixel (1 / device pixel ratio) for Legado's pixel constants.
   final double pixelScale;
-
-  /// The page number on the back of the paper, if any.
-  final BackLabel? label;
-  BookCurlPainter(this.p, this.image, this.paperColor, {this.pixelScale = 1 / 3, this.label});
+  BookCurlPainter(this.p, this.image, this.paperColor, {this.pixelScale = 1 / 3});
 
   /// Draws [image] over [size] (the picture is the page at the device pixel ratio, so unmirrored it lands pixel for pixel on the
   /// screen: nearest sampling keeps it identical to the live page — bilinear made the text go a touch soft the moment the picture
@@ -225,8 +140,8 @@ class BookCurlPainter extends CustomPainter {
     canvas.drawRect(Offset.zero & size, Paint()..color = paperColor);
     canvas.save();
     canvas.transform(Float64List.fromList(p.foldMatrix()));
-    drawPage(canvas, image, size, Paint()..filterQuality = FilterQuality.low);
-    label?.paint(canvas, size, p, paperColor); // the page number, mirrored with the page
+    // Legado draws the mirrored bitmap with a plain Paint (no FILTER_BITMAP_FLAG): nearest sampling, crisp like the Android one
+    drawPage(canvas, image, size, Paint()..filterQuality = FilterQuality.none);
     canvas.restore();
     BookShadows.creaseShadow(canvas, p, pixelScale);
     canvas.restore();
@@ -234,7 +149,7 @@ class BookCurlPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(BookCurlPainter old) =>
-      old.p.a != p.a || old.p.f != p.f || old.image != image || old.paperColor != paperColor || old.pixelScale != pixelScale || old.label != label;
+      old.p.a != p.a || old.p.f != p.f || old.image != image || old.paperColor != paperColor || old.pixelScale != pixelScale;
 }
 
 enum _Orient { leftRight, rightLeft, topBottom, bottomTop }

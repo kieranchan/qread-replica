@@ -85,9 +85,6 @@ abstract class SlotItem {
   static const int timeBatteryPercent = 11;
   static const int batteryPercent = 12;
 
-  /// Whether [items] already show the page number (章节进度 `n/N` or Legado's 页数及进度).
-  static bool showsPage(List<int> items) => items.contains(chapterProgress) || items.contains(pageAndTotal);
-
   static const List<String> names = [
     '时间', '内置百分比电池', '外置百分比电池', '章节进度', '全文进度', '标题', '书名', //
     '页数及进度', '章节序号', '电量(方框)', '时间+电量(方框)', '时间+电量%', '电量%',

@@ -48,6 +48,10 @@ class NovelPagerController {
   /// 模拟翻书: the running turn draws from a picture (tests).
   @visibleForTesting
   bool get turnUsesPicture => _state?._flipImage != null;
+
+  /// 模拟翻书: the touch point, the lifted corner and the running animation's duration (tests of the Legado turn rules).
+  @visibleForTesting
+  (Offset? touch, Offset corner, Duration anim) get debugCurl => _state?._debugCurl ?? (null, Offset.zero, Duration.zero);
 }
 
 class NovelPager extends StatefulWidget {
@@ -72,16 +76,12 @@ class NovelPager extends StatefulWidget {
   final NovelPagerController? controller;
   final Color paperColor;
 
-  /// 模拟翻书: the page number printed on the back of the page at [delta] (0 current, -1 previous) while it is lifted.
-  final BackLabel? Function(int delta)? backLabel;
-
   const NovelPager({
     super.key,
     required this.mode,
     required this.pageBuilder,
     required this.canTurn,
     required this.onTurned,
-    this.backLabel,
     this.duration = const Duration(milliseconds: 300),
     this.onBlocked,
     this.onTap,
@@ -110,6 +110,12 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
   Offset _to = Offset.zero;
   Offset _down = Offset.zero;
   bool _horizontal = true;
+
+  /// Legado's `isCancel`: the last movement of the drag went back towards where it started, so letting go puts the page back.
+  bool _curlCancel = false;
+
+  /// Where the last tap landed: Legado lifts the corner on the tap's side (top half: the top-right corner).
+  Offset? _tapAt;
 
   // 仿真翻页: picture of the page that rolls; 模拟翻书: picture of the page whose corner is lifted
   final GlobalKey _curKey = GlobalKey(debugLabel: 'flip-cur');
@@ -201,7 +207,7 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
   }
 
   void _tick() {
-    if (_bookMode && _dir != 0 && !_dragging) _touch = Offset.lerp(_from, _to, Curves.easeOut.transform(_anim.value));
+    if (_bookMode && _dir != 0 && !_dragging) _touch = Offset.lerp(_from, _to, _anim.value); // linear, as Legado's Scroller
     setState(() {});
   }
 
@@ -261,6 +267,9 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
 
   /// Whether both idle pictures that the current position allows are ready (tests).
   bool get _idlePicturesReady => _curPic != null && (_prevPic != null || !widget.canTurn(-1));
+
+  /// The curl's touch point, lifted corner and the running animation's duration (tests of the Legado turn rules).
+  (Offset? touch, Offset corner, Duration anim) get _debugCurl => (_touch, _corner, _anim.duration ?? Duration.zero);
 
   /// Called from an idle build: once per change, one frame after the page was painted, photographs the current page and the
   /// previous one (frames rather than a timer: nothing may stay pending when the pager goes away).
@@ -376,23 +385,37 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
 
   // ------------------------------------------------------------------ corner curl geometry
 
+  /// Legado (`SimulationPageDelegate.setDirection` + `calcCornerXY`, `onTouch`): forwards the lifted corner is always on the
+  /// right, top or bottom by the finger's / tap's y (upper half: top); a drag started in the middle third keeps the touch on the
+  /// corner's edge (a flat horizontal flip), the outer thirds follow the finger (a diagonal curl); backwards the corner is the
+  /// bottom-right one and the touch stays on the bottom edge. [at] is the finger (a drag) or the tap; null for a key / menu turn.
   void _startCurl(int dir, {Offset? at}) {
     final w = _size.width, h = _size.height;
     if (dir == 1) {
-      final y = (at ?? Offset(w, h)).dy;
-      _horizontal = at == null ? false : (y > h / 3 && y < h * 2 / 3);
-      _corner = Offset(w, (at != null && y < h / 3) ? 0 : h);
+      final y = (at ?? Offset(w, h * 0.9)).dy;
+      _horizontal = at != null && y > h / 3 && y < h * 2 / 3;
+      _corner = Offset(w, y <= h / 2 ? 0 : h);
     } else {
       _horizontal = true;
       _corner = Offset(w, h);
     }
+    _curlCancel = false;
   }
 
-  /// The touch point for a finger at [local] (backwards the previous page is pulled in from the left).
+  /// Legado's start point of a turn without a drag: forwards (0.9 w, 0.9 h) — or (0.9 w, 1) when the top corner lifts — so the
+  /// corner is already a little up; backwards (0, h): the previous page comes in folded over its left half.
+  Offset _curlStart(int dir) {
+    final w = _size.width, h = _size.height;
+    if (dir == 1) return Offset(w * 0.9, _corner.dy == 0 ? 1 : h * 0.9);
+    return Offset(0, h);
+  }
+
+  /// The touch point for a finger at [local]: Legado's `setTouchPoint` with the y pinned to the corner's edge for a flat flip and
+  /// for every backward turn; the x is the finger's own (backwards too).
   Offset _curlTouch(Offset local) {
     final w = _size.width, h = _size.height;
-    if (_dir == -1) return Offset((2 * local.dx - w).clamp(-w, w), h);
-    if (_horizontal) return Offset(local.dx.clamp(-w, w), _corner.dy);
+    if (_dir == -1) return Offset(local.dx.clamp(-w, w), h);
+    if (_horizontal) return Offset(local.dx.clamp(-w, w), _corner.dy == 0 ? 1 : _corner.dy);
     return PaperPoint.constrain(Offset(local.dx.clamp(-w, w - 0.5), local.dy.clamp(0, h)), _corner, _size);
   }
 
@@ -403,22 +426,22 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
     return complete ? _corner : Offset(-w, _corner.dy);
   }
 
-  /// 0..1 progress of the curl for the decision on release.
-  double get _curlProgress {
-    final a = _touch;
-    if (a == null) return 0;
-    final w = _size.width;
-    return _dir == 1 ? ((w - a.dx) / (2 * w)).clamp(0.0, 1.0) : ((a.dx + w) / (2 * w)).clamp(0.0, 1.0);
-  }
-
+  /// Legado's `startScroll`: a Scroller with a LinearInterpolator, its duration the turn speed scaled by the distance still to
+  /// go (|dx| / width, or |dy| / height when the touch only moves vertically) — a page let go near the far edge lands at once.
   Future<bool> _animateCurl(Offset to) async {
     _from = _touch ?? _from;
     _to = to;
+    final dx = (to.dx - _from.dx).abs(), dy = (to.dy - _from.dy).abs();
+    final w = _size.width, h = _size.height;
+    final frac = dx > 0 ? dx / (w <= 0 ? 1 : w) : dy / (h <= 0 ? 1 : h);
+    _anim.duration = Duration(milliseconds: (widget.duration.inMilliseconds * frac).round().clamp(1, 20000));
     _anim.value = 0;
     try {
-      await _anim.animateTo(1);
+      await _anim.animateTo(1, curve: Curves.linear);
     } on TickerCanceled {
       return false;
+    } finally {
+      _anim.duration = widget.duration;
     }
     return mounted;
   }
@@ -439,10 +462,10 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
     if (_bookMode) {
       setState(() {
         _dir = delta;
-        _startCurl(delta);
-        final w = _size.width, h = _size.height;
-        _touch = delta == 1 ? Offset(w - 1, h - 1) : Offset(-w, h);
+        _startCurl(delta, at: delta == 1 ? _tapAt : null);
+        _touch = _curlStart(delta);
       });
+      _tapAt = null;
       _capture(delta);
       if (!await _animateCurl(_curlTarget(true))) return false;
       setState(_finish);
@@ -489,6 +512,8 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
     }
     if (_dir == 0 || widget.mode == TurnMode.none) return;
     if (_bookMode) {
+      // Legado: a move back towards the start (right for a forward turn, left for a backward one) means "put it back" on release
+      if (d.delta.dx != 0) _curlCancel = _dir == 1 ? d.delta.dx > 0 : d.delta.dx < 0;
       setState(() => _touch = _curlTouch(d.localPosition));
       return;
     }
@@ -504,8 +529,8 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
     }
     if (_dir == 0) return;
     final velocity = _vertical ? d.velocity.pixelsPerSecond.dy : d.velocity.pixelsPerSecond.dx;
-    final progress = _bookMode ? _curlProgress : _anim.value;
-    final forward = -velocity * _dir > 300 || progress > 0.15 || widget.mode == TurnMode.none;
+    // 模拟翻书 decides like Legado: by the direction of the last movement, not by distance or speed
+    final forward = _bookMode ? !_curlCancel : (-velocity * _dir > 300 || _anim.value > 0.15 || widget.mode == TurnMode.none);
     _busy = true;
     if (widget.mode == TurnMode.none) {
       setState(_finish);
@@ -579,23 +604,14 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
         final under = _dir == 1 ? other : cur;
         if (a == null) return _dir == 1 ? front : under;
         final img = _flipImage;
-        final label = widget.backLabel?.call(_dir == 1 ? 0 : -1);
         if (img != null) {
-          return BookCurl(
-            front: front,
-            under: under,
-            frontImage: img,
-            touch: a,
-            corner: _corner,
-            paperColor: _paperOfPage ?? widget.paperColor,
-            backLabel: label,
-          );
+          return BookCurl(front: front, under: under, frontImage: img, touch: a, corner: _corner, paperColor: _paperOfPage ?? widget.paperColor);
         }
         // until the picture exists: the live widgets, with a full copy of the front page painted underneath for the picture; the
         // same paper colour as the picture frames will use, else the back of the paper changes tint when the picture arrives
         return Stack(fit: StackFit.expand, children: [
           RepaintBoundary(key: _frontKey, child: front),
-          BookCurl(front: front, under: under, touch: a, corner: _corner, paperColor: _paperOfPage ?? widget.paperColor, backLabel: label),
+          BookCurl(front: front, under: under, touch: a, corner: _corner, paperColor: _paperOfPage ?? widget.paperColor),
         ]);
       case TurnMode.none:
         return cur;
@@ -616,6 +632,7 @@ class _NovelPagerState extends State<NovelPager> with SingleTickerProviderStateM
         TapGestureRecognizer: GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
           () => TapGestureRecognizer(),
           (r) => r.onTapUp = (d) {
+            _tapAt = d.localPosition;
             if (!_busy) widget.onTap?.call(d.localPosition, _size);
           },
         ),
