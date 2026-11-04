@@ -143,8 +143,10 @@ class WebBook {
     }
     final abs = chapter.getAbsoluteURL();
     String text;
+    String? body;
     if (chapter.url == book.bookUrl && (book.tocHtml ?? '').isNotEmpty) {
-      text = await BookContent.analyzeContent(source, book, chapter, abs, abs, book.tocHtml, nextChapterUrl, debug: debug);
+      body = book.tocHtml;
+      text = await BookContent.analyzeContent(source, book, chapter, abs, abs, body, nextChapterUrl, debug: debug);
     } else {
       debug?.log('︾开始解析正文页');
       final au = await AnalyzeUrl.create(abs,
@@ -152,10 +154,29 @@ class WebBook {
       var res = await au.getStrResponse(jsStr: contentRule.webJs, sourceRegex: contentRule.sourceRegex);
       res = await _checkLogin(au, res);
       debug?.body('content', res.body);
-      text = await BookContent.analyzeContent(source, book, chapter, abs, res.url, res.body, nextChapterUrl, debug: debug);
+      body = res.body;
+      text = await BookContent.analyzeContent(source, book, chapter, abs, res.url, body, nextChapterUrl, debug: debug);
     }
-    if (text.trim().isEmpty) throw WebBookException('内容为空');
+    if (text.trim().isEmpty) throw WebBookException(emptyContentMessage(body));
     return text;
+  }
+
+  /// `内容为空`, plus the message of a small JSON answer when there is one (`{"code":-1,"msg":"获取内容失败: 内容为空"}`: an API
+  /// source's backend saying why; 2026-11-04 the reader saw only 内容为空 while the source's platform was down).
+  static String emptyContentMessage(String? body) {
+    final t = body?.trim() ?? '';
+    if (t.startsWith('{') && t.length <= 2000) {
+      try {
+        final v = jsonDecode(t);
+        if (v is Map) {
+          for (final k in const ['msg', 'message', 'error', 'errmsg']) {
+            final m = v[k];
+            if (m is String && m.trim().isNotEmpty) return '内容为空（书源返回：${m.trim()}）';
+          }
+        }
+      } catch (_) {}
+    }
+    return '内容为空';
   }
 
   // hooks ----------------------------------------------------------------------------------------------------------------------

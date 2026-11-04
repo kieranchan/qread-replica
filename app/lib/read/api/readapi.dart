@@ -180,17 +180,15 @@ class ReadApi {
     ChapterContent? raw;
     final cacheable = !isLocalBook(book);
     String? wall;
-    if (cacheable && !refresh) {
+    if (cacheable) {
       final cached = await bookContent.readFromLocal(book.bookUrl, index);
-      if (cached != null) {
-        if (looksLikeLoginWall(cached) && healedOnce.add('${book.bookUrl}#$index')) {
-          // a source's login / daily-limit message was cached as the chapter (before the refresh guard existed): fetch again once
-          // per session; the message stays if the source still answers with it or cannot be reached
-          log?.call('缓存的正文像是书源的登录或限制提示，重新获取');
-          wall = cached;
-        } else {
-          raw = ChapterContent.fromText(cached);
-        }
+      if (cached != null && looksLikeLoginWall(cached) && (refresh || healedOnce.add('${book.bookUrl}#$index'))) {
+        // a source's login / daily-limit message was cached as the chapter (before the refresh guard existed): fetch again once
+        // per session and on every manual 刷新; the message stays only if the source still answers with it
+        if (!refresh) log?.call('缓存的正文像是书源的登录或限制提示，重新获取');
+        wall = cached;
+      } else if (cached != null && !refresh) {
+        raw = ChapterContent.fromText(cached);
       }
     }
     if (raw == null) {
@@ -200,8 +198,11 @@ class ReadApi {
         try {
           raw = await l(chapter);
         } catch (e) {
-          log?.call('重新获取失败，仍显示缓存：$e');
-          raw = ChapterContent.fromText(wall);
+          // the source did not answer with its message this time, so the message alone would mislead (2026-11-04: the owner
+          // logged in again and again while the platform behind the wall was down and every fetch came back 内容为空): the
+          // reason is shown over the old message, and nothing is cached
+          log?.call('重新获取失败：$e');
+          return ReadChapter(chapter, await purifyTitle(chapter.name), ChapterContent.fromText(wallFailureText(wall, e)));
         }
       } else {
         raw = await l(chapter);
@@ -240,6 +241,11 @@ class ReadApi {
 
   /// Chapters (`<bookUrl>#<index>`) whose cached message was already fetched again in this session.
   static final Set<String> healedOnce = {};
+
+  /// Shown when a cached source message (`您今日免登录访问次数已达上限…`) could not be fetched again: the reason first — the source
+  /// gave no new answer, so logging in is not what is missing — then the old message for reference. Never cached.
+  static String wallFailureText(String wall, Object error) =>
+      '正文重新获取失败：$error\n\n书源这次没有返回正文，它背后的平台可能暂时不可用：可以稍后再刷新，或者换源。\n\n上次缓存的书源提示：\n${wall.trim()}';
 
   /// Title replace rules.
   Future<String> purifyTitle(String title) async {

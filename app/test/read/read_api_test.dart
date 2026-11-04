@@ -267,12 +267,24 @@ void main() {
       expect(await api.bookContent.readFromLocal(api.book.bookUrl, 0), startsWith('真正的正文。'));
       expect((await api.loadChapter(0)).content.text, startsWith('真正的正文。'), reason: 'a real chapter is never re-fetched');
       expect(loads, 2);
-      // the source cannot be reached: the cached message stays on screen instead of an error
+      // the source cannot be reached: the reason is shown over the old message (not "log in" alone), and nothing is cached
       ReadApi.healedOnce.clear();
       await api.bookContent.saveToLocal(api.book.bookUrl, 1, wall, book: api.book);
       final failing = ReadApi(_webBook(), chapters: _chapters(2), loader: (c) async => throw Exception('net down'));
-      expect((await failing.loadChapter(1)).content.text, wall);
+      var shown = (await failing.loadChapter(1)).content.text;
+      expect(shown, startsWith('正文重新获取失败：Exception: net down'));
+      expect(shown, contains('换源'));
+      expect(shown, endsWith(wall));
       expect(log.last, contains('重新获取失败'));
+      expect(await failing.bookContent.readFromLocal(failing.book.bookUrl, 1), wall, reason: 'the failure text is not cached');
+      // a manual 刷新 on the cached message: the same, with no exception for the reader to swallow
+      shown = (await failing.loadChapter(1, refresh: true)).content.text;
+      expect(shown, startsWith('正文重新获取失败：'));
+      expect(await failing.bookContent.readFromLocal(failing.book.bookUrl, 1), wall);
+      // a manual 刷新 of a real cached chapter that fails still throws (the reader keeps the chapter and toasts the reason)
+      await failing.bookContent.saveToLocal(failing.book.bookUrl, 0, '真正的正文。' * 50, book: failing.book);
+      await expectLater(failing.loadChapter(0, refresh: true), throwsException);
+      expect(await failing.bookContent.readFromLocal(failing.book.bookUrl, 0), startsWith('真正的正文。'));
       expect(ReadApi.looksLikeLoginWall('正文' * 200), isFalse);
       expect(ReadApi.looksLikeLoginWall('请登录后查看本章'), isTrue);
       expect(ReadApi.looksLikeLoginWall('他登录了飞船，' * 60), isFalse, reason: 'long real text that merely mentions logging in');

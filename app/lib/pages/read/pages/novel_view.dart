@@ -526,7 +526,7 @@ class NovelViewState extends State<NovelView> with WidgetsBindingObserver implem
       try {
         await _ensureContent(_ci, refresh: true);
       } catch (e) {
-        Toast.show('正文获取失败');
+        Toast.show('正文获取失败：$e');
         return;
       }
     }
